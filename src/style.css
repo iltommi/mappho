@@ -294,7 +294,7 @@ html, body {
 }
 .photo-popup img {
   width: 100%;
-  max-width: 256px;
+  max-width: 320px;
   border-radius: 6px;
   display: block;
   margin: 0 auto 8px;

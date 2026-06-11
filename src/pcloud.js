@@ -125,9 +125,9 @@ async function fetchFileHeadProxy(fileid, bytes) {
 }
 
 // Returns a URL that pCloud will serve as a JPEG thumbnail.
-export function thumbUrl(fileid, size = '256x256') {
+export function thumbUrl(fileid, size = '512x512') {
   const url = new URL(`${getApiHost()}/getthumb`);
-  url.searchParams.set('auth_token', getToken());
+  url.searchParams.set('auth', getToken());
   url.searchParams.set('fileid', fileid);
   url.searchParams.set('size', size);
   url.searchParams.set('type', 'jpg');
