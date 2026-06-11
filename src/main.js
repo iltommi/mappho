@@ -30,17 +30,17 @@ async function populateFolderPicker() {
   folderSelect.innerHTML = '<option value="0">All photos</option>';
   for (const f of folders) {
     const opt = document.createElement('option');
-    opt.value = f.folderid;
-    opt.textContent = '📁 ' + f.name;
+    opt.value = String(f.folderid);
+    opt.textContent = f.name;
     folderSelect.appendChild(opt);
   }
   const saved = getSelectedFolder();
-  folderSelect.value = saved.id;
+  folderSelect.value = String(saved.id);
   folderSelect.style.display = '';
 }
 
 folderSelect.addEventListener('change', () => {
-  const id = parseInt(folderSelect.value);
+  const id = folderSelect.value;
   const name = folderSelect.options[folderSelect.selectedIndex].text;
   localStorage.setItem(FOLDER_KEY, JSON.stringify({ id, name }));
 });
@@ -186,7 +186,8 @@ async function scan() {
   const stats = { scanned: 0, geotagged: 0 };
   const pool = new Set();
 
-  const { id: folderId } = getSelectedFolder();
+  const { id: folderId, name: folderName } = getSelectedFolder();
+  log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
   for await (const file of listImages(folderId)) {
     stats.scanned++;
     setStatus(`Scanning… ${stats.scanned} images found, ${stats.geotagged} geotagged`);
