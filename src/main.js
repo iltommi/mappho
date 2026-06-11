@@ -148,7 +148,7 @@ async function runScan() {
   try {
     await scan();
   } catch (e) {
-    if (e.message?.includes('2000') || e.message?.includes('auth')) {
+    if (e.message?.includes('1000') || e.message?.includes('2000') || e.message?.includes('auth')) {
       logout();
       setStatus('Session expired — please reconnect.');
       location.reload();

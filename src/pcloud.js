@@ -6,7 +6,7 @@ async function api(endpoint, params = {}) {
   url.searchParams.set('auth_token', getToken());
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
 
-  const resp = await fetch(url);
+  const resp = await fetch(url, { referrerPolicy: 'no-referrer' });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
   if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
@@ -47,6 +47,7 @@ export async function fetchFileHead(fileid, bytes = 131072) {
   const downloadUrl = `https://${data.hosts[0]}${data.path}`;
   const resp = await fetch(downloadUrl, {
     headers: { Range: `bytes=0-${bytes - 1}` },
+    referrerPolicy: 'no-referrer',
   });
   log('fetchFileHead', { status: resp.status, url: downloadUrl.split('?')[0] });
   if (!resp.ok && resp.status !== 206) throw new Error(`Download failed: ${resp.status}`);
