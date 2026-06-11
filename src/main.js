@@ -35,7 +35,7 @@ loginForm.addEventListener('submit', async (e) => {
   loginBtn.textContent = 'Signing in…';
   loginError.textContent = '';
   try {
-    const code = totpInput.value.trim() || null;
+    const code = totpInput.value.replace(/\D/g, '') || null;
     await loginWithPassword(
       document.getElementById('email').value,
       document.getElementById('password').value,

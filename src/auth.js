@@ -35,7 +35,7 @@ export async function loginWithPassword(email, password, code = null) {
   url.searchParams.set('password', password);
   if (code) url.searchParams.set('code', code);
 
-  log('POST userinfo', { username: email, hasCode: !!code });
+  log('POST userinfo', { username: email, code: code ?? '(none)' });
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
