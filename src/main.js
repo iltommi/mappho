@@ -4,7 +4,10 @@ import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
 import { getCached, putCached, getAllCached, clearAll } from './db.js';
+import { registerSW } from 'virtual:pwa-register';
 import './style.css';
+
+registerSW({ onNeedRefresh() { window.location.reload(); } });
 
 const statusEl = document.getElementById('status');
 const authBtn = document.getElementById('auth-btn');
@@ -55,7 +58,8 @@ scanBtn.addEventListener('click', async () => {
 
 clearCacheBtn.addEventListener('click', async () => {
   await clearAll();
-  setStatus('Cache cleared.');
+  log('Cache cleared');
+  setStatus('Cache cleared — scanning…');
   scanBtn.disabled = true;
   clearCacheBtn.disabled = true;
   await runScan();
