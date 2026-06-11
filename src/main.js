@@ -1,4 +1,4 @@
-import { handleCallback, getToken, loginWithPassword, logout, TwoFactorRequired } from './auth.js';
+import { handleCallback, getToken, loginWithPassword, logout, saveToken, TwoFactorRequired } from './auth.js';
 import { log } from './log.js';
 import { listImages, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
@@ -14,6 +14,19 @@ const loginForm = document.getElementById('login-form');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
+const panePassword = document.getElementById('pane-password');
+const paneToken = document.getElementById('pane-token');
+
+let activeTab = 'password';
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeTab = btn.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+    panePassword.style.display = activeTab === 'password' ? '' : 'none';
+    paneToken.style.display = activeTab === 'token' ? '' : 'none';
+    loginError.textContent = '';
+  });
+});
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -35,12 +48,18 @@ loginForm.addEventListener('submit', async (e) => {
   loginBtn.textContent = 'Signing in…';
   loginError.textContent = '';
   try {
-    const code = totpInput.value.replace(/\D/g, '') || null;
-    await loginWithPassword(
-      document.getElementById('email').value,
-      document.getElementById('password').value,
-      code,
-    );
+    if (activeTab === 'token') {
+      const token = document.getElementById('token-input').value.trim();
+      if (!token) throw new Error('Please paste your auth token.');
+      saveToken(token);
+    } else {
+      const code = totpInput.value.replace(/\D/g, '') || null;
+      await loginWithPassword(
+        document.getElementById('email').value,
+        document.getElementById('password').value,
+        code,
+      );
+    }
     showApp();
     await startScan();
   } catch (err) {

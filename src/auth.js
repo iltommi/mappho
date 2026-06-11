@@ -19,8 +19,12 @@ export function logout() {
   localStorage.removeItem(HOST_KEY);
 }
 
-// No-op: kept so main.js doesn't need changes.
 export function handleCallback() {}
+
+export function saveToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(HOST_KEY, DEFAULT_HOST);
+}
 
 export class TwoFactorRequired extends Error {}
 
