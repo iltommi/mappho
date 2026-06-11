@@ -3,7 +3,7 @@ import { log, toggleLog } from './log.js';
 import { toggleFilter } from './filter.js';
 import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractEXIF } from './exif.js';
-import { initMap, addMarker } from './map.js';
+import { initMap, addMarker, clearMarkers } from './map.js';
 import { getCached, putCached, getAllCached, clearAll } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
@@ -100,6 +100,7 @@ scanBtn.addEventListener('click', async () => {
 eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await clearAll();
+  clearMarkers();
   log('Cache erased');
   setStatus('Cache erased — click Scan to rebuild.');
 });

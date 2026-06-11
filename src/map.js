@@ -91,6 +91,12 @@ export function filterMarkers(fromTs, toTs) {
   }
 }
 
+export function clearMarkers() {
+  cluster.clearLayers();
+  addedIds.clear();
+  markerIndex.length = 0;
+}
+
 // Returns { min, max } timestamps across all dated markers, or null if none.
 export function getDateRange() {
   const dated = markerIndex.map(m => m.ts).filter(t => t != null);
