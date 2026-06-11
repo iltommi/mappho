@@ -41,17 +41,27 @@ export async function* listImages(folderid = 0) {
   }
 }
 
-// Fetches the first `bytes` of a file (enough for EXIF) via a Range request.
+// Fetches the first `bytes` of a file via pCloud's file streaming API.
+// Avoids getfilelink (which is blocked by pCloud's referer check from browser).
 export async function fetchFileHead(fileid, bytes = 131072) {
-  const data = await api('getfilelink', { fileid });
-  const downloadUrl = `https://${data.hosts[0]}${data.path}`;
-  const resp = await fetch(downloadUrl, {
-    headers: { Range: `bytes=0-${bytes - 1}` },
-    referrerPolicy: 'no-referrer',
-  });
-  log('fetchFileHead', { status: resp.status, url: downloadUrl.split('?')[0] });
-  if (!resp.ok && resp.status !== 206) throw new Error(`Download failed: ${resp.status}`);
-  return resp.arrayBuffer();
+  const openData = await api('file_open', { flags: 0, fileid });
+  const fd = openData.fd;
+  log('file_open', { fd, fileid });
+
+  try {
+    const url = new URL(`${getApiHost()}/file_pread`);
+    url.searchParams.set('auth_token', getToken());
+    url.searchParams.set('fd', fd);
+    url.searchParams.set('count', bytes);
+    url.searchParams.set('offset', 0);
+
+    const resp = await fetch(url, { referrerPolicy: 'no-referrer' });
+    log('file_pread', { status: resp.status, contentType: resp.headers.get('content-type') });
+    if (!resp.ok) throw new Error(`file_pread failed: ${resp.status}`);
+    return resp.arrayBuffer();
+  } finally {
+    api('file_close', { fd }).catch(() => {});
+  }
 }
 
 // Returns a URL that pCloud will serve as a JPEG thumbnail.
