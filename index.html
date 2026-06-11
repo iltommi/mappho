@@ -20,6 +20,8 @@
       <p>Sign in with your pCloud account</p>
       <input id="email" type="email" placeholder="Email" autocomplete="email" required />
       <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+      <input id="totp" type="text" placeholder="Authenticator code" autocomplete="one-time-code"
+             inputmode="numeric" pattern="[0-9]*" style="display:none" />
       <button type="submit" id="login-btn">Sign in</button>
       <span id="login-error"></span>
     </form>

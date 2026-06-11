@@ -20,18 +20,24 @@ export function logout() {
 // No-op: kept so main.js doesn't need changes.
 export function handleCallback() {}
 
+export class TwoFactorRequired extends Error {}
+
 // Authenticates with pCloud directly and stores the token.
-// Throws on bad credentials or network error.
-export async function loginWithPassword(email, password) {
+// Pass `code` if the account has 2FA enabled.
+// Throws TwoFactorRequired when a TOTP code is needed.
+export async function loginWithPassword(email, password, code = null) {
   const url = new URL(`${DEFAULT_HOST}/userinfo`);
   url.searchParams.set('getauth', '1');
   url.searchParams.set('logout', '1');
   url.searchParams.set('username', email);
   url.searchParams.set('password', password);
+  if (code) url.searchParams.set('code', code);
 
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
+
+  if (data.result === 2064) throw new TwoFactorRequired();
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
   localStorage.setItem(TOKEN_KEY, data.auth);

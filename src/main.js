@@ -1,4 +1,4 @@
-import { handleCallback, getToken, loginWithPassword, logout } from './auth.js';
+import { handleCallback, getToken, loginWithPassword, logout, TwoFactorRequired } from './auth.js';
 import { listImages, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
@@ -12,6 +12,7 @@ const loginOverlay = document.getElementById('login-overlay');
 const loginForm = document.getElementById('login-form');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
+const totpInput = document.getElementById('totp');
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -33,14 +34,23 @@ loginForm.addEventListener('submit', async (e) => {
   loginBtn.textContent = 'Signing in…';
   loginError.textContent = '';
   try {
+    const code = totpInput.value.trim() || null;
     await loginWithPassword(
       document.getElementById('email').value,
       document.getElementById('password').value,
+      code,
     );
     showApp();
     await startScan();
   } catch (err) {
-    loginError.textContent = err.message;
+    if (err instanceof TwoFactorRequired) {
+      totpInput.style.display = '';
+      totpInput.required = true;
+      totpInput.focus();
+      loginError.textContent = 'Enter the code from your authenticator app.';
+    } else {
+      loginError.textContent = err.message;
+    }
     loginBtn.disabled = false;
     loginBtn.textContent = 'Sign in';
   }
