@@ -49,8 +49,7 @@ export async function loginWithPassword(email, password) {
   log('userinfo response', data);
 
   if (data.result === 1022) {
-    if (!data.token) throw new Error('pCloud did not return a TFA token. Full response logged above.');
-    throw new TwoFactorRequired(data.token);
+    throw new TwoFactorRequired(data.token ?? null);
   }
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
@@ -76,8 +75,8 @@ export async function loginWithTFA(tfaToken, code) {
 
   if (data.result !== 0) throw new Error(data.error ?? `TFA error ${data.result}`);
 
-  const authToken = data.auth ?? data.token;
-  if (!authToken) throw new Error('No auth token in TFA response.');
+  const authToken = data.auth ?? data.token ?? data.authtoken;
+  if (!authToken) throw new Error('No auth token in TFA response. Full response logged above.');
   localStorage.setItem(TOKEN_KEY, authToken);
   localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }

@@ -24,6 +24,15 @@
              inputmode="numeric" pattern="[0-9]*" style="display:none" />
       <button type="submit" id="login-btn">Sign in</button>
       <span id="login-error"></span>
+      <details id="token-details">
+        <summary>Paste auth token instead</summary>
+        <p class="hint">
+          Log in to <a href="https://my.pcloud.com" target="_blank">my.pcloud.com</a>, open DevTools → Network,
+          click any request to <code>eapi.pcloud.com</code> and copy the <code>auth_token</code> value.
+        </p>
+        <input id="token-input" type="text" placeholder="Paste auth_token here" autocomplete="off" />
+        <button type="button" id="use-token-btn">Use this token</button>
+      </details>
     </form>
   </div>
   <div id="map"></div>

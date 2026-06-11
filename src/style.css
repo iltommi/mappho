@@ -186,6 +186,38 @@ html, body {
 #login-btn:hover:not(:disabled) { background: #0284c7; }
 #login-btn:disabled { opacity: .6; cursor: default; }
 
+#token-details {
+  border-top: 1px solid #1e3a5f;
+  padding-top: 10px;
+  margin-top: 4px;
+}
+#token-details summary {
+  font-size: .8rem;
+  color: #7dd3fc;
+  cursor: pointer;
+}
+#use-token-btn {
+  margin-top: 8px;
+  padding: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 7px;
+  background: #0369a1;
+  color: #fff;
+  font-size: .9rem;
+  cursor: pointer;
+}
+#use-token-btn:hover { background: #0284c7; }
+
+.hint {
+  font-size: .78rem;
+  color: #94a3b8;
+  line-height: 1.7;
+  margin: 8px 0;
+}
+.hint a { color: #7dd3fc; }
+.hint code { background: #0f3460; padding: 1px 4px; border-radius: 3px; }
+
 #login-error {
   font-size: .8rem;
   color: #f87171;

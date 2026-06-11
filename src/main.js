@@ -1,4 +1,4 @@
-import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, TwoFactorRequired } from './auth.js';
+import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
 import { log } from './log.js';
 import { listImages, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
@@ -15,6 +15,14 @@ const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 let pendingTfaToken = null;
+
+document.getElementById('use-token-btn').addEventListener('click', async () => {
+  const token = document.getElementById('token-input').value.trim();
+  if (!token) { loginError.textContent = 'Please paste your auth token.'; return; }
+  saveToken(token);
+  showApp();
+  await startScan();
+});
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -52,8 +60,13 @@ loginForm.addEventListener('submit', async (e) => {
       totpInput.style.display = '';
       totpInput.required = true;
       totpInput.focus();
-      loginError.textContent = 'Enter the code from your authenticator app.';
-      log('2FA required', { tfaToken: err.tfaToken.slice(0, 8) + '…' });
+      if (err.tfaToken) {
+        loginError.textContent = 'Enter the code from your authenticator app.';
+        log('2FA required', { tfaToken: err.tfaToken.slice(0, 8) + '…' });
+      } else {
+        loginError.textContent = 'pCloud did not return a TFA token — try the "Paste token" option below.';
+        log('2FA required but no token in response');
+      }
     } else {
       loginError.textContent = err.message;
       log('Login error', err.message);
