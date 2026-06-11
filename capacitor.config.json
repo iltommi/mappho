@@ -1,0 +1,8 @@
+{
+  "appId": "io.github.iltommi.sharpho",
+  "appName": "SharPho",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

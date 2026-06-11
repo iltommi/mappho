@@ -1,6 +1,9 @@
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getToken, getApiHost } from './auth.js';
 import { log } from './log.js';
 import { PROXY_URL } from './config.js';
+
+const isNative = Capacitor.isNativePlatform();
 
 async function api(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
@@ -42,12 +45,43 @@ export async function* listImages(folderid = 0) {
   }
 }
 
-// Fetches the first `bytes` of a file via getfilelink + CDN Range request.
-// Routes through the Cloudflare Worker proxy to bypass pCloud's browser-origin block.
+// Fetches the first `bytes` of a file for EXIF extraction.
+// On Android: uses native HTTP (no CORS). On web: routes through proxy.
 export async function fetchFileHead(fileid, bytes = 131072) {
+  if (isNative) {
+    return fetchFileHeadNative(fileid, bytes);
+  }
+  return fetchFileHeadProxy(fileid, bytes);
+}
+
+async function fetchFileHeadNative(fileid, bytes) {
+  // CapacitorHttp routes through Android's native HTTP client — no Origin header
+  const linkResp = await CapacitorHttp.request({
+    method: 'GET',
+    url: `${getApiHost()}/getfilelink`,
+    params: { auth_token: getToken(), fileid: String(fileid) },
+  });
+  const linkData = linkResp.data;
+  if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
+
+  const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
+  const dlResp = await CapacitorHttp.request({
+    method: 'GET',
+    url: cdnUrl,
+    headers: { Range: `bytes=0-${bytes - 1}` },
+    responseType: 'arraybuffer',
+  });
+
+  // CapacitorHttp returns base64 string for binary data on Android
+  if (typeof dlResp.data === 'string') {
+    return base64ToArrayBuffer(dlResp.data);
+  }
+  return dlResp.data;
+}
+
+async function fetchFileHeadProxy(fileid, bytes) {
   if (!PROXY_URL) throw new Error('PROXY_URL not configured — see src/config.js');
 
-  // Step 1: get a CDN download link via proxy
   const linkUrl = new URL(`${PROXY_URL}/getfilelink`);
   linkUrl.searchParams.set('auth_token', getToken());
   linkUrl.searchParams.set('fileid', fileid);
@@ -57,14 +91,20 @@ export async function fetchFileHead(fileid, bytes = 131072) {
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
 
   const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
-
-  // Step 2: download first `bytes` via proxy with Range header
   const dlUrl = `${PROXY_URL}/cdn?url=${encodeURIComponent(cdnUrl)}`;
   const dlResp = await fetch(dlUrl, {
     headers: { Range: `bytes=0-${bytes - 1}` },
   });
   if (!dlResp.ok && dlResp.status !== 206) throw new Error(`CDN download failed: ${dlResp.status}`);
   return dlResp.arrayBuffer();
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const buf = new ArrayBuffer(binary.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
+  return buf;
 }
 
 // Returns a URL that pCloud will serve as a JPEG thumbnail.
