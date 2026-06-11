@@ -32,27 +32,41 @@ export function initMap() {
 
 export function addMarker({ fileid, name, lat, lng }) {
   const marker = L.marker([lat, lng]);
-  marker.bindPopup(() => {
-    const div = document.createElement('div');
-    div.className = 'photo-popup';
-    div.innerHTML = '<p class="popup-loading">Loading…</p>';
-    const showContent = (src) => {
-      div.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'photo-popup';
+  const caption = document.createElement('p');
+  caption.textContent = name;
+  div.appendChild(caption);
+
+  let fetched = false;
+  marker.on('popupopen', () => {
+    if (fetched) return;
+    fetched = true;
+
+    const loading = document.createElement('p');
+    loading.className = 'popup-loading';
+    loading.textContent = 'Loading…';
+    div.insertBefore(loading, caption);
+
+    fetchThumbSrc(fileid).then(src => {
+      loading.remove();
       if (src) {
         const img = document.createElement('img');
         img.src = src;
         img.alt = name;
         img.onload = () => marker.getPopup()?.update();
-        img.onerror = () => log('thumb img error', `failed to decode src (len=${src.length})`);
-        div.appendChild(img);
+        img.onerror = () => log('thumb img error', `len=${src.length}`);
+        div.insertBefore(img, caption);
       }
-      const caption = document.createElement('p');
-      caption.textContent = name;
-      div.appendChild(caption);
       marker.getPopup()?.update();
-    };
-    fetchThumbSrc(fileid).then(showContent).catch(() => showContent(null));
-    return div;
-  }, { maxWidth: 280 });
+    }).catch(() => {
+      loading.remove();
+      marker.getPopup()?.update();
+    });
+  });
+
+  // Bind a static DOM element — Leaflet won't re-call it on popup.update()
+  marker.bindPopup(div, { maxWidth: 280 });
   cluster.addLayer(marker);
 }
