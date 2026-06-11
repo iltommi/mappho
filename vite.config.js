@@ -7,8 +7,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'SharpHo',
-        short_name: 'SharpHo',
+        name: 'SharPho',
+        short_name: 'SharPho',
         description: 'Plot your pCloud photos on a map',
         theme_color: '#16213e',
         background_color: '#0f3460',

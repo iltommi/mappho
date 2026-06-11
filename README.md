@@ -1,4 +1,4 @@
-# SharpHo — [live app](https://iltommi.github.io/sharpho)
+# SharPho — [live app](https://iltommi.github.io/sharpho)
 
 A Progressive Web App that plots your pCloud photo library on an interactive map using GPS coordinates embedded in image EXIF data.
 
