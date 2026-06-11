@@ -1,3 +1,5 @@
+import { log } from './log.js';
+
 const TOKEN_KEY = 'pcloud_token';
 const HOST_KEY = 'pcloud_host';
 
@@ -33,9 +35,11 @@ export async function loginWithPassword(email, password, code = null) {
   url.searchParams.set('password', password);
   if (code) url.searchParams.set('code', code);
 
+  log('POST userinfo', { username: email, hasCode: !!code });
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
+  log('pCloud response', data);
 
   if (data.error?.toLowerCase().includes('code')) throw new TwoFactorRequired();
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);

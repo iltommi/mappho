@@ -70,6 +70,58 @@ html, body {
   transition: width .3s ease;
 }
 
+/* Log panel */
+#log-panel {
+  position: fixed;
+  bottom: 4px;
+  right: 0;
+  z-index: 1500;
+  width: min(420px, 100vw);
+  background: #0d1b2a;
+  border-top-left-radius: 8px;
+  font-size: .75rem;
+  font-family: monospace;
+  color: #94a3b8;
+  box-shadow: -2px -2px 12px rgba(0,0,0,.4);
+}
+
+#log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: #16213e;
+  border-top-left-radius: 8px;
+}
+
+#log-toggle {
+  border: none;
+  background: none;
+  color: #7dd3fc;
+  cursor: pointer;
+  font-size: .75rem;
+  padding: 2px 4px;
+}
+
+#log-list {
+  display: none;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px 10px;
+}
+
+#log-panel.open #log-list { display: block; }
+
+.log-entry { margin-bottom: 6px; }
+.log-time { color: #475569; }
+.log-label { color: #7dd3fc; font-weight: bold; }
+.log-entry pre {
+  margin: 2px 0 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #cbd5e1;
+}
+
 /* Login overlay */
 #login-overlay {
   position: fixed;

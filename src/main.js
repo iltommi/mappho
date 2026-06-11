@@ -1,4 +1,5 @@
 import { handleCallback, getToken, loginWithPassword, logout, TwoFactorRequired } from './auth.js';
+import { log } from './log.js';
 import { listImages, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
@@ -48,8 +49,10 @@ loginForm.addEventListener('submit', async (e) => {
       totpInput.required = true;
       totpInput.focus();
       loginError.textContent = 'Enter the code from your authenticator app.';
+      log('2FA required');
     } else {
       loginError.textContent = err.message;
+      log('Login error', err.message);
     }
     loginBtn.disabled = false;
     loginBtn.textContent = 'Sign in';
