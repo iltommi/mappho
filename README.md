@@ -1,4 +1,4 @@
-# SharPho — [live app](https://iltommi.github.io/sharpho)
+# SharPho
 
 A PWA and Android app that plots your pCloud photo library on an interactive map using GPS coordinates from image EXIF data.
 
@@ -60,8 +60,3 @@ The web PWA cannot call `getfilelink` directly because browsers send an `Origin`
 
 Deploy your own worker and set `VITE_PROXY_URL` in your build environment. Without it the web version can still log in and list folders, but EXIF extraction is skipped (the Android app is not affected — it uses native HTTP with no `Origin` header).
 
-## Deployment (GitHub Pages)
-
-The included workflow ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) builds and deploys to GitHub Pages automatically on every push to `main`.
-
-Enable under **Settings → Pages → Source → GitHub Actions**.
