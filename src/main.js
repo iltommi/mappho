@@ -11,6 +11,15 @@ import './style.css';
 registerSW({ onNeedRefresh() { window.location.reload(); } });
 
 const authBtn = document.getElementById('auth-btn');
+const scanStatusEl = document.getElementById('scan-status');
+
+function setScanStatus(scanned, geotagged) {
+  scanStatusEl.textContent = `Scanning… ${scanned} scanned, ${geotagged} geotagged`;
+  scanStatusEl.classList.add('visible');
+}
+function clearScanStatus() {
+  scanStatusEl.classList.remove('visible');
+}
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
 const loginForm = document.getElementById('login-form');
@@ -208,6 +217,7 @@ async function runScan() {
   try {
     await scan();
   } catch (e) {
+    clearScanStatus();
     if (e.message?.includes('1000') || e.message?.includes('2000') || e.message?.includes('auth')) {
       logout();
       setStatus('Session expired — please reconnect.');
@@ -250,16 +260,20 @@ async function scan() {
   log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
   for await (const file of listImages(folderId)) {
     stats.scanned++;
-    setStatus(`Scanning… ${stats.scanned} images found, ${stats.geotagged} geotagged`);
+    setScanStatus(stats.scanned, stats.geotagged);
 
-    const p = processFile(file, stats).finally(() => pool.delete(p));
+    const p = processFile(file, stats).finally(() => {
+      pool.delete(p);
+      setScanStatus(stats.scanned, stats.geotagged);
+    });
     pool.add(p);
 
     if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
 
   await Promise.all(pool);
-  setStatus(`Done — ${stats.geotagged} geotagged photos out of ${stats.scanned} total.`);
+  clearScanStatus();
+  setStatus(`Done — ${stats.geotagged} geotagged out of ${stats.scanned}.`);
   setProgress(100);
 }
 
