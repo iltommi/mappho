@@ -124,12 +124,27 @@ async function fetchFileHeadProxy(fileid, bytes) {
   return dlResp.arrayBuffer();
 }
 
-// Returns a URL that pCloud will serve as a JPEG thumbnail.
-export function thumbUrl(fileid, size = '512x512') {
+function thumbUrl(fileid, size = '512x512') {
   const url = new URL(`${getApiHost()}/getthumb`);
   url.searchParams.set('auth', getToken());
   url.searchParams.set('fileid', fileid);
   url.searchParams.set('size', size);
   url.searchParams.set('type', 'jpg');
   return url.toString();
+}
+
+// Returns a src string suitable for <img>.
+// On Android, WebView sends an Origin header on cross-origin image requests which
+// pCloud blocks, so we fetch via CapacitorHttp (OkHttp, no Origin) and return a
+// data URL instead. Returns null for non-numeric fileids (local-test markers).
+export async function fetchThumbSrc(fileid, size = '512x512') {
+  if (!/^\d+$/.test(String(fileid))) return null;
+  const url = thumbUrl(fileid, size);
+  if (!isNative) return url;
+  const resp = await CapacitorHttp.request({ method: 'GET', url, responseType: 'arraybuffer' });
+  const raw = resp.data;
+  if (!raw) return null;
+  // CapacitorHttp returns binary as a base64 string on Android
+  const b64 = typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)));
+  return `data:image/jpeg;base64,${b64}`;
 }

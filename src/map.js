@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import { thumbUrl } from './pcloud.js';
+import { fetchThumbSrc } from './pcloud.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -34,14 +34,21 @@ export function addMarker({ fileid, name, lat, lng }) {
   marker.bindPopup(() => {
     const div = document.createElement('div');
     div.className = 'photo-popup';
-    const img = document.createElement('img');
-    img.src = thumbUrl(fileid);
-    img.alt = name;
-    img.loading = 'lazy';
-    const caption = document.createElement('p');
-    caption.textContent = name;
-    div.appendChild(img);
-    div.appendChild(caption);
+    div.innerHTML = '<p class="popup-loading">Loading…</p>';
+    fetchThumbSrc(fileid).then(src => {
+      div.innerHTML = '';
+      if (src) {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = name;
+        img.onload = () => marker.getPopup()?.update();
+        div.appendChild(img);
+      }
+      const caption = document.createElement('p');
+      caption.textContent = name;
+      div.appendChild(caption);
+      marker.getPopup()?.update();
+    });
     return div;
   }, { maxWidth: 280 });
   cluster.addLayer(marker);
