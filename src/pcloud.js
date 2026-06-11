@@ -146,6 +146,7 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
     const resp = await CapacitorHttp.request({ method: 'GET', url, responseType: 'arraybuffer' });
     log('fetchThumb status', resp.status);
     const raw = resp.data;
+    log('fetchThumb raw', { type: typeof raw, len: typeof raw === 'string' ? raw.length : null, preview: typeof raw === 'string' ? raw.slice(0, 80) : JSON.stringify(raw)?.slice(0, 80) });
     if (!raw) { log('fetchThumb', 'empty response'); return null; }
     if (typeof raw === 'object' && raw.result !== undefined) {
       log('fetchThumb pCloud error', raw);

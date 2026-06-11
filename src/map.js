@@ -4,6 +4,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { fetchThumbSrc } from './pcloud.js';
+import { log } from './log.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -42,6 +43,7 @@ export function addMarker({ fileid, name, lat, lng }) {
         img.src = src;
         img.alt = name;
         img.onload = () => marker.getPopup()?.update();
+        img.onerror = () => log('thumb img error', `failed to decode src (len=${src.length})`);
         div.appendChild(img);
       }
       const caption = document.createElement('p');
