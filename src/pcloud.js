@@ -67,7 +67,7 @@ export async function fetchFileHead(fileid, bytes = 131072) {
 }
 
 async function fetchFileHeadNative(fileid, bytes) {
-  // CapacitorHttp routes through Android's native HTTP client — no Origin header
+  // CapacitorHttp for the API call — routes through OkHttp, no Origin header
   const linkResp = await CapacitorHttp.request({
     method: 'GET',
     url: `${getApiHost()}/getfilelink`,
@@ -77,18 +77,13 @@ async function fetchFileHeadNative(fileid, bytes) {
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
 
   const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
-  const dlResp = await CapacitorHttp.request({
-    method: 'GET',
-    url: cdnUrl,
-    headers: { Range: `bytes=0-${bytes - 1}` },
-    responseType: 'arraybuffer',
-  });
 
-  // CapacitorHttp returns base64 string for binary data on Android
-  if (typeof dlResp.data === 'string') {
-    return base64ToArrayBuffer(dlResp.data);
-  }
-  return dlResp.data;
+  // CDN URLs are public download links — regular fetch works fine (no Origin check)
+  const dlResp = await fetch(cdnUrl, {
+    headers: { Range: `bytes=0-${bytes - 1}` },
+  });
+  if (!dlResp.ok && dlResp.status !== 206) throw new Error(`CDN download failed: ${dlResp.status}`);
+  return dlResp.arrayBuffer();
 }
 
 async function fetchFileHeadProxy(fileid, bytes) {
@@ -109,14 +104,6 @@ async function fetchFileHeadProxy(fileid, bytes) {
   });
   if (!dlResp.ok && dlResp.status !== 206) throw new Error(`CDN download failed: ${dlResp.status}`);
   return dlResp.arrayBuffer();
-}
-
-function base64ToArrayBuffer(base64) {
-  const binary = atob(base64);
-  const buf = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
-  return buf;
 }
 
 // Returns a URL that pCloud will serve as a JPEG thumbnail.
