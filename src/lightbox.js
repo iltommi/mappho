@@ -7,16 +7,21 @@ const closeBtn = document.getElementById('lightbox-close');
 
 let pz = null;
 
-function initPanzoom() {
+function destroyPanzoom() {
   if (pz) { pz.destroy(); pz = null; }
-  pz = Panzoom(img, { maxScale: 8, cursor: 'grab' });
+}
+
+function initPanzoom() {
+  destroyPanzoom();
+  pz = Panzoom(img, { maxScale: 8, contain: 'inside', cursor: 'grab' });
   el.addEventListener('wheel', pz.zoomWithWheel, { passive: false });
 }
 
 function close() {
   el.classList.remove('open', 'loading');
+  img.onload = null;
   img.src = '';
-  if (pz) { pz.destroy(); pz = null; }
+  destroyPanzoom();
 }
 
 closeBtn.addEventListener('click', close);
@@ -26,14 +31,16 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classLi
 export function openLightbox(fileid, name) {
   el.classList.add('open', 'loading');
   img.alt = name;
+  img.onload = null;
   img.src = '';
-
-  // Init panzoom after the element is visible so it can measure correctly
-  requestAnimationFrame(() => initPanzoom());
+  destroyPanzoom();
 
   fetchThumbSrc(fileid, '2048x2048').then(src => {
     el.classList.remove('loading');
-    if (src) img.src = src;
+    if (src) {
+      img.onload = () => initPanzoom();
+      img.src = src;
+    }
   }).catch(() => {
     el.classList.remove('loading');
   });
