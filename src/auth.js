@@ -2,6 +2,16 @@ import { log } from './log.js';
 
 const TOKEN_KEY = 'pcloud_token';
 const HOST_KEY = 'pcloud_host';
+const DEVICE_KEY = 'pcloud_deviceid';
+
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID().replace(/-/g, '');
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
 
 // EU datacenter — change to 'https://api.pcloud.com' if you're on US.
 const DEFAULT_HOST = 'https://eapi.pcloud.com';
@@ -37,7 +47,11 @@ export class TwoFactorRequired extends Error {
 // Throws TwoFactorRequired (carrying the tfaToken) when TOTP is needed.
 export async function loginWithPassword(email, password) {
   const url = new URL(`${DEFAULT_HOST}/login`);
-  const body = new URLSearchParams({ username: email, password, getauth: '1', logout: '1' });
+  const body = new URLSearchParams({
+    username: email, password,
+    getauth: '1', logout: '1',
+    os: '4', deviceid: getDeviceId(),
+  });
 
   log('login request', `POST ${url} username=${email} password=***`);
   const resp = await fetch(url, { method: 'POST', body });
