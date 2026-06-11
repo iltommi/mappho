@@ -6,10 +6,22 @@ import { PROXY_URL } from './config.js';
 const isNative = Capacitor.isNativePlatform();
 
 async function api(endpoint, params = {}) {
+  if (isNative) {
+    const allParams = { auth_token: getToken() };
+    for (const [k, v] of Object.entries(params)) allParams[k] = String(v);
+    const resp = await CapacitorHttp.request({
+      method: 'GET',
+      url: `${getApiHost()}/${endpoint}`,
+      params: allParams,
+    });
+    const data = resp.data;
+    if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
+    return data;
+  }
+
   const url = new URL(`${getApiHost()}/${endpoint}`);
   url.searchParams.set('auth_token', getToken());
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-
   const resp = await fetch(url, { referrerPolicy: 'no-referrer' });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
