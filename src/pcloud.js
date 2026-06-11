@@ -97,7 +97,7 @@ async function fetchFileHeadNative(fileid, bytes) {
 }
 
 function base64ToArrayBuffer(b64) {
-  const bin = atob(b64);
+  const bin = atob(b64.replace(/\s/g, ''));
   const buf = new ArrayBuffer(bin.length);
   const view = new Uint8Array(buf);
   for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
@@ -152,7 +152,7 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
       log('fetchThumb pCloud error', raw);
       return null;
     }
-    const b64 = typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)));
+    const b64 = (typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)))).replace(/\s/g, '');
     return `data:image/jpeg;base64,${b64}`;
   } catch (e) {
     log('fetchThumb error', e.message);
