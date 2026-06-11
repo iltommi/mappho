@@ -33,20 +33,17 @@ export class TwoFactorRequired extends Error {
   }
 }
 
-// Step 1: username + password — no getauth so pCloud returns the TFA token on 1022.
+// Step 1: username + password via POST /login (matches pCloud web app flow).
 // Throws TwoFactorRequired (carrying the tfaToken) when TOTP is needed.
 export async function loginWithPassword(email, password) {
-  const url = new URL(`${DEFAULT_HOST}/userinfo`);
-  url.searchParams.set('username', email);
-  url.searchParams.set('password', password);
+  const url = new URL(`${DEFAULT_HOST}/login`);
+  const body = new URLSearchParams({ username: email, password, getauth: '1', logout: '1' });
 
-  const logUrl = new URL(url);
-  logUrl.searchParams.set('password', '***');
-  log('userinfo request', logUrl.toString());
-  const resp = await fetch(url);
+  log('login request', `POST ${url} username=${email} password=***`);
+  const resp = await fetch(url, { method: 'POST', body });
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
-  log('userinfo response', data);
+  log('login response', data);
 
   if (data.result === 1022) {
     throw new TwoFactorRequired(data.token ?? null);
