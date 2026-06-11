@@ -48,7 +48,7 @@ loginForm.addEventListener('submit', async (e) => {
       totpInput.style.display = '';
       totpInput.required = true;
       totpInput.focus();
-      loginError.textContent = 'Enter the code from your authenticator app.';
+      loginError.textContent = 'pCloud sent a verification code to your email — enter it here.';
       log('2FA required');
     } else {
       loginError.textContent = err.message;

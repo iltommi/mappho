@@ -41,7 +41,10 @@ export async function loginWithPassword(email, password, code = null) {
   const data = await resp.json();
   log('pCloud response', data);
 
-  if (data.error?.toLowerCase().includes('code')) throw new TwoFactorRequired();
+  if (data.error?.toLowerCase().includes('code')) {
+    if (code) throw new Error('Incorrect code — please try again.');
+    throw new TwoFactorRequired();
+  }
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
   localStorage.setItem(TOKEN_KEY, data.auth);
