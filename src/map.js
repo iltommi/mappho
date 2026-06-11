@@ -6,6 +6,7 @@ import 'leaflet.markercluster';
 import { fetchThumbSrc } from './pcloud.js';
 import { log } from './log.js';
 import { openLightbox } from './lightbox.js';
+import { openSlideshow } from './slideshow.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -21,6 +22,7 @@ L.Icon.Default.mergeOptions({
 let cluster;
 const addedIds = new Set();
 const markerIndex = []; // { marker, ts }
+const markerData = new Map(); // marker -> { fileid, name }
 
 export function initMap() {
   const map = L.map('map').setView([20, 0], 2);
@@ -29,7 +31,13 @@ export function initMap() {
     maxZoom: 19,
   }).addTo(map);
 
-  cluster = L.markerClusterGroup({ chunkedLoading: true });
+  cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false });
+  cluster.on('clusterclick', e => {
+    const photos = e.layer.getAllChildMarkers()
+      .map(m => markerData.get(m))
+      .filter(Boolean);
+    openSlideshow(photos);
+  });
   map.addLayer(cluster);
 }
 
@@ -76,6 +84,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   marker.bindPopup(div, { maxWidth: 280 });
   cluster.addLayer(marker);
   markerIndex.push({ marker, ts: ts ?? null });
+  markerData.set(marker, { fileid, name });
 }
 
 // Show only markers whose ts falls within [fromTs, toTs].
@@ -95,6 +104,7 @@ export function clearMarkers() {
   cluster.clearLayers();
   addedIds.clear();
   markerIndex.length = 0;
+  markerData.clear();
 }
 
 // Returns { min, max } timestamps across all dated markers, or null if none.
