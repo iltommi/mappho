@@ -154,8 +154,11 @@ async function processFile(file, stats) {
   let gps = null;
   try {
     const buf = await fetchFileHead(file.fileid);
+    log(`${file.name}`, `buffer: ${buf.byteLength}B`);
     gps = await extractGPS(buf);
+    log(`${file.name} → GPS`, gps ?? 'null');
   } catch (e) {
+    log(`${file.name} ERROR`, e.message);
     console.warn('Failed to process', file.name, e);
   }
   const record = { fileid: file.fileid, name: file.name, lat: gps?.lat ?? null, lng: gps?.lng ?? null };

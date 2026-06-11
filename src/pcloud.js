@@ -1,4 +1,5 @@
 import { getToken, getApiHost } from './auth.js';
+import { log } from './log.js';
 
 async function api(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
@@ -47,6 +48,7 @@ export async function fetchFileHead(fileid, bytes = 131072) {
   const resp = await fetch(downloadUrl, {
     headers: { Range: `bytes=0-${bytes - 1}` },
   });
+  log('fetchFileHead', { status: resp.status, url: downloadUrl.split('?')[0] });
   if (!resp.ok && resp.status !== 206) throw new Error(`Download failed: ${resp.status}`);
   return resp.arrayBuffer();
 }
