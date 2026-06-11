@@ -4,7 +4,8 @@ import { toggleFilter } from './filter.js';
 import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractEXIF } from './exif.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
-import { getCached, putCached, getAllCached, clearAll } from './db.js';
+import { openLazySlideshow } from './slideshow.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
 
@@ -34,6 +35,13 @@ const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
 const overflowMenu = document.getElementById('overflow-menu');
+
+document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  const total = await countOrphans();
+  if (!total) { log('No location', 'no unlocalised photos in cache — scan first'); return; }
+  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit), total);
+});
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
   overflowMenu.classList.remove('open');
@@ -108,7 +116,7 @@ scanBtn.addEventListener('click', async () => {
 
 eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  await clearAll();
+  await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
   log('Cache erased');
   setStatus('Cache erased — click Scan to rebuild.');
@@ -116,7 +124,7 @@ eraseCacheBtn.addEventListener('click', async () => {
 
 clearCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  await clearAll();
+  await Promise.all([clearAll(), clearOrphans()]);
   log('Cache cleared');
   setStatus('Cache cleared — scanning…');
   scanBtn.disabled = true;
@@ -196,9 +204,12 @@ async function startScan() {
   // Load cached markers first — no network needed, works immediately after wake.
   const cached = await getAllCached();
   let cachedGeo = 0;
+  const orphanWrites = [];
   for (const p of cached) {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
+    else orphanWrites.push(putOrphan(p)); // migrate existing non-GPS records into orphans store
   }
+  await Promise.all(orphanWrites);
   setStatus(cached.length > 0
     ? `${cachedGeo} geotagged photos from cache. Pick a folder and click Scan.`
     : 'Pick a folder and click Scan.');
@@ -249,6 +260,7 @@ async function processFile(file, stats) {
   const record = { fileid: file.fileid, name: file.name, lat: exif.lat ?? null, lng: exif.lng ?? null, ts: exif.ts ?? null };
   await putCached(record);
   if (exif.lat != null) { stats.geotagged++; addMarker(record); }
+  else await putOrphan(record);
 }
 
 async function scan() {

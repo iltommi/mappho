@@ -13,12 +13,31 @@ const closeBtn  = document.getElementById('ss-close');
 let photos  = [];
 let current = 0;
 let reqId   = 0;
-const cache = new Map(); // fileid -> src
+const cache = new Map();
+
+// Lazy-loading state (null when not in lazy mode)
+let lazyFetch    = null; // async (offset, limit) => record[]
+let lazyOffset   = 0;
+let lazyTotal    = null; // known total or null
+let lazyDone     = false;
+let lazyPending  = false;
+
+const PAGE_SIZE  = 30;
+const LOAD_AHEAD = 8;
+
+function resetLazy() {
+  lazyFetch   = null;
+  lazyOffset  = 0;
+  lazyTotal   = null;
+  lazyDone    = false;
+  lazyPending = false;
+}
 
 function close() {
   el.classList.remove('open');
   photos = [];
   cache.clear();
+  resetLazy();
 }
 
 closeBtn.addEventListener('click', close);
@@ -38,7 +57,6 @@ imgEl.addEventListener('click', () => {
   if (photos[current]) openLightbox(photos[current].fileid, photos[current].name);
 });
 
-// Swipe support
 let touchStartX = 0;
 const wrap = document.getElementById('ss-img-wrap');
 wrap.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
@@ -54,23 +72,47 @@ async function fetchCached(fileid) {
   return src;
 }
 
+function updateCounter() {
+  const total = lazyTotal != null
+    ? lazyTotal
+    : lazyDone ? photos.length : `${photos.length}+`;
+  counterEl.textContent = `${current + 1} / ${total}`;
+}
+
+async function maybeLoadMore() {
+  if (!lazyFetch || lazyDone || lazyPending) return;
+  if (current < photos.length - LOAD_AHEAD) return;
+  lazyPending = true;
+  try {
+    const page = await lazyFetch(lazyOffset, PAGE_SIZE);
+    lazyOffset += page.length;
+    if (page.length < PAGE_SIZE) lazyDone = true;
+    photos.push(...page);
+    updateCounter();
+  } finally {
+    lazyPending = false;
+  }
+}
+
 async function go(index) {
   if (!photos.length) return;
   current = ((index % photos.length) + photos.length) % photos.length;
   const id = ++reqId;
 
-  const { fileid, name } = photos[current];
-  counterEl.textContent = `${current + 1} / ${photos.length}`;
-  captionEl.textContent = name;
+  const { fileid, name, ts } = photos[current];
+  updateCounter();
+  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
+  captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
   imgEl.style.display = 'none';
   loadingEl.style.display = '';
 
+  maybeLoadMore();
+
   const src = await fetchCached(fileid);
-  if (id !== reqId) return; // superseded by a newer navigation
+  if (id !== reqId) return;
   loadingEl.style.display = 'none';
   if (src) { imgEl.src = src; imgEl.style.display = ''; }
 
-  // Prefetch neighbours
   const prev = photos[(current - 1 + photos.length) % photos.length];
   const next = photos[(current + 1) % photos.length];
   fetchCached(prev.fileid);
@@ -79,8 +121,26 @@ async function go(index) {
 
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
+  resetLazy();
   photos = photoList;
   cache.clear();
   el.classList.add('open');
   go(startIndex);
+}
+
+export async function openLazySlideshow(fetchPage, total) {
+  cache.clear();
+  photos = [];
+  resetLazy();
+  lazyFetch = fetchPage;
+  lazyTotal = total ?? null;
+
+  const firstPage = await fetchPage(0, PAGE_SIZE);
+  if (!firstPage.length) return;
+
+  lazyOffset = firstPage.length;
+  if (firstPage.length < PAGE_SIZE) lazyDone = true;
+  photos = firstPage;
+  el.classList.add('open');
+  go(0);
 }
