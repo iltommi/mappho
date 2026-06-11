@@ -7,7 +7,8 @@ const isNative = Capacitor.isNativePlatform();
 
 function buildUrl(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
-  url.searchParams.set('auth_token', getToken());
+  // pCloud web app uses 'auth'; works for all endpoints including getfilelink
+  url.searchParams.set('auth', getToken());
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   return url;
 }
@@ -80,12 +81,27 @@ async function fetchFileHeadNative(fileid, bytes) {
 
   const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
 
-  // CDN URLs are public download links — regular fetch works fine (no Origin check)
-  const dlResp = await fetch(cdnUrl, {
+  // CDN has CORS restrictions — use CapacitorHttp (OkHttp) instead of WebView fetch
+  const dlResp = await CapacitorHttp.request({
+    method: 'GET',
+    url: cdnUrl,
     headers: { Range: `bytes=0-${bytes - 1}` },
+    responseType: 'arraybuffer',
   });
-  if (!dlResp.ok && dlResp.status !== 206) throw new Error(`CDN download failed: ${dlResp.status}`);
-  return dlResp.arrayBuffer();
+
+  const raw = dlResp.data;
+  if (!raw) throw new Error('Empty CDN response');
+  // CapacitorHttp returns binary as a base64 string on Android
+  if (typeof raw === 'string') return base64ToArrayBuffer(raw);
+  return raw;
+}
+
+function base64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const buf = new ArrayBuffer(bin.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+  return buf;
 }
 
 async function fetchFileHeadProxy(fileid, bytes) {
