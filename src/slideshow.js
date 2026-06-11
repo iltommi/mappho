@@ -122,6 +122,7 @@ async function go(index) {
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
   resetLazy();
+  lazyDone = true; // all photos already in memory, no paging needed
   photos = photoList;
   cache.clear();
   el.classList.add('open');

@@ -33,9 +33,10 @@ export function initMap() {
 
   cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false });
   cluster.on('clusterclick', e => {
-    const photos = e.layer.getAllChildMarkers()
-      .map(m => markerData.get(m))
-      .filter(Boolean);
+    const children = e.layer.getAllChildMarkers();
+    log('clusterclick', `${children.length} child markers, markerData size=${markerData.size}`);
+    const photos = children.map(m => markerData.get(m)).filter(Boolean);
+    log('clusterclick', `${photos.length} photos resolved`);
     openSlideshow(photos);
   });
   map.addLayer(cluster);
@@ -84,7 +85,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   marker.bindPopup(div, { maxWidth: 280 });
   cluster.addLayer(marker);
   markerIndex.push({ marker, ts: ts ?? null });
-  markerData.set(marker, { fileid, name });
+  markerData.set(marker, { fileid, name, ts: ts ?? null });
 }
 
 // Show only markers whose ts falls within [fromTs, toTs].
