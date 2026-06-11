@@ -30,12 +30,13 @@ export class TwoFactorRequired extends Error {}
 export async function loginWithPassword(email, password, code = null) {
   const url = new URL(`${DEFAULT_HOST}/userinfo`);
   url.searchParams.set('getauth', '1');
-  url.searchParams.set('logout', '1');
   url.searchParams.set('username', email);
   url.searchParams.set('password', password);
   if (code) url.searchParams.set('code', code);
 
-  log('POST userinfo', { username: email, code: code ?? '(none)' });
+  const logUrl = new URL(url);
+  logUrl.searchParams.set('password', '***');
+  log('POST userinfo', { url: logUrl.toString(), code: code ?? '(none)' });
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
