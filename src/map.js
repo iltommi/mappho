@@ -5,6 +5,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { fetchThumbSrc } from './pcloud.js';
 import { log } from './log.js';
+import { openLightbox } from './lightbox.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -57,6 +58,8 @@ export function addMarker({ fileid, name, lat, lng }) {
         img.alt = name;
         img.onload = () => marker.getPopup()?.update();
         img.onerror = () => log('thumb img error', `len=${src.length}`);
+        img.style.cursor = 'zoom-in';
+        img.addEventListener('click', () => openLightbox(fileid, name));
         div.insertBefore(img, caption);
       }
       marker.getPopup()?.update();

@@ -294,6 +294,46 @@ html, body {
   min-height: 1em;
 }
 
+/* Lightbox */
+#lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0,0,0,.94);
+  align-items: center;
+  justify-content: center;
+}
+#lightbox.open { display: flex; }
+
+#lightbox-close {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 40px; height: 40px;
+  border: none;
+  background: rgba(255,255,255,.18);
+  color: #fff;
+  font-size: 1.1rem;
+  border-radius: 50%;
+  cursor: pointer;
+  line-height: 1;
+}
+#lightbox-close:hover { background: rgba(255,255,255,.3); }
+
+#lightbox-loading {
+  color: #94a3b8;
+  font-size: .9rem;
+  display: none;
+}
+#lightbox.loading #lightbox-loading { display: block; }
+#lightbox.loading #lightbox-img { display: none; }
+
+#lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* Popup */
 .photo-popup {
   text-align: center;
