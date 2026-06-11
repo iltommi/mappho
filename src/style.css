@@ -47,6 +47,30 @@ html, body {
   max-width: 180px;
 }
 
+#clear-cache-btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: none;
+  color: #94a3b8;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: color .15s;
+}
+#clear-cache-btn:hover:not(:disabled) { color: #e2e8f0; }
+#clear-cache-btn:disabled { opacity: .4; cursor: default; }
+
+#log-clear {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: .75rem;
+  padding: 2px 4px;
+}
+#log-clear:hover { color: #f87171; }
+
 #scan-btn {
   flex-shrink: 0;
   padding: 6px 14px;

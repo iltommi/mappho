@@ -3,7 +3,7 @@ import { log } from './log.js';
 import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
-import { getCached, putCached, getAllCached } from './db.js';
+import { getCached, putCached, getAllCached, clearAll } from './db.js';
 import './style.css';
 
 const statusEl = document.getElementById('status');
@@ -16,6 +16,7 @@ const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderSelect = document.getElementById('folder-select');
 const scanBtn = document.getElementById('scan-btn');
+const clearCacheBtn = document.getElementById('clear-cache-btn');
 let pendingTfaToken = null;
 
 const FOLDER_KEY = 'pcloud_folder';
@@ -46,8 +47,20 @@ folderSelect.addEventListener('change', () => {
 
 scanBtn.addEventListener('click', async () => {
   scanBtn.disabled = true;
+  clearCacheBtn.disabled = true;
   await runScan();
   scanBtn.disabled = false;
+  clearCacheBtn.disabled = false;
+});
+
+clearCacheBtn.addEventListener('click', async () => {
+  await clearAll();
+  setStatus('Cache cleared.');
+  scanBtn.disabled = true;
+  clearCacheBtn.disabled = true;
+  await runScan();
+  scanBtn.disabled = false;
+  clearCacheBtn.disabled = false;
 });
 
 document.getElementById('use-token-btn').addEventListener('click', async () => {
@@ -71,6 +84,7 @@ function showApp() {
   authBtn.style.display = '';
   folderSelect.style.display = '';
   scanBtn.style.display = '';
+  clearCacheBtn.style.display = '';
   authBtn.onclick = () => { logout(); location.reload(); };
 }
 
@@ -148,6 +162,7 @@ async function runScan() {
 async function processFile(file, stats) {
   const hit = await getCached(file.fileid);
   if (hit) {
+    log(`${file.name} [cached]`, hit.lat != null ? `GPS: ${hit.lat.toFixed(4)}, ${hit.lng.toFixed(4)}` : 'no GPS');
     if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
     return;
   }

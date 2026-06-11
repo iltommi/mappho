@@ -7,6 +7,10 @@ toggle.addEventListener('click', () => {
   toggle.textContent = panel.classList.contains('open') ? 'Hide log' : 'Show log';
 });
 
+document.getElementById('log-clear').addEventListener('click', () => {
+  list.innerHTML = '';
+});
+
 export function log(label, data) {
   const entry = document.createElement('div');
   entry.className = 'log-entry';

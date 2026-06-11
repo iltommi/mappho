@@ -30,3 +30,7 @@ export async function getAllCached() {
 export async function countCached() {
   return (await db()).count(STORE);
 }
+
+export async function clearAll() {
+  return (await db()).clear(STORE);
+}
