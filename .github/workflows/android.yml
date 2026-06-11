@@ -30,8 +30,19 @@ jobs:
 
       - run: npx cap sync android
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/sharpho.keystore
+
+      - name: Build release APK
+        env:
+          KEYSTORE_FILE: sharpho.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
         working-directory: android
 
       - name: Publish release
@@ -41,7 +52,7 @@ jobs:
           gh release delete latest --yes --repo $GITHUB_REPOSITORY 2>/dev/null || true
           gh release create latest \
             --repo $GITHUB_REPOSITORY \
-            --title "SharPho (latest debug build)" \
-            --notes "Debug APK built from the latest commit on main. Install by downloading and opening on your Android device (enable *Install from unknown sources* when prompted)." \
+            --title "SharPho (latest build)" \
+            --notes "APK built from the latest commit on main. Install by downloading and opening on your Android device (enable *Install from unknown sources* when prompted)." \
             --prerelease \
-            android/app/build/outputs/apk/debug/app-debug.apk#SharPho.apk
+            android/app/build/outputs/apk/release/app-release.apk#SharPho.apk
