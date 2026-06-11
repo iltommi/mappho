@@ -1,5 +1,6 @@
 import { getToken, getApiHost } from './auth.js';
 import { log } from './log.js';
+import { PROXY_URL } from './config.js';
 
 async function api(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
@@ -23,46 +24,47 @@ export async function listFolders(folderid = 0) {
 export async function* listImages(folderid = 0) {
   const queue = [folderid];
   while (queue.length > 0) {
-    const folderid = queue.shift();
+    const fid = queue.shift();
     let data;
     try {
-      data = await api('listfolder', { folderid });
+      data = await api('listfolder', { folderid: fid });
     } catch (e) {
-      console.warn('listfolder failed for', folderid, e);
+      console.warn('listfolder failed for', fid, e);
       continue;
     }
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
         queue.push(item.folderid);
       } else if (/\.(jpe?g)$/i.test(item.name)) {
-        log('file metadata', item);
         yield item;
       }
     }
   }
 }
 
-// Fetches the first `bytes` of a file via pCloud's file streaming API.
-// Avoids getfilelink (which is blocked by pCloud's referer check from browser).
+// Fetches the first `bytes` of a file via getfilelink + CDN Range request.
+// Routes through the Cloudflare Worker proxy to bypass pCloud's browser-origin block.
 export async function fetchFileHead(fileid, bytes = 131072) {
-  const openData = await api('file_open', { flags: 0, fileid });
-  const fd = openData.fd;
-  log('file_open', { fd, fileid });
+  if (!PROXY_URL) throw new Error('PROXY_URL not configured — see src/config.js');
 
-  try {
-    const url = new URL(`${getApiHost()}/file_pread`);
-    url.searchParams.set('auth_token', getToken());
-    url.searchParams.set('fd', fd);
-    url.searchParams.set('count', bytes);
-    url.searchParams.set('offset', 0);
+  // Step 1: get a CDN download link via proxy
+  const linkUrl = new URL(`${PROXY_URL}/getfilelink`);
+  linkUrl.searchParams.set('auth_token', getToken());
+  linkUrl.searchParams.set('fileid', fileid);
+  const linkResp = await fetch(linkUrl);
+  if (!linkResp.ok) throw new Error(`getfilelink HTTP ${linkResp.status}`);
+  const linkData = await linkResp.json();
+  if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
 
-    const resp = await fetch(url, { referrerPolicy: 'no-referrer' });
-    log('file_pread', { status: resp.status, contentType: resp.headers.get('content-type') });
-    if (!resp.ok) throw new Error(`file_pread failed: ${resp.status}`);
-    return resp.arrayBuffer();
-  } finally {
-    api('file_close', { fd }).catch(() => {});
-  }
+  const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
+
+  // Step 2: download first `bytes` via proxy with Range header
+  const dlUrl = `${PROXY_URL}/cdn?url=${encodeURIComponent(cdnUrl)}`;
+  const dlResp = await fetch(dlUrl, {
+    headers: { Range: `bytes=0-${bytes - 1}` },
+  });
+  if (!dlResp.ok && dlResp.status !== 206) throw new Error(`CDN download failed: ${dlResp.status}`);
+  return dlResp.arrayBuffer();
 }
 
 // Returns a URL that pCloud will serve as a JPEG thumbnail.

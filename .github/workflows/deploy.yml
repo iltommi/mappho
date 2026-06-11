@@ -31,8 +31,8 @@ jobs:
 
       - run: npm run build
         env:
-          # Sets the correct sub-path for a project page (username.github.io/repo-name/).
           BASE_URL: /${{ github.event.repository.name }}/
+          VITE_PROXY_URL: ${{ secrets.VITE_PROXY_URL }}
 
       - uses: actions/configure-pages@v4
 
