@@ -111,7 +111,7 @@ async function go(index) {
   const src = await fetchCached(fileid);
   if (id !== reqId) return;
   loadingEl.style.display = 'none';
-  if (src) { imgEl.src = src; imgEl.style.display = ''; }
+  if (src) { imgEl.src = src; imgEl.style.display = 'block'; }
 
   const prev = photos[(current - 1 + photos.length) % photos.length];
   const next = photos[(current + 1) % photos.length];
