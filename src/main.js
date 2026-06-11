@@ -102,41 +102,41 @@ async function startScan() {
   }
 }
 
+async function processFile(file, stats) {
+  const hit = await getCached(file.fileid);
+  if (hit) {
+    if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
+    return;
+  }
+  let gps = null;
+  try {
+    const buf = await fetchFileHead(file.fileid);
+    gps = await extractGPS(buf);
+  } catch (e) {
+    console.warn('Failed to process', file.name, e);
+  }
+  const record = { fileid: file.fileid, name: file.name, lat: gps?.lat ?? null, lng: gps?.lng ?? null };
+  await putCached(record);
+  if (gps) { stats.geotagged++; addMarker(record); }
+}
+
 async function scan() {
-  let scanned = 0, geotagged = 0;
+  const CONCURRENCY = 6;
+  const stats = { scanned: 0, geotagged: 0 };
+  const pool = new Set();
 
   for await (const file of listImages()) {
-    scanned++;
-    setStatus(`Scanning… ${scanned} images found, ${geotagged} geotagged`);
+    stats.scanned++;
+    setStatus(`Scanning… ${stats.scanned} images found, ${stats.geotagged} geotagged`);
 
-    // Skip files we already know the answer for.
-    const hit = await getCached(file.fileid);
-    if (hit) {
-      if (hit.lat != null) geotagged++;
-      continue;
-    }
+    const p = processFile(file, stats).finally(() => pool.delete(p));
+    pool.add(p);
 
-    let gps = null;
-    try {
-      const buf = await fetchFileHead(file.fileid);
-      gps = await extractGPS(buf);
-    } catch (e) {
-      console.warn('Failed to process', file.name, e);
-    }
-
-    const record = { fileid: file.fileid, name: file.name, lat: gps?.lat ?? null, lng: gps?.lng ?? null };
-    await putCached(record);
-
-    if (gps) {
-      geotagged++;
-      addMarker(record);
-    }
-
-    // Gentle pacing to avoid hammering the API.
-    await new Promise(r => setTimeout(r, 80));
+    if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
 
-  setStatus(`Done — ${geotagged} geotagged photos out of ${scanned} total.`);
+  await Promise.all(pool);
+  setStatus(`Done — ${stats.geotagged} geotagged photos out of ${stats.scanned} total.`);
   setProgress(100);
 }
 
