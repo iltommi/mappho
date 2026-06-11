@@ -1,7 +1,8 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
 import { log, toggleLog } from './log.js';
+import { toggleFilter } from './filter.js';
 import { listImages, listFolders, fetchFileHead } from './pcloud.js';
-import { extractGPS } from './exif.js';
+import { extractEXIF } from './exif.js';
 import { initMap, addMarker } from './map.js';
 import { getCached, putCached, getAllCached, clearAll } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
@@ -24,6 +25,11 @@ const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
 const overflowMenu = document.getElementById('overflow-menu');
+
+document.getElementById('filter-menu-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+  toggleFilter();
+});
 
 document.getElementById('log-menu-btn').addEventListener('click', () => {
   overflowMenu.classList.remove('open');
@@ -219,19 +225,19 @@ async function processFile(file, stats) {
     if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
     return;
   }
-  let gps = null;
+  let exif = {};
   try {
     const buf = await fetchFileHead(file.fileid);
     log(`${file.name}`, `buffer: ${buf.byteLength}B`);
-    gps = await extractGPS(buf);
-    log(`${file.name} → GPS`, gps ?? 'null');
+    exif = await extractEXIF(buf);
+    log(`${file.name} → GPS`, exif.lat != null ? `${exif.lat.toFixed(4)},${exif.lng.toFixed(4)}` : 'null');
   } catch (e) {
     log(`${file.name} ERROR`, e.message);
     console.warn('Failed to process', file.name, e);
   }
-  const record = { fileid: file.fileid, name: file.name, lat: gps?.lat ?? null, lng: gps?.lng ?? null };
+  const record = { fileid: file.fileid, name: file.name, lat: exif.lat ?? null, lng: exif.lng ?? null, ts: exif.ts ?? null };
   await putCached(record);
-  if (gps) { stats.geotagged++; addMarker(record); }
+  if (exif.lat != null) { stats.geotagged++; addMarker(record); }
 }
 
 async function scan() {

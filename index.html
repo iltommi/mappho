@@ -19,6 +19,7 @@
         <label id="local-btn" class="menu-item">📂 Local test
           <input id="local-input" type="file" accept="image/jpeg" multiple style="display:none" />
         </label>
+        <button id="filter-menu-btn" class="menu-item">📅 Date filter</button>
         <button id="log-menu-btn" class="menu-item">📋 Debug log</button>
         <button id="auth-btn" class="menu-item">Disconnect</button>
       </div>
@@ -45,6 +46,19 @@
         <button type="button" id="use-token-btn">Use this token</button>
       </details>
     </form>
+  </div>
+  <div id="filter-panel">
+    <p class="filter-no-dates" style="display:none">No photo dates in cache — rescan to pick up dates.</p>
+    <div class="filter-row">
+      <span class="filter-label">From</span>
+      <input type="range" id="filter-from" min="0" max="1000" value="0" />
+      <span id="filter-from-val" class="filter-val"></span>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">To</span>
+      <input type="range" id="filter-to" min="0" max="1000" value="1000" />
+      <span id="filter-to-val" class="filter-val"></span>
+    </div>
   </div>
   <div id="map"></div>
   <div id="lightbox">

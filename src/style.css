@@ -285,6 +285,52 @@ html, body {
   min-height: 1em;
 }
 
+/* Filter panel */
+#filter-panel {
+  display: none;
+  position: fixed;
+  top: 48px; left: 0; right: 0;
+  z-index: 900;
+  background: #16213e;
+  border-bottom: 1px solid #334155;
+  padding: 8px 16px;
+  flex-direction: column;
+  gap: 4px;
+}
+#filter-panel.open { display: flex; }
+body.filter-open #map { top: 120px; }
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filter-label {
+  font-size: .75rem;
+  color: #94a3b8;
+  width: 32px;
+  flex-shrink: 0;
+}
+.filter-val {
+  font-size: .75rem;
+  color: #7dd3fc;
+  width: 100px;
+  flex-shrink: 0;
+  text-align: right;
+}
+.filter-no-dates {
+  font-size: .78rem;
+  color: #94a3b8;
+  text-align: center;
+  padding: 4px 0;
+}
+#filter-from, #filter-to {
+  flex: 1;
+  accent-color: #0ea5e9;
+  height: 4px;
+  cursor: pointer;
+}
+
 /* Lightbox */
 #lightbox {
   display: none;

@@ -20,6 +20,7 @@ L.Icon.Default.mergeOptions({
 
 let cluster;
 const addedIds = new Set();
+const markerIndex = []; // { marker, ts }
 
 export function initMap() {
   const map = L.map('map').setView([20, 0], 2);
@@ -32,7 +33,7 @@ export function initMap() {
   map.addLayer(cluster);
 }
 
-export function addMarker({ fileid, name, lat, lng }) {
+export function addMarker({ fileid, name, lat, lng, ts }) {
   if (addedIds.has(fileid)) return;
   addedIds.add(fileid);
   const marker = L.marker([lat, lng]);
@@ -72,7 +73,27 @@ export function addMarker({ fileid, name, lat, lng }) {
     });
   });
 
-  // Bind a static DOM element — Leaflet won't re-call it on popup.update()
   marker.bindPopup(div, { maxWidth: 280 });
   cluster.addLayer(marker);
+  markerIndex.push({ marker, ts: ts ?? null });
+}
+
+// Show only markers whose ts falls within [fromTs, toTs].
+// Markers with no date are always shown.
+export function filterMarkers(fromTs, toTs) {
+  for (const { marker, ts } of markerIndex) {
+    const visible = ts == null || (ts >= fromTs && ts <= toTs);
+    if (visible) {
+      if (!cluster.hasLayer(marker)) cluster.addLayer(marker);
+    } else {
+      cluster.removeLayer(marker);
+    }
+  }
+}
+
+// Returns { min, max } timestamps across all dated markers, or null if none.
+export function getDateRange() {
+  const dated = markerIndex.map(m => m.ts).filter(t => t != null);
+  if (dated.length === 0) return null;
+  return { min: Math.min(...dated), max: Math.max(...dated) };
 }
