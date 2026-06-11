@@ -5,23 +5,26 @@ import { PROXY_URL } from './config.js';
 
 const isNative = Capacitor.isNativePlatform();
 
+function buildUrl(endpoint, params = {}) {
+  const url = new URL(`${getApiHost()}/${endpoint}`);
+  url.searchParams.set('auth_token', getToken());
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  return url;
+}
+
 async function api(endpoint, params = {}) {
+  const url = buildUrl(endpoint, params);
+
   if (isNative) {
-    const allParams = { auth_token: getToken() };
-    for (const [k, v] of Object.entries(params)) allParams[k] = String(v);
-    const resp = await CapacitorHttp.request({
-      method: 'GET',
-      url: `${getApiHost()}/${endpoint}`,
-      params: allParams,
-    });
+    // CapacitorHttp routes through OkHttp — no Origin header sent to pCloud.
+    // Pass the fully-built URL string; don't use CapacitorHttp's params option
+    // (it silently fails to append query params on Capacitor 8 Android).
+    const resp = await CapacitorHttp.request({ method: 'GET', url: url.toString() });
     const data = resp.data;
     if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
     return data;
   }
 
-  const url = new URL(`${getApiHost()}/${endpoint}`);
-  url.searchParams.set('auth_token', getToken());
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   const resp = await fetch(url, { referrerPolicy: 'no-referrer' });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
@@ -44,6 +47,7 @@ export async function* listImages(folderid = 0) {
     try {
       data = await api('listfolder', { folderid: fid });
     } catch (e) {
+      log(`listfolder error (id=${fid})`, e.message);
       console.warn('listfolder failed for', fid, e);
       continue;
     }
@@ -67,11 +71,9 @@ export async function fetchFileHead(fileid, bytes = 131072) {
 }
 
 async function fetchFileHeadNative(fileid, bytes) {
-  // CapacitorHttp for the API call — routes through OkHttp, no Origin header
   const linkResp = await CapacitorHttp.request({
     method: 'GET',
-    url: `${getApiHost()}/getfilelink`,
-    params: { auth_token: getToken(), fileid: String(fileid) },
+    url: buildUrl('getfilelink', { fileid }).toString(),
   });
   const linkData = linkResp.data;
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
