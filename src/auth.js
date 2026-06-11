@@ -37,7 +37,7 @@ export async function loginWithPassword(email, password, code = null) {
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
 
-  if (data.result === 2064) throw new TwoFactorRequired();
+  if (data.error?.toLowerCase().includes('code')) throw new TwoFactorRequired();
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
   localStorage.setItem(TOKEN_KEY, data.auth);
