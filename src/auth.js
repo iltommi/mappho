@@ -1,3 +1,4 @@
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { log } from './log.js';
 
 const TOKEN_KEY = 'pcloud_token';
@@ -43,8 +44,23 @@ export class TwoFactorRequired extends Error {
   }
 }
 
-// Step 1: username + password via POST /login (matches pCloud web app flow).
-// Throws TwoFactorRequired (carrying the tfaToken) when TOTP is needed.
+async function pcloudFetch(url, options = {}) {
+  // On Android: use CapacitorHttp so session cookies land in OkHttp's cookie
+  // jar and travel with every subsequent CapacitorHttp API call.
+  if (Capacitor.isNativePlatform()) {
+    const resp = await CapacitorHttp.request({
+      method: options.method ?? 'GET',
+      url: url.toString(),
+      headers: options.headers ?? {},
+      data: options.body ?? undefined,
+    });
+    return resp.data;
+  }
+  const resp = await fetch(url, options);
+  if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
+  return resp.json();
+}
+
 export async function loginWithPassword(email, password) {
   const url = new URL(`${DEFAULT_HOST}/login`);
   const body = new URLSearchParams({
@@ -53,25 +69,23 @@ export async function loginWithPassword(email, password) {
     os: '4', deviceid: getDeviceId(),
   });
 
-  log('login request', `POST ${url} username=${email} password=***`);
-  const resp = await fetch(url, { method: 'POST', body });
-  if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
-  const data = await resp.json();
+  log('login request', `POST ${url} username=${email}`);
+  const data = await pcloudFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
   log('login response', data);
 
-  if (data.result === 2297) {
-    throw new TwoFactorRequired(data.token);
-  }
+  if (data.result === 2297) throw new TwoFactorRequired(data.token);
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
-  // No TFA: store the auth token directly (pCloud returns it without getauth too).
   const authToken = data.auth ?? data.token;
   if (!authToken) throw new Error('No auth token in response.');
   localStorage.setItem(TOKEN_KEY, authToken);
   localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
 
-// Step 2: verify TOTP code — /tfa_login returns the final auth token on success.
 export async function loginWithTFA(tfaToken, code) {
   const url = new URL(`${DEFAULT_HOST}/tfa_login`);
   url.searchParams.set('token', tfaToken);
@@ -79,9 +93,7 @@ export async function loginWithTFA(tfaToken, code) {
   url.searchParams.set('trustdevice', 'false');
 
   log('tfa_login request', { token: tfaToken.slice(0, 8) + '…', code });
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
-  const data = await resp.json();
+  const data = await pcloudFetch(url);
   log('tfa_login response', data);
 
   if (data.result !== 0) throw new Error(data.error ?? `TFA error ${data.result}`);
