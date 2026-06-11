@@ -21,8 +21,21 @@ const folderSelect = document.getElementById('folder-select');
 const scanBtn = document.getElementById('scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
 const localInput = document.getElementById('local-input');
+const menuWrap = document.getElementById('menu-wrap');
+const menuBtn = document.getElementById('menu-btn');
+const overflowMenu = document.getElementById('overflow-menu');
+
+menuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  overflowMenu.classList.toggle('open');
+});
+
+document.addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+});
 
 localInput.addEventListener('change', async () => {
+  overflowMenu.classList.remove('open');
   const files = Array.from(localInput.files);
   let found = 0;
   for (const file of files) {
@@ -74,6 +87,7 @@ scanBtn.addEventListener('click', async () => {
 });
 
 clearCacheBtn.addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
   await clearAll();
   log('Cache cleared');
   setStatus('Cache cleared — scanning…');
@@ -102,10 +116,9 @@ function setProgress(pct) {
 
 function showApp() {
   loginOverlay.style.display = 'none';
-  authBtn.style.display = '';
   folderSelect.style.display = '';
   scanBtn.style.display = '';
-  clearCacheBtn.style.display = '';
+  menuWrap.style.display = '';
   authBtn.onclick = () => { logout(); location.reload(); };
 }
 
