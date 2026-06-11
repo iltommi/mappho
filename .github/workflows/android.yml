@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,8 +34,14 @@ jobs:
         run: ./gradlew assembleDebug
         working-directory: android
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SharPho-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --repo $GITHUB_REPOSITORY 2>/dev/null || true
+          gh release create latest \
+            --repo $GITHUB_REPOSITORY \
+            --title "SharPho (latest debug build)" \
+            --notes "Debug APK built from the latest commit on main. Install by downloading and opening on your Android device (enable *Install from unknown sources* when prompted)." \
+            --prerelease \
+            android/app/build/outputs/apk/debug/app-debug.apk#SharPho.apk
