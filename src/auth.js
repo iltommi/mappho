@@ -33,11 +33,10 @@ export class TwoFactorRequired extends Error {
   }
 }
 
-// Step 1: username + password login.
-// Throws TwoFactorRequired (with tfaToken) when TOTP is needed.
+// Step 1: username + password — no getauth so pCloud returns the TFA token on 1022.
+// Throws TwoFactorRequired (carrying the tfaToken) when TOTP is needed.
 export async function loginWithPassword(email, password) {
   const url = new URL(`${DEFAULT_HOST}/userinfo`);
-  url.searchParams.set('getauth', '1');
   url.searchParams.set('username', email);
   url.searchParams.set('password', password);
 
@@ -50,16 +49,19 @@ export async function loginWithPassword(email, password) {
   log('userinfo response', data);
 
   if (data.result === 1022) {
-    if (!data.token) throw new Error('pCloud did not return a TFA token.');
+    if (!data.token) throw new Error('pCloud did not return a TFA token. Full response logged above.');
     throw new TwoFactorRequired(data.token);
   }
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
-  localStorage.setItem(TOKEN_KEY, data.auth);
+  // No TFA: store the auth token directly (pCloud returns it without getauth too).
+  const authToken = data.auth ?? data.token;
+  if (!authToken) throw new Error('No auth token in response.');
+  localStorage.setItem(TOKEN_KEY, authToken);
   localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
 
-// Step 2: verify TOTP code using the token from step 1.
+// Step 2: verify TOTP code — /tfa_login returns the final auth token on success.
 export async function loginWithTFA(tfaToken, code) {
   const url = new URL(`${DEFAULT_HOST}/tfa_login`);
   url.searchParams.set('token', tfaToken);
