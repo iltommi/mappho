@@ -37,6 +37,16 @@ html, body {
   text-overflow: ellipsis;
 }
 
+#folder-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: #0f3460;
+  color: #e2e8f0;
+  font-size: .8rem;
+  max-width: 180px;
+}
+
 #auth-btn {
   flex-shrink: 0;
   padding: 6px 14px;

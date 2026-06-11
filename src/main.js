@@ -1,6 +1,6 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
 import { log } from './log.js';
-import { listImages, fetchFileHead } from './pcloud.js';
+import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
 import { getCached, putCached, getAllCached } from './db.js';
@@ -14,7 +14,35 @@ const loginForm = document.getElementById('login-form');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
+const folderSelect = document.getElementById('folder-select');
 let pendingTfaToken = null;
+
+const FOLDER_KEY = 'pcloud_folder';
+
+function getSelectedFolder() {
+  return JSON.parse(localStorage.getItem(FOLDER_KEY) ?? '{"id":0}');
+}
+
+async function populateFolderPicker() {
+  const folders = await listFolders(0);
+  folderSelect.innerHTML = '<option value="0">All photos</option>';
+  for (const f of folders) {
+    const opt = document.createElement('option');
+    opt.value = f.folderid;
+    opt.textContent = '📁 ' + f.name;
+    folderSelect.appendChild(opt);
+  }
+  const saved = getSelectedFolder();
+  folderSelect.value = saved.id;
+  folderSelect.style.display = '';
+}
+
+folderSelect.addEventListener('change', () => {
+  const id = parseInt(folderSelect.value);
+  const name = folderSelect.options[folderSelect.selectedIndex].text;
+  localStorage.setItem(FOLDER_KEY, JSON.stringify({ id, name }));
+  location.reload();
+});
 
 document.getElementById('use-token-btn').addEventListener('click', async () => {
   const token = document.getElementById('token-input').value.trim();
@@ -81,6 +109,7 @@ function setupAuthBtn(isLoggedIn) {
 }
 
 async function startScan() {
+  await populateFolderPicker();
   const cached = await getAllCached();
   let cachedGeo = 0;
   for (const p of cached) {
@@ -125,7 +154,8 @@ async function scan() {
   const stats = { scanned: 0, geotagged: 0 };
   const pool = new Set();
 
-  for await (const file of listImages()) {
+  const { id: folderId } = getSelectedFolder();
+  for await (const file of listImages(folderId)) {
     stats.scanned++;
     setStatus(`Scanning… ${stats.scanned} images found, ${stats.geotagged} geotagged`);
 

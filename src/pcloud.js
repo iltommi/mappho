@@ -12,9 +12,15 @@ async function api(endpoint, params = {}) {
   return data;
 }
 
-// Async generator: yields every JPEG file in the account (BFS).
-export async function* listImages() {
-  const queue = [0]; // folderid 0 = root
+// Returns immediate child folders of a given folder.
+export async function listFolders(folderid = 0) {
+  const data = await api('listfolder', { folderid });
+  return (data.metadata.contents ?? []).filter(i => i.isfolder);
+}
+
+// Async generator: yields every JPEG file under folderid (BFS).
+export async function* listImages(folderid = 0) {
+  const queue = [folderid];
   while (queue.length > 0) {
     const folderid = queue.shift();
     let data;
