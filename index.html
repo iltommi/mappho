@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SharpHo</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#16213e" />
+</head>
+<body>
+  <header id="topbar">
+    <span id="app-title">SharpHo</span>
+    <span id="status"></span>
+    <button id="auth-btn" style="display:none">Disconnect</button>
+  </header>
+
+  <div id="login-overlay">
+    <form id="login-form">
+      <h2>SharpHo</h2>
+      <p>Sign in with your pCloud account</p>
+      <input id="email" type="email" placeholder="Email" autocomplete="email" required />
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+      <button type="submit" id="login-btn">Sign in</button>
+      <span id="login-error"></span>
+    </form>
+  </div>
+  <div id="map"></div>
+  <div id="progress-bar"><div id="progress-fill"></div></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

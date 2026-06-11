@@ -1,0 +1,159 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: system-ui, sans-serif;
+  background: #0f3460;
+  color: #e2e8f0;
+}
+
+#topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 1000;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: #16213e;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+
+#app-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: .02em;
+  color: #7dd3fc;
+  flex-shrink: 0;
+}
+
+#status {
+  flex: 1;
+  font-size: .8rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#auth-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#auth-btn:hover { background: #0284c7; }
+
+#map {
+  position: fixed;
+  top: 48px; bottom: 4px; left: 0; right: 0;
+}
+
+#progress-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 4px;
+  background: #1e3a5f;
+  z-index: 1000;
+}
+#progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #0ea5e9;
+  transition: width .3s ease;
+}
+
+/* Login overlay */
+#login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 52, 96, .85);
+  backdrop-filter: blur(6px);
+}
+
+#login-form {
+  background: #16213e;
+  border-radius: 12px;
+  padding: 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(360px, 90vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+
+#login-form h2 {
+  font-size: 1.4rem;
+  color: #7dd3fc;
+  text-align: center;
+}
+
+#login-form p {
+  font-size: .85rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: -6px;
+}
+
+#login-form input {
+  padding: 10px 14px;
+  border-radius: 7px;
+  border: 1px solid #334155;
+  background: #0f3460;
+  color: #e2e8f0;
+  font-size: .95rem;
+}
+#login-form input:focus {
+  outline: none;
+  border-color: #0ea5e9;
+}
+
+#login-btn {
+  padding: 10px;
+  border: none;
+  border-radius: 7px;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#login-btn:hover:not(:disabled) { background: #0284c7; }
+#login-btn:disabled { opacity: .6; cursor: default; }
+
+#login-error {
+  font-size: .8rem;
+  color: #f87171;
+  text-align: center;
+  min-height: 1em;
+}
+
+/* Popup */
+.photo-popup {
+  text-align: center;
+  min-width: 160px;
+}
+.photo-popup img {
+  width: 100%;
+  max-width: 256px;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto 8px;
+}
+.photo-popup p {
+  font-size: .78rem;
+  color: #334155;
+  word-break: break-all;
+}
