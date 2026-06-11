@@ -9,7 +9,6 @@ import './style.css';
 
 registerSW({ onNeedRefresh() { window.location.reload(); } });
 
-const statusEl = document.getElementById('status');
 const authBtn = document.getElementById('auth-btn');
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -120,7 +119,7 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
 });
 
 function setStatus(msg) {
-  statusEl.textContent = msg;
+  log('status', msg);
 }
 
 function setProgress(pct) {

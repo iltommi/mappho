@@ -20,15 +20,6 @@ html, body {
   box-shadow: 0 2px 8px rgba(0,0,0,.4);
 }
 
-#status {
-  flex: 1;
-  font-size: .8rem;
-  color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 #folder-select {
   padding: 4px 8px;
   border-radius: 6px;
