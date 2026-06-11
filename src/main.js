@@ -20,6 +20,7 @@ const totpInput = document.getElementById('totp');
 const folderSelect = document.getElementById('folder-select');
 const scanBtn = document.getElementById('scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
+const eraseCacheBtn = document.getElementById('erase-cache-btn');
 const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
@@ -84,6 +85,13 @@ scanBtn.addEventListener('click', async () => {
   await runScan();
   scanBtn.disabled = false;
   clearCacheBtn.disabled = false;
+});
+
+eraseCacheBtn.addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  await clearAll();
+  log('Cache erased');
+  setStatus('Cache erased — click Scan to rebuild.');
 });
 
 clearCacheBtn.addEventListener('click', async () => {
