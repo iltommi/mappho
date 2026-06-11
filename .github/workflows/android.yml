@@ -49,10 +49,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          cp android/app/build/outputs/apk/release/app-release.apk SharPho.apk
           gh release delete latest --yes --repo $GITHUB_REPOSITORY 2>/dev/null || true
           gh release create latest \
             --repo $GITHUB_REPOSITORY \
             --title "SharPho (latest build)" \
             --notes "APK built from the latest commit on main. Install by downloading and opening on your Android device (enable *Install from unknown sources* when prompted)." \
             --prerelease \
-            android/app/build/outputs/apk/release/app-release.apk#SharPho.apk
+            SharPho.apk
