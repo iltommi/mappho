@@ -13,7 +13,7 @@ function destroyPanzoom() {
 
 function initPanzoom() {
   destroyPanzoom();
-  pz = Panzoom(img, { maxScale: 8, contain: 'inside', cursor: 'grab' });
+  pz = Panzoom(img, { maxScale: 8, minScale: 1, cursor: 'grab' });
   el.addEventListener('wheel', pz.zoomWithWheel, { passive: false });
 }
 
