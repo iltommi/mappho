@@ -45,8 +45,8 @@ export async function loginWithPassword(email, password) {
   const data = await resp.json();
   log('login response', data);
 
-  if (data.result === 1022) {
-    throw new TwoFactorRequired(data.token ?? null);
+  if (data.result === 2297) {
+    throw new TwoFactorRequired(data.token);
   }
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
