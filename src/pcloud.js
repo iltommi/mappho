@@ -35,6 +35,7 @@ export async function* listImages(folderid = 0) {
       if (item.isfolder) {
         queue.push(item.folderid);
       } else if (/\.(jpe?g)$/i.test(item.name)) {
+        log('file metadata', item);
         yield item;
       }
     }
