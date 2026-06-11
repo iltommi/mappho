@@ -35,7 +35,7 @@ export function addMarker({ fileid, name, lat, lng }) {
     const div = document.createElement('div');
     div.className = 'photo-popup';
     div.innerHTML = '<p class="popup-loading">Loading…</p>';
-    fetchThumbSrc(fileid).then(src => {
+    const showContent = (src) => {
       div.innerHTML = '';
       if (src) {
         const img = document.createElement('img');
@@ -48,7 +48,8 @@ export function addMarker({ fileid, name, lat, lng }) {
       caption.textContent = name;
       div.appendChild(caption);
       marker.getPopup()?.update();
-    });
+    };
+    fetchThumbSrc(fileid).then(showContent).catch(() => showContent(null));
     return div;
   }, { maxWidth: 280 });
   cluster.addLayer(marker);

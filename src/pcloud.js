@@ -140,11 +140,21 @@ function thumbUrl(fileid, size = '512x512') {
 export async function fetchThumbSrc(fileid, size = '512x512') {
   if (!/^\d+$/.test(String(fileid))) return null;
   const url = thumbUrl(fileid, size);
+  log('fetchThumb', url);
   if (!isNative) return url;
-  const resp = await CapacitorHttp.request({ method: 'GET', url, responseType: 'arraybuffer' });
-  const raw = resp.data;
-  if (!raw) return null;
-  // CapacitorHttp returns binary as a base64 string on Android
-  const b64 = typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)));
-  return `data:image/jpeg;base64,${b64}`;
+  try {
+    const resp = await CapacitorHttp.request({ method: 'GET', url, responseType: 'arraybuffer' });
+    log('fetchThumb status', resp.status);
+    const raw = resp.data;
+    if (!raw) { log('fetchThumb', 'empty response'); return null; }
+    if (typeof raw === 'object' && raw.result !== undefined) {
+      log('fetchThumb pCloud error', raw);
+      return null;
+    }
+    const b64 = typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)));
+    return `data:image/jpeg;base64,${b64}`;
+  } catch (e) {
+    log('fetchThumb error', e.message);
+    return null;
+  }
 }
