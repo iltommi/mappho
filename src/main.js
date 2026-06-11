@@ -173,16 +173,23 @@ function setupAuthBtn(isLoggedIn) {
 }
 
 async function startScan() {
-  await populateFolderPicker();
+  // Load cached markers first — no network needed, works immediately after wake.
   const cached = await getAllCached();
   let cachedGeo = 0;
   for (const p of cached) {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
   }
-  const msg = cached.length > 0
+  setStatus(cached.length > 0
     ? `${cachedGeo} geotagged photos from cache. Pick a folder and click Scan.`
-    : 'Pick a folder and click Scan.';
-  setStatus(msg);
+    : 'Pick a folder and click Scan.');
+
+  // Populate folder picker separately — a network failure here shouldn't lose the markers.
+  try {
+    await populateFolderPicker();
+  } catch (e) {
+    log('folder picker error', e.message);
+    setStatus(`Could not load folders: ${e.message}`);
+  }
 }
 
 async function runScan() {
