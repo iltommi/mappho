@@ -47,6 +47,21 @@ html, body {
   max-width: 180px;
 }
 
+#scan-btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #16a34a;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#scan-btn:hover:not(:disabled) { background: #15803d; }
+#scan-btn:disabled { opacity: .5; cursor: default; }
+
 #auth-btn {
   flex-shrink: 0;
   padding: 6px 14px;

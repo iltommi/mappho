@@ -15,6 +15,7 @@ const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderSelect = document.getElementById('folder-select');
+const scanBtn = document.getElementById('scan-btn');
 let pendingTfaToken = null;
 
 const FOLDER_KEY = 'pcloud_folder';
@@ -41,7 +42,12 @@ folderSelect.addEventListener('change', () => {
   const id = parseInt(folderSelect.value);
   const name = folderSelect.options[folderSelect.selectedIndex].text;
   localStorage.setItem(FOLDER_KEY, JSON.stringify({ id, name }));
-  location.reload();
+});
+
+scanBtn.addEventListener('click', async () => {
+  scanBtn.disabled = true;
+  await runScan();
+  scanBtn.disabled = false;
 });
 
 document.getElementById('use-token-btn').addEventListener('click', async () => {
@@ -63,6 +69,8 @@ function setProgress(pct) {
 function showApp() {
   loginOverlay.style.display = 'none';
   authBtn.style.display = '';
+  folderSelect.style.display = '';
+  scanBtn.style.display = '';
   authBtn.onclick = () => { logout(); location.reload(); };
 }
 
@@ -115,7 +123,13 @@ async function startScan() {
   for (const p of cached) {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
   }
-  if (cached.length > 0) setStatus(`${cachedGeo} photos from cache — refreshing…`);
+  const msg = cached.length > 0
+    ? `${cachedGeo} geotagged photos from cache. Pick a folder and click Scan.`
+    : 'Pick a folder and click Scan.';
+  setStatus(msg);
+}
+
+async function runScan() {
   setProgress(0);
   try {
     await scan();
