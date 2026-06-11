@@ -26,32 +26,56 @@ export function saveToken(token) {
   localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
 
-export class TwoFactorRequired extends Error {}
+export class TwoFactorRequired extends Error {
+  constructor(tfaToken) {
+    super('TwoFactorRequired');
+    this.tfaToken = tfaToken;
+  }
+}
 
-// Authenticates with pCloud directly and stores the token.
-// Pass `code` if the account has 2FA enabled.
-// Throws TwoFactorRequired when a TOTP code is needed.
-export async function loginWithPassword(email, password, code = null) {
+// Step 1: username + password login.
+// Throws TwoFactorRequired (with tfaToken) when TOTP is needed.
+export async function loginWithPassword(email, password) {
   const url = new URL(`${DEFAULT_HOST}/userinfo`);
   url.searchParams.set('getauth', '1');
   url.searchParams.set('username', email);
   url.searchParams.set('password', password);
-  if (code) url.searchParams.set('code', code);
 
   const logUrl = new URL(url);
   logUrl.searchParams.set('password', '***');
-  log('POST userinfo', { url: logUrl.toString(), code: code ?? '(none)' });
+  log('userinfo request', logUrl.toString());
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
   const data = await resp.json();
-  log('pCloud response', data);
+  log('userinfo response', data);
 
-  if (data.error?.toLowerCase().includes('code')) {
-    if (code) throw new Error('Incorrect code — please try again.');
-    throw new TwoFactorRequired();
+  if (data.result === 1022) {
+    if (!data.token) throw new Error('pCloud did not return a TFA token.');
+    throw new TwoFactorRequired(data.token);
   }
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
 
   localStorage.setItem(TOKEN_KEY, data.auth);
+  localStorage.setItem(HOST_KEY, DEFAULT_HOST);
+}
+
+// Step 2: verify TOTP code using the token from step 1.
+export async function loginWithTFA(tfaToken, code) {
+  const url = new URL(`${DEFAULT_HOST}/tfa_login`);
+  url.searchParams.set('token', tfaToken);
+  url.searchParams.set('code', code.replace(/\D/g, ''));
+  url.searchParams.set('trustdevice', 'false');
+
+  log('tfa_login request', { token: tfaToken.slice(0, 8) + '…', code });
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Network error: ${resp.status}`);
+  const data = await resp.json();
+  log('tfa_login response', data);
+
+  if (data.result !== 0) throw new Error(data.error ?? `TFA error ${data.result}`);
+
+  const authToken = data.auth ?? data.token;
+  if (!authToken) throw new Error('No auth token in TFA response.');
+  localStorage.setItem(TOKEN_KEY, authToken);
   localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
