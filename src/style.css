@@ -131,6 +131,7 @@ html, body {
 
 /* Log panel */
 #log-panel {
+  display: none;
   position: fixed;
   bottom: 4px;
   right: 0;
@@ -143,6 +144,7 @@ html, body {
   color: #94a3b8;
   box-shadow: -2px -2px 12px rgba(0,0,0,.4);
 }
+#log-panel.open { display: block; }
 
 #log-header {
   display: flex;
@@ -163,23 +165,21 @@ html, body {
 }
 #log-clear:hover { color: #f87171; }
 
-#log-toggle {
+#log-close {
   border: none;
   background: none;
-  color: #7dd3fc;
+  color: #94a3b8;
   cursor: pointer;
-  font-size: .75rem;
-  padding: 2px 4px;
+  font-size: .85rem;
+  padding: 2px 6px;
 }
+#log-close:hover { color: #f87171; }
 
 #log-list {
-  display: none;
   max-height: 260px;
   overflow-y: auto;
   padding: 6px 10px;
 }
-
-#log-panel.open #log-list { display: block; }
 
 .log-entry { margin-bottom: 6px; }
 .log-time { color: #475569; }

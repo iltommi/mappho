@@ -1,15 +1,17 @@
 const panel = document.getElementById('log-panel');
 const list = document.getElementById('log-list');
-const toggle = document.getElementById('log-toggle');
 
-toggle.addEventListener('click', () => {
-  panel.classList.toggle('open');
-  toggle.textContent = panel.classList.contains('open') ? 'Hide log' : 'Show log';
+document.getElementById('log-close').addEventListener('click', () => {
+  panel.classList.remove('open');
 });
 
 document.getElementById('log-clear').addEventListener('click', () => {
   list.innerHTML = '';
 });
+
+export function toggleLog() {
+  panel.classList.toggle('open');
+}
 
 export function log(label, data) {
   const entry = document.createElement('div');

@@ -1,5 +1,5 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
-import { log } from './log.js';
+import { log, toggleLog } from './log.js';
 import { listImages, listFolders, fetchFileHead } from './pcloud.js';
 import { extractGPS } from './exif.js';
 import { initMap, addMarker } from './map.js';
@@ -25,6 +25,11 @@ const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
 const overflowMenu = document.getElementById('overflow-menu');
+
+document.getElementById('log-menu-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+  toggleLog();
+});
 
 menuBtn.addEventListener('click', (e) => {
   e.stopPropagation();
