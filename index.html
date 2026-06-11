@@ -17,30 +17,11 @@
   <div id="login-overlay">
     <form id="login-form">
       <h2>SharPho</h2>
-
-      <div id="tab-bar">
-        <button type="button" class="tab active" data-tab="password">Email / password</button>
-        <button type="button" class="tab" data-tab="token">Paste token</button>
-      </div>
-
-      <div id="pane-password">
-        <input id="email" type="email" placeholder="Email" autocomplete="email" />
-        <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
-        <input id="totp" type="text" placeholder="Verification code" autocomplete="one-time-code"
-               inputmode="numeric" pattern="[0-9]*" style="display:none" />
-      </div>
-
-      <div id="pane-token" style="display:none">
-        <p class="hint">
-          1. Log in to <a href="https://my.pcloud.com" target="_blank">my.pcloud.com</a><br>
-          2. Open DevTools → Network tab<br>
-          3. Click any request to <code>eapi.pcloud.com</code><br>
-          4. Copy the <code>auth_token</code> value from the URL<br>
-          5. Paste it below
-        </p>
-        <input id="token-input" type="text" placeholder="auth_token value" autocomplete="off" />
-      </div>
-
+      <p>Sign in with your pCloud account</p>
+      <input id="email" type="email" placeholder="Email" autocomplete="email" required />
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+      <input id="totp" type="text" placeholder="Authenticator code" autocomplete="one-time-code"
+             inputmode="numeric" pattern="[0-9]*" style="display:none" />
       <button type="submit" id="login-btn">Sign in</button>
       <span id="login-error"></span>
     </form>

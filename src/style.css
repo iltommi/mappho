@@ -145,42 +145,6 @@ html, body {
   box-shadow: 0 8px 32px rgba(0,0,0,.5);
 }
 
-#tab-bar {
-  display: flex;
-  gap: 4px;
-  background: #0f3460;
-  border-radius: 7px;
-  padding: 3px;
-}
-.tab {
-  flex: 1;
-  padding: 6px;
-  border: none;
-  border-radius: 5px;
-  background: none;
-  color: #94a3b8;
-  font-size: .8rem;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.tab.active {
-  background: #16213e;
-  color: #e2e8f0;
-}
-
-.hint {
-  font-size: .78rem;
-  color: #94a3b8;
-  line-height: 1.7;
-  text-align: left !important;
-}
-.hint a { color: #7dd3fc; }
-.hint code {
-  background: #0f3460;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: .85em;
-}
 
 #login-form h2 {
   font-size: 1.4rem;
