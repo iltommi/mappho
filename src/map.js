@@ -19,6 +19,7 @@ L.Icon.Default.mergeOptions({
 });
 
 let cluster;
+const addedIds = new Set();
 
 export function initMap() {
   const map = L.map('map').setView([20, 0], 2);
@@ -32,6 +33,8 @@ export function initMap() {
 }
 
 export function addMarker({ fileid, name, lat, lng }) {
+  if (addedIds.has(fileid)) return;
+  addedIds.add(fileid);
   const marker = L.marker([lat, lng]);
 
   const div = document.createElement('div');
