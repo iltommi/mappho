@@ -47,6 +47,19 @@ html, body {
   max-width: 180px;
 }
 
+#local-btn {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: color .15s;
+  white-space: nowrap;
+}
+#local-btn:hover { color: #e2e8f0; }
+
 #clear-cache-btn {
   flex-shrink: 0;
   padding: 6px 10px;

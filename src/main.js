@@ -20,6 +20,23 @@ const totpInput = document.getElementById('totp');
 const folderSelect = document.getElementById('folder-select');
 const scanBtn = document.getElementById('scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
+const localInput = document.getElementById('local-input');
+
+localInput.addEventListener('change', async () => {
+  const files = Array.from(localInput.files);
+  let found = 0;
+  for (const file of files) {
+    const buf = await file.arrayBuffer();
+    const gps = await extractGPS(buf);
+    log(file.name, gps ? `GPS: ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : 'no GPS');
+    if (gps) {
+      found++;
+      addMarker({ fileid: file.name, name: file.name, lat: gps.lat, lng: gps.lng });
+    }
+  }
+  setStatus(`Local test: ${found} geotagged out of ${files.length} files.`);
+  localInput.value = '';
+});
 let pendingTfaToken = null;
 
 const FOLDER_KEY = 'pcloud_folder';
