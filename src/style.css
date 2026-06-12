@@ -139,6 +139,22 @@ html, body {
 }
 #scan-status.visible { display: block; }
 
+#stop-scan-btn {
+  position: fixed;
+  bottom: 3px;
+  right: 6px;
+  z-index: 1002;
+  height: 18px;
+  padding: 0 6px;
+  background: #1e3a5f;
+  color: #f87171;
+  border: 1px solid #f87171;
+  border-radius: 3px;
+  font-size: .65rem;
+  cursor: pointer;
+  line-height: 16px;
+}
+
 #progress-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
