@@ -279,7 +279,7 @@ async function startScan() {
     await populateFolderPicker();
   } catch (e) {
     log('folder picker error', e.message);
-    setStatus(`Could not load folders: ${e.message}`);
+    showBriefStatus(`Could not load folders: ${e.message}`);
   }
 }
 
