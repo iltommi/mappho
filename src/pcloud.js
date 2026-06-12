@@ -64,7 +64,9 @@ async function getCdnUrl(fileid) {
   );
   const linkData = linkResp.data;
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
-  return `https://${linkData.hosts[0]}${linkData.path}`;
+  const host = linkData.hosts?.[0];
+  if (!host) throw new Error('pCloud getfilelink returned no CDN host');
+  return `https://${host}${linkData.path}`;
 }
 
 function base64ToArrayBuffer(b64) {
@@ -101,8 +103,6 @@ export async function overwriteFile(fileid, arrayBuffer) {
   const stat = await api('stat', { fileid });
   const { name, parentfolderid } = stat.metadata;
 
-  await api('deletefile', { fileid });
-
   const bytes = new Uint8Array(arrayBuffer);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 8192) {
@@ -110,7 +110,7 @@ export async function overwriteFile(fileid, arrayBuffer) {
   }
   const b64 = btoa(bin);
 
-  const boundary = 'SharPhoUpload' + Date.now();
+  const boundary = 'SharPhoUpload' + crypto.randomUUID().replace(/-/g, '');
   const crlf = '\r\n';
   const body = [
     '--' + boundary,
@@ -122,6 +122,7 @@ export async function overwriteFile(fileid, arrayBuffer) {
     '--' + boundary + '--',
   ].join(crlf);
 
+  // Upload first — only delete original once the new file is confirmed
   const resp = await CapacitorHttp.request({
     method: 'POST',
     url: buildUrl('uploadfile', { folderid: parentfolderid, nopartial: 1 }).toString(),
@@ -130,7 +131,12 @@ export async function overwriteFile(fileid, arrayBuffer) {
     connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
-  return resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
+
+  const newFileid = resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
+  if (!newFileid) throw new Error('Upload succeeded but pCloud returned no file ID');
+
+  await api('deletefile', { fileid });
+  return newFileid;
 }
 
 const BACKUP_FILENAME = 'sharpho.json';
@@ -141,7 +147,7 @@ export async function uploadBackup(jsonStr) {
     await api('deletefile', { fileid: stat.metadata.fileid });
   } catch { /* file doesn't exist yet */ }
 
-  const boundary = 'SharPhoBoundary' + Date.now();
+  const boundary = 'SharPhoBoundary' + crypto.randomUUID().replace(/-/g, '');
   const crlf = '\r\n';
   const body =
     '--' + boundary + crlf +
@@ -164,7 +170,9 @@ export async function uploadBackup(jsonStr) {
 export async function downloadBackup() {
   const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
   const link = await api('getfilelink', { fileid: stat.metadata.fileid });
-  const cdnUrl = `https://${link.hosts[0]}${link.path}`;
+  const host = link.hosts?.[0];
+  if (!host) throw new Error('pCloud getfilelink returned no CDN host');
+  const cdnUrl = `https://${host}${link.path}`;
   const resp = await CapacitorHttp.request({
     method: 'GET', url: cdnUrl,
     connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,

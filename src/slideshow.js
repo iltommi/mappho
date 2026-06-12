@@ -31,6 +31,7 @@ let lazyPending = false;
 
 const PAGE_SIZE  = 30;
 const LOAD_AHEAD = 8;
+const MAX_CACHE  = 50;
 
 function resetLazy() {
   lazyFetch = null; lazyOffset = 0; lazyTotal = null; lazyDone = false; lazyPending = false;
@@ -296,6 +297,7 @@ async function fetchCached(fileid) {
   if (imgCache.has(fileid)) return imgCache.get(fileid);
   const src = await fetchThumbSrc(fileid, '512x512');
   imgCache.set(fileid, src);
+  if (imgCache.size > MAX_CACHE) imgCache.delete(imgCache.keys().next().value);
   return src;
 }
 

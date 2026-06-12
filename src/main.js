@@ -148,12 +148,13 @@ localInput.addEventListener('change', async () => {
   const files = Array.from(localInput.files);
   let found = 0;
   for (const file of files) {
-    const buf = await file.arrayBuffer();
-    const gps = await extractGPS(buf);
-    log(file.name, gps ? `GPS: ${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)}` : 'no GPS');
-    if (gps) {
+    const buf  = await file.arrayBuffer();
+    const exif = await extractEXIF(buf);
+    const hasGps = exif.lat != null && !isNaN(exif.lat);
+    log(file.name, hasGps ? `GPS: ${exif.lat.toFixed(5)}, ${exif.lng.toFixed(5)}` : 'no GPS');
+    if (hasGps) {
       found++;
-      addMarker({ fileid: file.name, name: file.name, lat: gps.lat, lng: gps.lng });
+      addMarker({ fileid: file.name, name: file.name, lat: exif.lat, lng: exif.lng });
     }
   }
   setStatus(`Local test: ${found} geotagged out of ${files.length} files.`);
@@ -449,7 +450,7 @@ function showRetryDialog(failedFiles, stats) {
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
     const total = failedFiles.length;
-    stats.scanned = 0; stats.completed = 0;
+    stats.scanned = 0; stats.completed = 0; stats.geotagged = 0;
     const pool = new Set(), inFlight = new Map(), retryFailed = [];
     setProgress(0);
     await processFiles(failedFiles, total, stats, pool, inFlight, retryFailed);

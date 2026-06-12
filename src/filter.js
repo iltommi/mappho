@@ -37,9 +37,19 @@ toSlider.addEventListener('input', () => {
 });
 
 function init() {
+  const noDatesEl = panel.querySelector('.filter-no-dates');
   const range = getDateRange();
-  if (!range) { panel.querySelector('.filter-no-dates').style.display = ''; return; }
-  panel.querySelector('.filter-no-dates').style.display = 'none';
+  if (!range) {
+    noDatesEl.textContent = 'No photo dates in cache — rescan to pick up dates.';
+    noDatesEl.style.display = '';
+    return;
+  }
+  if (range.min === range.max) {
+    noDatesEl.textContent = `All photos are from ${fmt(range.min)} — filter not available.`;
+    noDatesEl.style.display = '';
+    return;
+  }
+  noDatesEl.style.display = 'none';
   minTs = range.min;
   maxTs = range.max;
   fromSlider.value = '0';
