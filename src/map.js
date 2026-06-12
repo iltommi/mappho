@@ -120,7 +120,15 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
         img.src = src;
         img.alt = name;
         img.onload = () => marker.getPopup()?.update();
-        img.onerror = () => log('thumb img error', `len=${src.length}`);
+        img.onerror = () => {
+          log('thumb img error', `len=${src.length}`);
+          img.remove();
+          const errEl = document.createElement('p');
+          errEl.className = 'popup-error';
+          errEl.textContent = 'Preview unavailable';
+          div.insertBefore(errEl, caption);
+          marker.getPopup()?.update();
+        };
         img.style.cursor = 'zoom-in';
         img.addEventListener('click', () => openLightbox(fileid, name));
         div.insertBefore(img, caption);
@@ -128,6 +136,10 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
       marker.getPopup()?.update();
     }).catch(() => {
       loading.remove();
+      const errEl = document.createElement('p');
+      errEl.className = 'popup-error';
+      errEl.textContent = 'Preview unavailable';
+      div.insertBefore(errEl, caption);
       marker.getPopup()?.update();
     });
   });

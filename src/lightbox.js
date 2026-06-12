@@ -6,15 +6,21 @@ const img      = document.getElementById('lightbox-img');
 const closeBtn = document.getElementById('lightbox-close');
 
 let pz = null;
+let wheelHandler = null;
 
 function destroyPanzoom() {
-  if (pz) { pz.destroy(); pz = null; }
+  if (pz) {
+    if (wheelHandler) { el.removeEventListener('wheel', wheelHandler); wheelHandler = null; }
+    pz.destroy();
+    pz = null;
+  }
 }
 
 function initPanzoom() {
   destroyPanzoom();
   pz = Panzoom(img, { maxScale: 8, minScale: 1, cursor: 'grab' });
-  el.addEventListener('wheel', pz.zoomWithWheel, { passive: false });
+  wheelHandler = pz.zoomWithWheel;
+  el.addEventListener('wheel', wheelHandler, { passive: false });
 }
 
 function close() {

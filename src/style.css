@@ -682,3 +682,8 @@ body.filter-open #map { top: 120px; }
   color: #94a3b8;
   padding: 8px 0;
 }
+.popup-error {
+  font-size: .78rem;
+  color: #f87171;
+  padding: 8px 0;
+}
