@@ -15,12 +15,22 @@ registerSW({ onNeedRefresh() { window.location.reload(); } });
 const authBtn = document.getElementById('auth-btn');
 const scanStatusEl = document.getElementById('scan-status');
 
+let sessionGeotagged = 0;
+let briefTimer = null;
+
 function setScanStatus(scanned, geotagged) {
-  scanStatusEl.textContent = `Scanning… ${scanned} scanned, ${geotagged} geotagged`;
+  const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
+  scanStatusEl.textContent = `Scanning… ${scanned} scanned, ${geotagged + sessionGeotagged} geotagged${extra}`;
   scanStatusEl.classList.add('visible');
 }
 function clearScanStatus() {
   scanStatusEl.classList.remove('visible');
+}
+function showBriefStatus(msg, ms = 3000) {
+  clearTimeout(briefTimer);
+  scanStatusEl.textContent = msg;
+  scanStatusEl.classList.add('visible');
+  briefTimer = setTimeout(() => scanStatusEl.classList.remove('visible'), ms);
 }
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -328,14 +338,21 @@ async function scan() {
 
   await Promise.all(pool);
   clearScanStatus();
-  setStatus(`Done — ${stats.geotagged} geotagged out of ${stats.scanned}.`);
+  const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
+  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.scanned}${manualNote}.`);
   setProgress(100);
 }
 
 async function main() {
   handleCallback();
   initMap();
-  setGeotagHandler(photo => startGeotagging(photo, () => openOrphanSlideshow()));
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) {
+      sessionGeotagged++;
+      showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`);
+    }
+    openOrphanSlideshow();
+  }));
 
   const token = getToken();
   setupAuthBtn(!!token);
