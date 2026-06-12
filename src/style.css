@@ -454,7 +454,19 @@ body.filter-open #map { top: 120px; }
   object-fit: contain;
   cursor: zoom-in;
   display: none;
+  will-change: transform, opacity;
 }
+
+@keyframes ss-from-right {
+  from { opacity: 0.7; transform: translateX(65vw); }
+  to   { opacity: 1;   transform: none; }
+}
+@keyframes ss-from-left {
+  from { opacity: 0.7; transform: translateX(-65vw); }
+  to   { opacity: 1;   transform: none; }
+}
+#ss-img.ss-slide-right { animation: ss-from-right 0.22s ease-out forwards; }
+#ss-img.ss-slide-left  { animation: ss-from-left  0.22s ease-out forwards; }
 
 #ss-prev, #ss-next {
   position: absolute;

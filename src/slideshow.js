@@ -60,24 +60,56 @@ el.addEventListener('click', e => { if (e.target === el) close(); });
 
 document.addEventListener('keydown', e => {
   if (!el.classList.contains('open')) return;
-  if (e.key === 'ArrowLeft')  go(current - 1);
-  if (e.key === 'ArrowRight') go(current + 1);
+  if (e.key === 'ArrowLeft')  go(current - 1, -1);
+  if (e.key === 'ArrowRight') go(current + 1,  1);
   if (e.key === 'Escape')     close();
 });
 
-prevBtn.addEventListener('click', () => go(current - 1));
-nextBtn.addEventListener('click', () => go(current + 1));
+prevBtn.addEventListener('click', () => go(current - 1, -1));
+nextBtn.addEventListener('click', () => go(current + 1,  1));
 
 imgEl.addEventListener('click', () => {
   if (photos[current]) openLightbox(photos[current].fileid, photos[current].name);
 });
 
 let touchStartX = 0;
+let touchDelta  = 0;
+let dragging    = false;
 const wrap = document.getElementById('ss-img-wrap');
-wrap.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-wrap.addEventListener('touchend', e => {
-  const dx = e.changedTouches[0].clientX - touchStartX;
-  if (Math.abs(dx) > 40) go(current + (dx < 0 ? 1 : -1));
+
+wrap.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchDelta  = 0;
+  dragging    = true;
+  imgEl.style.transition = 'none';
+}, { passive: true });
+
+wrap.addEventListener('touchmove', e => {
+  if (!dragging) return;
+  touchDelta = e.touches[0].clientX - touchStartX;
+  imgEl.style.transform = `translateX(${touchDelta}px)`;
+}, { passive: true });
+
+wrap.addEventListener('touchend', () => {
+  if (!dragging) return;
+  dragging = false;
+  const dx = touchDelta;
+
+  if (Math.abs(dx) > 50) {
+    const forward = dx < 0;
+    const exitX   = forward ? -wrap.clientWidth : wrap.clientWidth;
+    imgEl.style.transition = 'transform 0.18s ease-in';
+    imgEl.style.transform  = `translateX(${exitX}px)`;
+    setTimeout(() => {
+      imgEl.style.transition = '';
+      imgEl.style.transform  = '';
+      go(current + (forward ? 1 : -1), forward ? 1 : -1);
+    }, 180);
+  } else {
+    imgEl.style.transition = 'transform 0.25s ease-out';
+    imgEl.style.transform  = '';
+    imgEl.addEventListener('transitionend', () => { imgEl.style.transition = ''; }, { once: true });
+  }
 });
 
 async function fetchCached(fileid) {
@@ -109,7 +141,7 @@ async function maybeLoadMore() {
   }
 }
 
-async function go(index) {
+async function go(index, dir = 0) {
   if (!photos.length) return;
   current = ((index % photos.length) + photos.length) % photos.length;
   const id = ++reqId;
@@ -126,7 +158,15 @@ async function go(index) {
   const src = await fetchCached(fileid);
   if (id !== reqId) return;
   loadingEl.style.display = 'none';
-  if (src) { imgEl.src = src; imgEl.style.display = 'block'; }
+  if (src) {
+    imgEl.src = src;
+    imgEl.style.display = 'block';
+    if (dir !== 0) {
+      imgEl.classList.remove('ss-slide-left', 'ss-slide-right');
+      void imgEl.offsetWidth; // force reflow so animation re-triggers
+      imgEl.classList.add(dir > 0 ? 'ss-slide-right' : 'ss-slide-left');
+    }
+  }
 
   const prev = photos[(current - 1 + photos.length) % photos.length];
   const next = photos[(current + 1) % photos.length];
