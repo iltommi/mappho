@@ -168,6 +168,7 @@ folderSelect.addEventListener('change', () => {
 });
 
 scanBtn.addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
   scanBtn.disabled = true;
   clearCacheBtn.disabled = true;
   await runScan();
@@ -213,8 +214,6 @@ function setProgress(pct) {
 
 function showApp() {
   loginOverlay.style.display = 'none';
-  folderSelect.style.display = '';
-  scanBtn.style.display = '';
   menuWrap.style.display = '';
   authBtn.onclick = () => { logout(); location.reload(); };
 }

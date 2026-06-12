@@ -9,11 +9,14 @@
 </head>
 <body>
   <header id="topbar">
-    <select id="folder-select" style="display:none"></select>
-    <button id="scan-btn" style="display:none">Scan</button>
+    <span id="topbar-title">SharPho</span>
     <div id="menu-wrap" style="display:none">
       <button id="menu-btn" title="More options">⋮</button>
       <div id="overflow-menu">
+        <div id="folder-row">
+          <select id="folder-select"></select>
+          <button id="scan-btn">Scan</button>
+        </div>
         <button id="export-btn" class="menu-item">📤 Backup to pCloud</button>
         <button id="import-btn" class="menu-item">📥 Restore from pCloud</button>
         <button id="erase-cache-btn" class="menu-item">🗑 Erase cache</button>
