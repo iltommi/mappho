@@ -148,8 +148,8 @@ function getSelectedFolder() {
 }
 
 async function populateFolderPicker() {
-  const folders = await listFolders(0);
   folderSelect.innerHTML = '<option value="0">All photos</option>';
+  const folders = await listFolders(0);
   for (const f of folders) {
     const opt = document.createElement('option');
     opt.value = String(f.folderid);
@@ -158,7 +158,6 @@ async function populateFolderPicker() {
   }
   const saved = getSelectedFolder();
   folderSelect.value = String(saved.id);
-  folderSelect.style.display = '';
 }
 
 folderSelect.addEventListener('change', () => {
