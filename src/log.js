@@ -9,7 +9,7 @@ document.getElementById('log-clear').addEventListener('click', () => {
   list.innerHTML = '';
 });
 
-document.getElementById('log-save').addEventListener('click', () => {
+document.getElementById('log-save').addEventListener('click', async () => {
   const lines = [];
   for (const entry of [...list.children].reverse()) {
     const time  = entry.querySelector('.log-time')?.textContent ?? '';
@@ -17,12 +17,17 @@ document.getElementById('log-save').addEventListener('click', () => {
     const pre   = entry.querySelector('pre')?.textContent ?? '';
     lines.push(pre ? `${time} ${label}\n  ${pre.replace(/\n/g, '\n  ')}` : `${time} ${label}`);
   }
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `sharpho-log-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  const filename = `sharpho-log-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+  const file = new File([lines.join('\n')], filename, { type: 'text/plain' });
+  if (navigator.share && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title: 'SharPho debug log' });
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 });
 
 export function toggleLog() {
