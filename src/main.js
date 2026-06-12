@@ -119,8 +119,8 @@ menuBtn.addEventListener('click', (e) => {
   overflowMenu.classList.toggle('open');
 });
 
-document.addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
+document.addEventListener('click', (e) => {
+  if (!menuWrap.contains(e.target)) overflowMenu.classList.remove('open');
 });
 
 localInput.addEventListener('change', async () => {
