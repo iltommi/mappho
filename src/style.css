@@ -435,38 +435,42 @@ body.filter-open #map { top: 120px; }
 
 #ss-img-wrap {
   flex: 1;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+#ss-track {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 300%;
+  display: flex;
+  will-change: transform;
+}
+
+.ss-pane {
+  width: 33.333%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  position: relative;
-  overflow: hidden;
+  flex-shrink: 0;
 }
+
+.ss-pane img {
+  max-width: calc(100% - 96px);
+  max-height: 80vh;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+#ss-img { cursor: zoom-in; }
 
 #ss-loading {
   color: #94a3b8;
   font-size: .9rem;
 }
-
-#ss-img {
-  max-width: calc(100% - 96px);
-  max-height: 80vh;
-  object-fit: contain;
-  cursor: zoom-in;
-  display: none;
-  will-change: transform, opacity;
-}
-
-@keyframes ss-from-right {
-  from { opacity: 0.7; transform: translateX(65vw); }
-  to   { opacity: 1;   transform: none; }
-}
-@keyframes ss-from-left {
-  from { opacity: 0.7; transform: translateX(-65vw); }
-  to   { opacity: 1;   transform: none; }
-}
-#ss-img.ss-slide-right { animation: ss-from-right 0.22s ease-out forwards; }
-#ss-img.ss-slide-left  { animation: ss-from-left  0.22s ease-out forwards; }
 
 #ss-prev, #ss-next {
   position: absolute;
