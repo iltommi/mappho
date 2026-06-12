@@ -26,12 +26,23 @@ const scanStatusEl = document.getElementById('scan-status');
 let sessionGeotagged = 0;
 let briefTimer = null;
 let scanCancelled = false;
+let topbarGeotagged = 0;
+let topbarTotal = 0;
+
+const topbarTitle = document.getElementById('topbar-title');
+function updateTopbar() {
+  const tagged = topbarGeotagged + sessionGeotagged;
+  topbarTitle.textContent = topbarTotal > 0 ? `${tagged} / ${topbarTotal}` : '';
+}
 
 function setScanStatus(scanned, geotagged, total = null) {
   const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   const progress = total ? ` ${scanned} / ${total}` : ` ${scanned}`;
   scanStatusEl.textContent = `Scanning…${progress} (${geotagged + sessionGeotagged} geotagged${extra})`;
   scanStatusEl.classList.add('visible');
+  topbarGeotagged = geotagged;
+  if (total) topbarTotal = total;
+  updateTopbar();
 }
 function clearScanStatus() {
   scanStatusEl.classList.remove('visible');
@@ -278,6 +289,9 @@ async function startScan() {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
     else toMigrate.push(p);
   }
+  topbarGeotagged = cachedGeo;
+  topbarTotal = cached.length;
+  updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and tap Scan.');
@@ -453,6 +467,7 @@ async function main() {
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) {
       sessionGeotagged++;
+      updateTopbar();
       showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`);
     }
     openOrphanSlideshow();
