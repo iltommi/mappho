@@ -57,6 +57,23 @@ export async function clearOrphans() {
   return (await db()).clear(ORPHAN_STORE);
 }
 
+export async function exportDb() {
+  const d = await db();
+  const photos  = await d.getAll(STORE);
+  const orphans = await d.getAll(ORPHAN_STORE);
+  return { version: 1, photos, orphans };
+}
+
+export async function importDb(backup) {
+  const d = await db();
+  const tx = d.transaction([STORE, ORPHAN_STORE], 'readwrite');
+  await tx.objectStore(STORE).clear();
+  await tx.objectStore(ORPHAN_STORE).clear();
+  for (const r of backup.photos  ?? []) await tx.objectStore(STORE).put(r);
+  for (const r of backup.orphans ?? []) await tx.objectStore(ORPHAN_STORE).put(r);
+  await tx.done;
+}
+
 export async function getOrphansPage(offset, limit) {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');

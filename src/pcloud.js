@@ -124,6 +124,64 @@ async function fetchFileHeadProxy(fileid, bytes) {
   return dlResp.arrayBuffer();
 }
 
+const BACKUP_FILENAME = 'sharpho.json';
+
+// Upload a JSON string to the pCloud root folder as sharpho.json.
+// Deletes any existing file with the same name first to avoid duplicates.
+export async function uploadBackup(jsonStr) {
+  // Delete existing backup if present
+  try {
+    const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
+    await api('deletefile', { fileid: stat.metadata.fileid });
+  } catch { /* file doesn't exist yet */ }
+
+  const boundary = 'SharPhoBoundary' + Date.now();
+  const crlf = '\r\n';
+  const body =
+    '--' + boundary + crlf +
+    `Content-Disposition: form-data; name="file"; filename="${BACKUP_FILENAME}"` + crlf +
+    'Content-Type: application/json' + crlf +
+    crlf +
+    jsonStr + crlf +
+    '--' + boundary + '--';
+
+  const url = buildUrl('uploadfile', { folderid: 0, nopartial: 1 }).toString();
+
+  if (isNative) {
+    const resp = await CapacitorHttp.request({
+      method: 'POST',
+      url,
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      data: body,
+    });
+    if (resp.data?.result !== 0) throw new Error(`pCloud ${resp.data?.result}: ${resp.data?.error}`);
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', new Blob([jsonStr], { type: 'application/json' }), BACKUP_FILENAME);
+  const resp = await fetch(url, { method: 'POST', body: formData, referrerPolicy: 'no-referrer' });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
+}
+
+// Download sharpho.json from pCloud root and return its parsed contents.
+export async function downloadBackup() {
+  const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
+  const link = await api('getfilelink', { fileid: stat.metadata.fileid });
+  const cdnUrl = `https://${link.hosts[0]}${link.path}`;
+
+  if (isNative) {
+    const resp = await CapacitorHttp.request({ method: 'GET', url: cdnUrl });
+    return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
+  }
+
+  const resp = await fetch(cdnUrl);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
 function thumbUrl(fileid, size = '512x512') {
   const url = new URL(`${getApiHost()}/getthumb`);
   url.searchParams.set('auth', getToken());

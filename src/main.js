@@ -1,11 +1,11 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
 import { log, toggleLog } from './log.js';
 import { toggleFilter } from './filter.js';
-import { listImages, listFolders, fetchFileHead } from './pcloud.js';
+import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
 import { extractEXIF } from './exif.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
 import { openLazySlideshow } from './slideshow.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, exportDb, importDb } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
 
@@ -35,6 +35,44 @@ const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
 const overflowMenu = document.getElementById('overflow-menu');
+
+document.getElementById('export-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  try {
+    log('Backup', 'exporting…');
+    const backup = await exportDb();
+    await uploadBackup(JSON.stringify(backup));
+    log('Backup', `saved ${backup.photos.length} records to pCloud`);
+    setStatus(`Backup saved — ${backup.photos.length} photos exported.`);
+  } catch (e) {
+    log('Backup error', e.message);
+    setStatus(`Backup failed: ${e.message}`);
+  }
+});
+
+document.getElementById('import-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  try {
+    log('Restore', 'downloading from pCloud…');
+    const backup = await downloadBackup();
+    if (!backup?.photos) throw new Error('Invalid backup file');
+    await importDb(backup);
+    clearMarkers();
+    const cached = await getAllCached();
+    const orphanWrites = [];
+    let geo = 0;
+    for (const p of cached) {
+      if (p.lat != null) { addMarker(p); geo++; }
+      else orphanWrites.push(putOrphan(p));
+    }
+    await Promise.all(orphanWrites);
+    log('Restore', `${geo} geotagged, ${backup.orphans?.length ?? 0} unlocalised`);
+    setStatus(`Restored — ${geo} geotagged photos loaded.`);
+  } catch (e) {
+    log('Restore error', e.message);
+    setStatus(`Restore failed: ${e.message}`);
+  }
+});
 
 document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
