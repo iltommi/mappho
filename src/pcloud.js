@@ -2,6 +2,9 @@ import { CapacitorHttp } from '@capacitor/core';
 import { getToken, getApiHost } from './auth.js';
 import { log } from './log.js';
 
+const API_TIMEOUT = 20000;  // ms — pCloud JSON API calls
+const CDN_TIMEOUT = 30000;  // ms — binary CDN downloads
+
 function buildUrl(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
   url.searchParams.set('auth', getToken());
@@ -11,7 +14,10 @@ function buildUrl(endpoint, params = {}) {
 
 async function api(endpoint, params = {}) {
   const url = buildUrl(endpoint, params);
-  const resp = await CapacitorHttp.request({ method: 'GET', url: url.toString() });
+  const resp = await CapacitorHttp.request({
+    method: 'GET', url: url.toString(),
+    connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
+  });
   const data = resp.data;
   if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
   return data;
@@ -47,6 +53,7 @@ async function getCdnUrl(fileid) {
   const linkResp = await CapacitorHttp.request({
     method: 'GET',
     url: buildUrl('getfilelink', { fileid }).toString(),
+    connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
   });
   const linkData = linkResp.data;
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
@@ -68,6 +75,7 @@ export async function fetchFileHead(fileid, bytes = 131072) {
     url: cdnUrl,
     headers: { Range: `bytes=0-${bytes - 1}` },
     responseType: 'arraybuffer',
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty CDN response');
@@ -76,7 +84,10 @@ export async function fetchFileHead(fileid, bytes = 131072) {
 
 export async function downloadFullFile(fileid) {
   const cdnUrl = await getCdnUrl(fileid);
-  const dlResp = await CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer' });
+  const dlResp = await CapacitorHttp.request({
+    method: 'GET', url: cdnUrl, responseType: 'arraybuffer',
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+  });
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
@@ -112,6 +123,7 @@ export async function overwriteFile(fileid, arrayBuffer) {
     url: buildUrl('uploadfile', { folderid: parentfolderid, nopartial: 1 }).toString(),
     headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
     data: body,
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
   return resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
@@ -140,6 +152,7 @@ export async function uploadBackup(jsonStr) {
     url: buildUrl('uploadfile', { folderid: 0, nopartial: 1 }).toString(),
     headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
     data: body,
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   if (resp.data?.result !== 0) throw new Error(`pCloud ${resp.data?.result}: ${resp.data?.error}`);
 }
@@ -148,7 +161,10 @@ export async function downloadBackup() {
   const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
   const link = await api('getfilelink', { fileid: stat.metadata.fileid });
   const cdnUrl = `https://${link.hosts[0]}${link.path}`;
-  const resp = await CapacitorHttp.request({ method: 'GET', url: cdnUrl });
+  const resp = await CapacitorHttp.request({
+    method: 'GET', url: cdnUrl,
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+  });
   return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
 }
 
@@ -162,7 +178,10 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
   const urlStr = url.toString();
   log('fetchThumb', urlStr);
   try {
-    const resp = await CapacitorHttp.request({ method: 'GET', url: urlStr, responseType: 'arraybuffer' });
+    const resp = await CapacitorHttp.request({
+      method: 'GET', url: urlStr, responseType: 'arraybuffer',
+      connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
+    });
     log('fetchThumb status', resp.status);
     const raw = resp.data;
     if (!raw) { log('fetchThumb', 'empty response'); return null; }
