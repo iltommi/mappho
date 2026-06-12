@@ -261,6 +261,7 @@ function setupAuthBtn(isLoggedIn) {
 
 async function startScan() {
   // Load cached markers first — no network needed, works immediately after wake.
+  showBriefStatus('Loading cache…', 30000);
   const cached = await getAllCached();
   let cachedGeo = 0;
   const orphanWrites = [];
@@ -269,9 +270,9 @@ async function startScan() {
     else orphanWrites.push(putOrphan(p)); // migrate existing non-GPS records into orphans store
   }
   await Promise.all(orphanWrites);
-  setStatus(cached.length > 0
-    ? `${cachedGeo} geotagged photos from cache. Pick a folder and click Scan.`
-    : 'Pick a folder and click Scan.');
+  showBriefStatus(cached.length > 0
+    ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
+    : 'Cache empty — open the menu and tap Scan.');
 
   // Populate folder picker separately — a network failure here shouldn't lose the markers.
   try {
