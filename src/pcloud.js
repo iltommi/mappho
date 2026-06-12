@@ -18,7 +18,7 @@ async function api(endpoint, params = {}) {
 }
 
 export async function listFolders(folderid = 0) {
-  const data = await api('listfolder', { folderid });
+  const data = await api('listfolder', { folderid, nofiles: 1 });
   return (data.metadata.contents ?? []).filter(i => i.isfolder);
 }
 
