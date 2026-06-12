@@ -29,25 +29,39 @@ let pinDropMarker = null;
 let pinDropHandler = null;
 let pinDropOnPlace = null;
 
-export function enterPinDropMode({ center, onPlace }) {
+const PIN_ICON = L.icon({
+  iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
+    '<path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z" fill="#e74c3c"/>' +
+    '<circle cx="12" cy="12" r="5" fill="white"/></svg>'
+  ),
+  iconSize: [24, 36], iconAnchor: [12, 36],
+});
+
+function placePinAt(lat, lng) {
+  if (pinDropMarker) {
+    pinDropMarker.setLatLng([lat, lng]);
+  } else {
+    pinDropMarker = L.marker([lat, lng], { draggable: true, icon: PIN_ICON }).addTo(map);
+    pinDropMarker.on('drag', ev => pinDropOnPlace?.({ lat: ev.latlng.lat, lng: ev.latlng.lng }));
+    pinDropMarker.on('dragend', ev => pinDropOnPlace?.({ lat: ev.target.getLatLng().lat, lng: ev.target.getLatLng().lng }));
+  }
+}
+
+export function enterPinDropMode({ center, initialPin, onPlace }) {
   pinDropOnPlace = onPlace;
-  if (center) map.setView([center.lat, center.lng], 14);
   map.getContainer().style.cursor = 'crosshair';
+
+  if (initialPin) {
+    map.setView([initialPin.lat, initialPin.lng], 14);
+    placePinAt(initialPin.lat, initialPin.lng);
+  } else if (center) {
+    map.setView([center.lat, center.lng], 14);
+  }
+
   pinDropHandler = e => {
     const { lat, lng } = e.latlng;
-    if (pinDropMarker) {
-      pinDropMarker.setLatLng([lat, lng]);
-    } else {
-      pinDropMarker = L.marker([lat, lng], {
-        draggable: true,
-        icon: L.icon({ iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
-          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
-          '<path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24s12-15 12-24C24 5.4 18.6 0 12 0z" fill="#e74c3c"/>' +
-          '<circle cx="12" cy="12" r="5" fill="white"/></svg>'
-        ), iconSize: [24, 36], iconAnchor: [12, 36] })
-      }).addTo(map);
-      pinDropMarker.on('drag', ev => pinDropOnPlace?.({ lat: ev.latlng.lat, lng: ev.latlng.lng }));
-    }
+    placePinAt(lat, lng);
     pinDropOnPlace?.({ lat, lng });
   };
   map.on('click', pinDropHandler);

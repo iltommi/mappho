@@ -29,26 +29,27 @@ export async function startGeotagging(photo, callback) {
   // Resolve a timestamp to compare with geotagged photos
   const ts = (photo.ts && photo.ts > 0) ? photo.ts : parseDateFromFilename(photo.name);
 
-  let center = null;
-  let hint   = 'Tap map to place pin';
+  let initialPin = null;
+  let hint       = 'Tap map to place pin';
 
   if (ts) {
     const closest = await findClosestGeotagged(ts);
     if (closest) {
-      center = { lat: closest.lat, lng: closest.lng };
+      initialPin = { lat: closest.lat, lng: closest.lng };
+      pendingLatLng = initialPin;
       const delta  = fmtDelta(closest.delta);
       const before = ts < closest.ts ? 'before' : 'after';
-      hint = `Nearest: ${closest.name} · ${delta} ${before} — tap to place pin`;
+      hint = `Nearest: ${closest.name} · ${delta} ${before}`;
     }
   }
 
   hintEl.textContent  = hint;
-  saveBtn.disabled    = true;
+  saveBtn.disabled    = pendingLatLng === null;
   saveBtn.textContent = '💾 Save';
   bar.style.display   = 'flex';
 
   enterPinDropMode({
-    center,
+    initialPin,
     onPlace: ({ lat, lng }) => {
       pendingLatLng    = { lat, lng };
       saveBtn.disabled = false;
