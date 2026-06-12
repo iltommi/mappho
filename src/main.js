@@ -26,9 +26,10 @@ const scanStatusEl = document.getElementById('scan-status');
 let sessionGeotagged = 0;
 let briefTimer = null;
 
-function setScanStatus(scanned, geotagged) {
+function setScanStatus(scanned, geotagged, total = null) {
   const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
-  scanStatusEl.textContent = `Scanning… ${scanned} scanned, ${geotagged + sessionGeotagged} geotagged${extra}`;
+  const progress = total ? ` ${scanned} / ${total}` : ` ${scanned}`;
+  scanStatusEl.textContent = `Scanning…${progress} (${geotagged + sessionGeotagged} geotagged${extra})`;
   scanStatusEl.classList.add('visible');
 }
 function clearScanStatus() {
@@ -325,20 +326,36 @@ async function processFile(file, stats) {
 
 async function scan() {
   const CONCURRENCY = 6;
-  const stats = { scanned: 0, geotagged: 0 };
+  const stats = { scanned: 0, geotagged: 0, completed: 0 };
   const pool = new Set();
-  const inFlight = new Map(); // promise -> filename
+  const inFlight = new Map();
 
   const { id: folderId, name: folderName } = getSelectedFolder();
   log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
+
+  // Phase 1: BFS all folders to discover the full file list
+  scanStatusEl.textContent = 'Discovering files…';
+  scanStatusEl.classList.add('visible');
+  const allFiles = [];
   for await (const file of listImages(folderId)) {
+    allFiles.push(file);
+    scanStatusEl.textContent = `Discovering… ${allFiles.length} files found`;
+  }
+  const total = allFiles.length;
+  log('Discovery done', `${total} JPEG files`);
+  setProgress(0);
+
+  // Phase 2: process with accurate progress bar
+  for (const file of allFiles) {
     stats.scanned++;
-    setScanStatus(stats.scanned, stats.geotagged);
+    setScanStatus(stats.scanned, stats.geotagged, total);
 
     const p = processFile(file, stats).finally(() => {
       pool.delete(p);
       inFlight.delete(p);
-      setScanStatus(stats.scanned, stats.geotagged);
+      stats.completed++;
+      setProgress((stats.completed / total) * 100);
+      setScanStatus(stats.scanned, stats.geotagged, total);
     });
     pool.add(p);
     inFlight.set(p, file.name);
@@ -346,11 +363,11 @@ async function scan() {
     if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
 
-  log('BFS done', `${stats.scanned} files found, waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
+  log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
   clearScanStatus();
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
-  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.scanned}${manualNote}.`);
+  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
   setProgress(100);
 }
 
