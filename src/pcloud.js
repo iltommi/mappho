@@ -5,6 +5,13 @@ import { log } from './log.js';
 const API_TIMEOUT = 20000;  // ms — pCloud JSON API calls
 const CDN_TIMEOUT = 30000;  // ms — binary CDN downloads
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 function buildUrl(endpoint, params = {}) {
   const url = new URL(`${getApiHost()}/${endpoint}`);
   url.searchParams.set('auth', getToken());
@@ -14,10 +21,10 @@ function buildUrl(endpoint, params = {}) {
 
 async function api(endpoint, params = {}) {
   const url = buildUrl(endpoint, params);
-  const resp = await CapacitorHttp.request({
-    method: 'GET', url: url.toString(),
-    connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
-  });
+  const resp = await withTimeout(
+    CapacitorHttp.request({ method: 'GET', url: url.toString(), connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT }),
+    API_TIMEOUT,
+  );
   const data = resp.data;
   if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
   return data;
@@ -50,11 +57,10 @@ export async function* listImages(folderid = 0) {
 }
 
 async function getCdnUrl(fileid) {
-  const linkResp = await CapacitorHttp.request({
-    method: 'GET',
-    url: buildUrl('getfilelink', { fileid }).toString(),
-    connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
-  });
+  const linkResp = await withTimeout(
+    CapacitorHttp.request({ method: 'GET', url: buildUrl('getfilelink', { fileid }).toString(), connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT }),
+    API_TIMEOUT,
+  );
   const linkData = linkResp.data;
   if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
   return `https://${linkData.hosts[0]}${linkData.path}`;
@@ -70,13 +76,10 @@ function base64ToArrayBuffer(b64) {
 
 export async function fetchFileHead(fileid, bytes = 131072) {
   const cdnUrl = await getCdnUrl(fileid);
-  const dlResp = await CapacitorHttp.request({
-    method: 'GET',
-    url: cdnUrl,
-    headers: { Range: `bytes=0-${bytes - 1}` },
-    responseType: 'arraybuffer',
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
-  });
+  const dlResp = await withTimeout(
+    CapacitorHttp.request({ method: 'GET', url: cdnUrl, headers: { Range: `bytes=0-${bytes - 1}` }, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
+    CDN_TIMEOUT,
+  );
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty CDN response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
@@ -84,10 +87,10 @@ export async function fetchFileHead(fileid, bytes = 131072) {
 
 export async function downloadFullFile(fileid) {
   const cdnUrl = await getCdnUrl(fileid);
-  const dlResp = await CapacitorHttp.request({
-    method: 'GET', url: cdnUrl, responseType: 'arraybuffer',
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
-  });
+  const dlResp = await withTimeout(
+    CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
+    CDN_TIMEOUT,
+  );
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
