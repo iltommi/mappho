@@ -2,48 +2,63 @@ import { fetchThumbSrc } from './pcloud.js';
 import { openLightbox } from './lightbox.js';
 
 const el        = document.getElementById('slideshow');
-const imgEl     = document.getElementById('ss-img');
+const trackEl   = document.getElementById('ss-track');
+const curImg    = document.getElementById('ss-img');
+const prevImg   = document.getElementById('ss-img-prev');
+const nextImg   = document.getElementById('ss-img-next');
 const loadingEl = document.getElementById('ss-loading');
 const counterEl = document.getElementById('ss-counter');
 const captionEl = document.getElementById('ss-caption');
 const prevBtn   = document.getElementById('ss-prev');
 const nextBtn   = document.getElementById('ss-next');
-const closeBtn    = document.getElementById('ss-close');
-const geotagBtn   = document.getElementById('ss-geotag-btn');
+const closeBtn  = document.getElementById('ss-close');
+const geotagBtn = document.getElementById('ss-geotag-btn');
+const wrap      = document.getElementById('ss-img-wrap');
 
 let geotagHandler = null;
-
 export function setGeotagHandler(fn) { geotagHandler = fn; }
 
 let photos  = [];
 let current = 0;
 let reqId   = 0;
-const cache = new Map();
+const imgCache = new Map();
 
-// Lazy-loading state (null when not in lazy mode)
-let lazyFetch    = null; // async (offset, limit) => record[]
-let lazyOffset   = 0;
-let lazyTotal    = null; // known total or null
-let lazyDone     = false;
-let lazyPending  = false;
+let lazyFetch   = null;
+let lazyOffset  = 0;
+let lazyTotal   = null;
+let lazyDone    = false;
+let lazyPending = false;
 
 const PAGE_SIZE  = 30;
 const LOAD_AHEAD = 8;
 
 function resetLazy() {
-  lazyFetch   = null;
-  lazyOffset  = 0;
-  lazyTotal   = null;
-  lazyDone    = false;
-  lazyPending = false;
+  lazyFetch = null; lazyOffset = 0; lazyTotal = null; lazyDone = false; lazyPending = false;
 }
+
+// ── Track helpers ────────────────────────────────────────────────────────────
+
+// One pane width equals the wrap's client width.
+// Normal resting position: translateX(-paneW) → center pane visible.
+// Next pane:  translateX(-2*paneW)
+// Prev pane:  translateX(0)
+
+function centerTrack(animate) {
+  trackEl.style.transition = animate
+    ? 'transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94)'
+    : 'none';
+  trackEl.style.transform = `translateX(${-wrap.clientWidth}px)`;
+}
+
+// ── Close ────────────────────────────────────────────────────────────────────
 
 function close() {
   el.classList.remove('open');
   geotagBtn.style.display = 'none';
   photos = [];
-  cache.clear();
+  imgCache.clear();
   resetLazy();
+  centerTrack(false);
 }
 
 export function closeSlideshow() { close(); }
@@ -58,66 +73,124 @@ geotagBtn.addEventListener('click', () => {
 closeBtn.addEventListener('click', close);
 el.addEventListener('click', e => { if (e.target === el) close(); });
 
+// ── Keyboard ─────────────────────────────────────────────────────────────────
+
 document.addEventListener('keydown', e => {
   if (!el.classList.contains('open')) return;
-  if (e.key === 'ArrowLeft')  go(current - 1, -1);
-  if (e.key === 'ArrowRight') go(current + 1,  1);
+  if (e.key === 'ArrowLeft')  navigate(-1);
+  if (e.key === 'ArrowRight') navigate(1);
   if (e.key === 'Escape')     close();
 });
 
-prevBtn.addEventListener('click', () => go(current - 1, -1));
-nextBtn.addEventListener('click', () => go(current + 1,  1));
+// ── Buttons ───────────────────────────────────────────────────────────────────
 
-imgEl.addEventListener('click', () => {
+prevBtn.addEventListener('click', () => navigate(-1));
+nextBtn.addEventListener('click', () => navigate(1));
+
+curImg.addEventListener('click', () => {
   if (photos[current]) openLightbox(photos[current].fileid, photos[current].name);
 });
+
+// ── Touch / swipe ─────────────────────────────────────────────────────────────
 
 let touchStartX = 0;
 let touchDelta  = 0;
 let dragging    = false;
-const wrap = document.getElementById('ss-img-wrap');
+let busy        = false;
 
 wrap.addEventListener('touchstart', e => {
+  if (busy) return;
   touchStartX = e.touches[0].clientX;
   touchDelta  = 0;
   dragging    = true;
-  imgEl.style.transition = 'none';
+  trackEl.style.transition = 'none';
 }, { passive: true });
 
 wrap.addEventListener('touchmove', e => {
   if (!dragging) return;
   touchDelta = e.touches[0].clientX - touchStartX;
-  imgEl.style.transform = `translateX(${touchDelta}px)`;
+  trackEl.style.transform = `translateX(${-wrap.clientWidth + touchDelta}px)`;
 }, { passive: true });
 
 wrap.addEventListener('touchend', () => {
   if (!dragging) return;
   dragging = false;
-  const dx = touchDelta;
-
-  if (Math.abs(dx) > 50) {
-    const forward = dx < 0;
-    const exitX   = forward ? -wrap.clientWidth : wrap.clientWidth;
-    imgEl.style.transition = 'transform 0.18s ease-in';
-    imgEl.style.transform  = `translateX(${exitX}px)`;
-    setTimeout(() => {
-      imgEl.style.transition = '';
-      imgEl.style.transform  = '';
-      go(current + (forward ? 1 : -1), forward ? 1 : -1);
-    }, 180);
+  if (Math.abs(touchDelta) > 50) {
+    navigate(touchDelta < 0 ? 1 : -1);
   } else {
-    imgEl.style.transition = 'transform 0.25s ease-out';
-    imgEl.style.transform  = '';
-    imgEl.addEventListener('transitionend', () => { imgEl.style.transition = ''; }, { once: true });
+    centerTrack(true); // bounce back
   }
 });
 
+// ── Navigate (swipe or button) ────────────────────────────────────────────────
+
+async function navigate(dir) {
+  if (busy || !photos.length) return;
+  busy = true;
+  dragging = false;
+
+  const w = wrap.clientWidth;
+
+  // Slide strip to reveal the adjacent pane
+  trackEl.style.transition = 'transform 0.28s cubic-bezier(0.25,0.46,0.45,0.94)';
+  trackEl.style.transform  = `translateX(${dir > 0 ? -2 * w : 0}px)`;
+
+  await new Promise(r => setTimeout(r, 280));
+
+  current = ((current + dir) % photos.length + photos.length) % photos.length;
+  const id = ++reqId;
+
+  updateCaption();
+
+  // The pane that just slid into view already has the image (preloaded).
+  // Copy its src to the center pane so the snap-back is invisible.
+  const srcPane = dir > 0 ? nextImg : prevImg;
+  if (srcPane.src && srcPane.src !== window.location.href) {
+    curImg.src           = srcPane.src;
+    curImg.style.display = 'block';
+    loadingEl.style.display = 'none';
+  } else {
+    curImg.style.display    = 'none';
+    loadingEl.style.display = '';
+  }
+
+  // Reset strip to center instantly — seamless because center now matches what was showing
+  trackEl.style.transition = 'none';
+  trackEl.style.transform  = `translateX(${-w}px)`;
+
+  busy = false;
+
+  // If the image wasn't preloaded yet, fetch it now
+  if (!curImg.style.display || curImg.style.display === 'none') {
+    const src = await fetchCached(photos[current].fileid);
+    if (id !== reqId) return;
+    loadingEl.style.display = 'none';
+    if (src) { curImg.src = src; curImg.style.display = 'block'; }
+  }
+
+  loadSidePanes();
+  maybeLoadMore();
+}
+
+// ── Cache / preload ───────────────────────────────────────────────────────────
+
 async function fetchCached(fileid) {
-  if (cache.has(fileid)) return cache.get(fileid);
+  if (imgCache.has(fileid)) return imgCache.get(fileid);
   const src = await fetchThumbSrc(fileid, '512x512');
-  cache.set(fileid, src);
+  imgCache.set(fileid, src);
   return src;
 }
+
+function loadSidePanes() {
+  const pIdx = (current - 1 + photos.length) % photos.length;
+  const nIdx = (current + 1) % photos.length;
+  prevImg.src = '';
+  nextImg.src = '';
+  if (photos[pIdx]) fetchCached(photos[pIdx].fileid).then(s => { if (s) prevImg.src = s; });
+  if (photos[nIdx]) fetchCached(photos[nIdx].fileid).then(s => { if (s) nextImg.src = s; });
+}
+
+// ── Counter / caption ─────────────────────────────────────────────────────────
 
 function updateCounter() {
   const total = lazyTotal != null
@@ -125,6 +198,15 @@ function updateCounter() {
     : lazyDone ? photos.length : `${photos.length}+`;
   counterEl.textContent = `${current + 1} / ${total}`;
 }
+
+function updateCaption() {
+  const { name, ts } = photos[current];
+  updateCounter();
+  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
+  captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
+}
+
+// ── Lazy loading ──────────────────────────────────────────────────────────────
 
 async function maybeLoadMore() {
   if (!lazyFetch || lazyDone || lazyPending) return;
@@ -141,52 +223,44 @@ async function maybeLoadMore() {
   }
 }
 
-async function go(index, dir = 0) {
-  if (!photos.length) return;
+// ── Direct jump (open / initial load) ────────────────────────────────────────
+
+async function go(index) {
   current = ((index % photos.length) + photos.length) % photos.length;
   const id = ++reqId;
 
-  const { fileid, name, ts } = photos[current];
-  updateCounter();
-  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
-  captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
-  imgEl.style.display = 'none';
+  updateCaption();
+  curImg.style.display    = 'none';
   loadingEl.style.display = '';
+  prevImg.src = '';
+  nextImg.src = '';
+  centerTrack(false);
 
-  maybeLoadMore();
-
-  const src = await fetchCached(fileid);
+  const src = await fetchCached(photos[current].fileid);
   if (id !== reqId) return;
-  loadingEl.style.display = 'none';
-  if (src) {
-    imgEl.src = src;
-    imgEl.style.display = 'block';
-    if (dir !== 0) {
-      imgEl.classList.remove('ss-slide-left', 'ss-slide-right');
-      void imgEl.offsetWidth; // force reflow so animation re-triggers
-      imgEl.classList.add(dir > 0 ? 'ss-slide-right' : 'ss-slide-left');
-    }
-  }
 
-  const prev = photos[(current - 1 + photos.length) % photos.length];
-  const next = photos[(current + 1) % photos.length];
-  fetchCached(prev.fileid);
-  fetchCached(next.fileid);
+  loadingEl.style.display = 'none';
+  if (src) { curImg.src = src; curImg.style.display = 'block'; }
+
+  loadSidePanes();
+  maybeLoadMore();
 }
+
+// ── Public API ────────────────────────────────────────────────────────────────
 
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
   resetLazy();
-  lazyDone = true; // all photos already in memory, no paging needed
-  photos = photoList;
-  cache.clear();
+  lazyDone = true;
+  photos   = photoList;
+  imgCache.clear();
   geotagBtn.style.display = 'none';
   el.classList.add('open');
   go(startIndex);
 }
 
 export async function openLazySlideshow(fetchPage, total) {
-  cache.clear();
+  imgCache.clear();
   photos = [];
   resetLazy();
   lazyFetch = fetchPage;
