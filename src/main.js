@@ -1,4 +1,4 @@
-import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired } from './auth.js';
+import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
 import { log, toggleLog } from './log.js';
 import { toggleFilter } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
@@ -13,6 +13,14 @@ import './style.css';
 registerSW({ onNeedRefresh() { window.location.reload(); } });
 
 const authBtn = document.getElementById('auth-btn');
+
+// Datacenter picker — persists selection in localStorage
+const dcRadios = document.querySelectorAll('input[name="dc"]');
+const currentHost = getApiHost();
+dcRadios.forEach(r => {
+  r.checked = (r.value === 'eu' ? EU_HOST : US_HOST) === currentHost;
+  r.addEventListener('change', () => setApiHost(r.value === 'eu' ? EU_HOST : US_HOST));
+});
 const scanStatusEl = document.getElementById('scan-status');
 
 let sessionGeotagged = 0;

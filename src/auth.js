@@ -14,15 +14,21 @@ function getDeviceId() {
   return id;
 }
 
-// EU datacenter — change to 'https://api.pcloud.com' if you're on US.
-const DEFAULT_HOST = 'https://eapi.pcloud.com';
+const EU_HOST = 'https://eapi.pcloud.com';
+const US_HOST = 'https://api.pcloud.com';
+
+export { EU_HOST, US_HOST };
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
 export function getApiHost() {
-  return localStorage.getItem(HOST_KEY) ?? DEFAULT_HOST;
+  return localStorage.getItem(HOST_KEY) ?? EU_HOST;
+}
+
+export function setApiHost(host) {
+  localStorage.setItem(HOST_KEY, host);
 }
 
 export function logout() {
@@ -34,7 +40,6 @@ export function handleCallback() {}
 
 export function saveToken(token) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
 
 export class TwoFactorRequired extends Error {
@@ -62,7 +67,7 @@ async function pcloudFetch(url, options = {}) {
 }
 
 export async function loginWithPassword(email, password) {
-  const url = new URL(`${DEFAULT_HOST}/login`);
+  const url = new URL(`${getApiHost()}/login`);
   const body = new URLSearchParams({
     username: email, password,
     getauth: '1', logout: '1',
@@ -83,11 +88,10 @@ export async function loginWithPassword(email, password) {
   const authToken = data.auth ?? data.token;
   if (!authToken) throw new Error('No auth token in response.');
   localStorage.setItem(TOKEN_KEY, authToken);
-  localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
 
 export async function loginWithTFA(tfaToken, code) {
-  const url = new URL(`${DEFAULT_HOST}/tfa_login`);
+  const url = new URL(`${getApiHost()}/tfa_login`);
   url.searchParams.set('token', tfaToken);
   url.searchParams.set('code', code.replace(/\D/g, ''));
   url.searchParams.set('trustdevice', 'false');
@@ -101,5 +105,4 @@ export async function loginWithTFA(tfaToken, code) {
   const authToken = data.auth ?? data.token ?? data.authtoken;
   if (!authToken) throw new Error('No auth token in TFA response. Full response logged above.');
   localStorage.setItem(TOKEN_KEY, authToken);
-  localStorage.setItem(HOST_KEY, DEFAULT_HOST);
 }
