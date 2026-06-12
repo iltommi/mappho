@@ -327,6 +327,7 @@ async function scan() {
   const CONCURRENCY = 6;
   const stats = { scanned: 0, geotagged: 0 };
   const pool = new Set();
+  const inFlight = new Map(); // promise -> filename
 
   const { id: folderId, name: folderName } = getSelectedFolder();
   log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
@@ -336,13 +337,16 @@ async function scan() {
 
     const p = processFile(file, stats).finally(() => {
       pool.delete(p);
+      inFlight.delete(p);
       setScanStatus(stats.scanned, stats.geotagged);
     });
     pool.add(p);
+    inFlight.set(p, file.name);
 
     if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
 
+  log('BFS done', `${stats.scanned} files found, waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
   clearScanStatus();
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
