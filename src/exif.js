@@ -7,7 +7,8 @@ export async function extractEXIF(buffer) {
 
   try {
     const gps = await exifr.gps(buffer);
-    if (gps?.latitude != null && gps?.longitude != null) {
+    if (gps?.latitude != null && gps?.longitude != null &&
+        !isNaN(gps.latitude) && !isNaN(gps.longitude)) {
       result.lat = gps.latitude;
       result.lng = gps.longitude;
     }
