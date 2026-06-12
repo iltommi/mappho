@@ -367,6 +367,12 @@ async function scan() {
 
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   const CONCURRENCY = 6;
+
+  const diagTimer = setInterval(() => {
+    if (inFlight.size > 0)
+      log('in-flight', `${inFlight.size} pending: ${[...inFlight.values()].join(', ')}`);
+  }, 15000);
+
   for (const file of files) {
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, total);
@@ -385,6 +391,8 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
 
     if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
+
+  clearInterval(diagTimer);
 }
 
 function showRetryDialog(failedFiles, stats) {
