@@ -179,6 +179,16 @@ html, body {
   border-top-left-radius: 8px;
 }
 
+#log-save {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: .75rem;
+  padding: 2px 4px;
+}
+#log-save:hover { color: #7dd3fc; }
+
 #log-clear {
   border: none;
   background: none;
