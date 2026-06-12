@@ -320,9 +320,10 @@ async function processFile(file, stats) {
     if (e.message.includes('timed out')) await new Promise(r => setTimeout(r, 3000));
     return false;
   }
-  const record = { fileid: file.fileid, name: file.name, lat: exif.lat ?? null, lng: exif.lng ?? null, ts: exif.ts ?? null };
+  const hasGps = exif.lat != null && !isNaN(exif.lat) && exif.lng != null && !isNaN(exif.lng);
+  const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null };
   await putCached(record);
-  if (exif.lat != null) { stats.geotagged++; addMarker(record); }
+  if (hasGps) { stats.geotagged++; addMarker(record); }
   else await putOrphan(record);
   return true;
 }
