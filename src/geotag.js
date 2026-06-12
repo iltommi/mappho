@@ -74,7 +74,7 @@ saveBtn.addEventListener('click', async () => {
     log('Geotag', 'Uploading to pCloud…');
     const newFileid = await overwriteFile(fileid, modified);
 
-    const realTs = (ts && ts > 0) ? ts : null;
+    const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
     await putCached({ fileid: newFileid, name, lat, lng, ts: realTs });
