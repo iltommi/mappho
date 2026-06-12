@@ -4,7 +4,8 @@ import { toggleFilter } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
 import { extractEXIF } from './exif.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
-import { openLazySlideshow } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
+import { startGeotagging } from './geotag.js';
 import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, exportDb, importDb } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
@@ -74,11 +75,15 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
+async function openOrphanSlideshow() {
   const total = await countOrphans();
   if (!total) { log('No location', 'no unlocalised photos in cache — scan first'); return; }
   openLazySlideshow((offset, limit) => getOrphansPage(offset, limit), total);
+}
+
+document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  await openOrphanSlideshow();
 });
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
@@ -330,6 +335,7 @@ async function scan() {
 async function main() {
   handleCallback();
   initMap();
+  setGeotagHandler(photo => startGeotagging(photo, () => openOrphanSlideshow()));
 
   const token = getToken();
   setupAuthBtn(!!token);

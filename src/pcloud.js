@@ -124,6 +124,83 @@ async function fetchFileHeadProxy(fileid, bytes) {
   return dlResp.arrayBuffer();
 }
 
+// Download the full content of a file as ArrayBuffer.
+export async function downloadFullFile(fileid) {
+  if (isNative) {
+    const linkResp = await CapacitorHttp.request({
+      method: 'GET',
+      url: buildUrl('getfilelink', { fileid }).toString(),
+    });
+    const linkData = linkResp.data;
+    if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
+    const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
+    const dlResp = await CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer' });
+    const raw = dlResp.data;
+    if (!raw) throw new Error('Empty file response');
+    return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
+  }
+  if (!PROXY_URL) throw new Error('PROXY_URL not configured');
+  const linkUrl = new URL(`${PROXY_URL}/getfilelink`);
+  linkUrl.searchParams.set('auth_token', getToken());
+  linkUrl.searchParams.set('fileid', fileid);
+  const linkData = await (await fetch(linkUrl)).json();
+  if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
+  const cdnUrl = `https://${linkData.hosts[0]}${linkData.path}`;
+  const dlResp = await fetch(`${PROXY_URL}/cdn?url=${encodeURIComponent(cdnUrl)}`);
+  if (!dlResp.ok) throw new Error(`CDN download failed: ${dlResp.status}`);
+  return dlResp.arrayBuffer();
+}
+
+// Delete the original file and re-upload the modified buffer under the same name.
+// Returns the new fileid.
+export async function overwriteFile(fileid, arrayBuffer) {
+  const stat = await api('stat', { fileid });
+  const { name, parentfolderid } = stat.metadata;
+
+  await api('deletefile', { fileid });
+
+  // Encode binary as base64 so the multipart body is ASCII-safe
+  // (CapacitorHttp serialises strings as UTF-8, which corrupts raw bytes >127)
+  const bytes = new Uint8Array(arrayBuffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  }
+  const b64 = btoa(bin);
+
+  const boundary = 'SharPhoUpload' + Date.now();
+  const crlf = '\r\n';
+  const body = [
+    '--' + boundary,
+    `Content-Disposition: form-data; name="file"; filename="${name}"`,
+    'Content-Type: image/jpeg',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64,
+    '--' + boundary + '--',
+  ].join(crlf);
+
+  const url = buildUrl('uploadfile', { folderid: parentfolderid, nopartial: 1 }).toString();
+
+  if (isNative) {
+    const resp = await CapacitorHttp.request({
+      method: 'POST',
+      url,
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+      data: body,
+    });
+    if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
+    return resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
+  }
+
+  const formData = new FormData();
+  formData.append('file', new Blob([arrayBuffer], { type: 'image/jpeg' }), name);
+  const resp = await fetch(url, { method: 'POST', body: formData, referrerPolicy: 'no-referrer' });
+  const data = await resp.json();
+  if (data.result !== 0) throw new Error(`pCloud upload error ${data.result}: ${data.error}`);
+  return data.fileids?.[0] ?? data.metadata?.[0]?.fileid;
+}
+
 const BACKUP_FILENAME = 'sharpho.json';
 
 // Upload a JSON string to the pCloud root folder as sharpho.json.

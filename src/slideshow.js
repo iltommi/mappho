@@ -8,7 +8,12 @@ const counterEl = document.getElementById('ss-counter');
 const captionEl = document.getElementById('ss-caption');
 const prevBtn   = document.getElementById('ss-prev');
 const nextBtn   = document.getElementById('ss-next');
-const closeBtn  = document.getElementById('ss-close');
+const closeBtn    = document.getElementById('ss-close');
+const geotagBtn   = document.getElementById('ss-geotag-btn');
+
+let geotagHandler = null;
+
+export function setGeotagHandler(fn) { geotagHandler = fn; }
 
 let photos  = [];
 let current = 0;
@@ -35,10 +40,20 @@ function resetLazy() {
 
 function close() {
   el.classList.remove('open');
+  geotagBtn.style.display = 'none';
   photos = [];
   cache.clear();
   resetLazy();
 }
+
+export function closeSlideshow() { close(); }
+
+geotagBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo || !geotagHandler) return;
+  close();
+  geotagHandler(photo);
+});
 
 closeBtn.addEventListener('click', close);
 el.addEventListener('click', e => { if (e.target === el) close(); });
@@ -125,6 +140,7 @@ export function openSlideshow(photoList, startIndex = 0) {
   lazyDone = true; // all photos already in memory, no paging needed
   photos = photoList;
   cache.clear();
+  geotagBtn.style.display = 'none';
   el.classList.add('open');
   go(startIndex);
 }
@@ -142,6 +158,7 @@ export async function openLazySlideshow(fetchPage, total) {
   lazyOffset = firstPage.length;
   if (firstPage.length < PAGE_SIZE) lazyDone = true;
   photos = firstPage;
+  geotagBtn.style.display = geotagHandler ? '' : 'none';
   el.classList.add('open');
   go(0);
 }

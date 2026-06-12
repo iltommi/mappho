@@ -475,6 +475,74 @@ body.filter-open #map { top: 120px; }
   user-select: none;
 }
 
+/* Pin-drop bar */
+#pin-drop-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background: #16213e;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(90vw, 480px);
+  width: max-content;
+}
+
+#pin-drop-hint {
+  font-size: .82rem;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1.4;
+}
+
+#pin-drop-actions {
+  display: flex;
+  gap: 10px;
+}
+
+#pin-drop-save, #pin-drop-cancel {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#pin-drop-save {
+  background: #16a34a;
+  color: #fff;
+}
+#pin-drop-save:hover:not(:disabled) { background: #15803d; }
+#pin-drop-save:disabled { opacity: .45; cursor: default; }
+#pin-drop-cancel {
+  background: #334155;
+  color: #e2e8f0;
+}
+#pin-drop-cancel:hover { background: #475569; }
+
+/* Geotag button in slideshow */
+#ss-geotag-btn {
+  margin-top: 8px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #0369a1;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#ss-geotag-btn:hover { background: #0284c7; }
+
 /* Popup */
 .photo-popup {
   text-align: center;

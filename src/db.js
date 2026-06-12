@@ -57,6 +57,28 @@ export async function clearOrphans() {
   return (await db()).clear(ORPHAN_STORE);
 }
 
+export async function deleteRecord(fileid) {
+  return (await db()).delete(STORE, fileid);
+}
+
+export async function deleteOrphan(fileid) {
+  return (await db()).delete(ORPHAN_STORE, fileid);
+}
+
+// Returns the geotagged photo closest in time to ts, plus delta in ms.
+// Returns null if no geotagged photos with known dates exist.
+export async function findClosestGeotagged(ts) {
+  const d = await db();
+  const all = await d.getAll(STORE);
+  let best = null, bestDiff = Infinity;
+  for (const p of all) {
+    if (p.lat == null || !p.ts) continue;
+    const diff = Math.abs(p.ts - ts);
+    if (diff < bestDiff) { bestDiff = diff; best = p; }
+  }
+  return best ? { ...best, delta: bestDiff } : null;
+}
+
 export async function exportDb() {
   const d = await db();
   const photos  = await d.getAll(STORE);
