@@ -327,7 +327,7 @@ async function processFile(file, stats) {
 }
 
 async function scan() {
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 2;
   const stats = { scanned: 0, geotagged: 0, completed: 0 };
   const pool = new Set();
   const inFlight = new Map();
@@ -365,7 +365,7 @@ async function scan() {
 }
 
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 2;
   for (const file of files) {
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, total);
