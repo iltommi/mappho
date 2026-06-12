@@ -25,6 +25,7 @@ const scanStatusEl = document.getElementById('scan-status');
 
 let sessionGeotagged = 0;
 let briefTimer = null;
+let scanCancelled = false;
 
 function setScanStatus(scanned, geotagged, total = null) {
   const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
@@ -49,8 +50,15 @@ const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderSelect = document.getElementById('folder-select');
 const scanBtn = document.getElementById('scan-btn');
+const stopScanBtn = document.getElementById('stop-scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
 const eraseCacheBtn = document.getElementById('erase-cache-btn');
+
+stopScanBtn.addEventListener('click', () => {
+  scanCancelled = true;
+  stopScanBtn.disabled = true;
+  stopScanBtn.textContent = 'Stopping…';
+});
 const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
@@ -265,17 +273,19 @@ async function startScan() {
   showBriefStatus('Loading cache…', 30000);
   const cached = await getAllCached();
   let cachedGeo = 0;
-  const orphanWrites = [];
+  const toMigrate = [];
   for (const p of cached) {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
-    else orphanWrites.push(putOrphan(p)); // migrate existing non-GPS records into orphans store
+    else toMigrate.push(p);
   }
-  await Promise.all(orphanWrites);
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and tap Scan.');
 
-  // Populate folder picker separately — a network failure here shouldn't lose the markers.
+  // Migrate non-GPS records to orphans store in background — don't block the folder picker.
+  if (toMigrate.length > 0) Promise.all(toMigrate.map(putOrphan)).catch(() => {});
+
+  // Populate folder picker — a network failure here shouldn't affect the already-loaded markers.
   try {
     await populateFolderPicker();
   } catch (e) {
@@ -285,6 +295,10 @@ async function startScan() {
 }
 
 async function runScan() {
+  scanCancelled = false;
+  stopScanBtn.style.display = '';
+  stopScanBtn.disabled = false;
+  stopScanBtn.textContent = '✕ Stop';
   setProgress(0);
   try {
     await scan();
@@ -298,6 +312,8 @@ async function runScan() {
       setStatus(`Error: ${e.message}`);
     }
     console.error(e);
+  } finally {
+    stopScanBtn.style.display = 'none';
   }
 }
 
@@ -357,8 +373,13 @@ async function scan() {
   await Promise.all(pool);
   clearScanStatus();
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
-  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
-  setProgress(100);
+  if (scanCancelled) {
+    setStatus(`Stopped — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.completed} scanned${manualNote} (${total - stats.completed} remaining).`);
+    setProgress(0);
+  } else {
+    setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
+    setProgress(100);
+  }
 
   if (failedFiles.length > 0) {
     log('Scan errors', `${failedFiles.length} files failed to download`);
@@ -375,6 +396,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   }, 15000);
 
   for (const file of files) {
+    if (scanCancelled) break;
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, total);
 
