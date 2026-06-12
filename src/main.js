@@ -301,14 +301,15 @@ async function runScan() {
   }
 }
 
+// Returns true on success, false on network/download failure (file not written to DB so retry works).
 async function processFile(file, stats) {
   const hit = await getCached(file.fileid);
   if (hit) {
     log(`${file.name} [cached]`, hit.lat != null ? `GPS: ${hit.lat.toFixed(4)}, ${hit.lng.toFixed(4)}` : 'no GPS');
     if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
-    return;
+    return true;
   }
-  let exif = {};
+  let exif;
   try {
     const buf = await fetchFileHead(file.fileid);
     log(`${file.name}`, `buffer: ${buf.byteLength}B`);
@@ -316,12 +317,13 @@ async function processFile(file, stats) {
     log(`${file.name} → GPS`, exif.lat != null ? `${exif.lat.toFixed(4)},${exif.lng.toFixed(4)}` : 'null');
   } catch (e) {
     log(`${file.name} ERROR`, e.message);
-    console.warn('Failed to process', file.name, e);
+    return false;
   }
   const record = { fileid: file.fileid, name: file.name, lat: exif.lat ?? null, lng: exif.lng ?? null, ts: exif.ts ?? null };
   await putCached(record);
   if (exif.lat != null) { stats.geotagged++; addMarker(record); }
   else await putOrphan(record);
+  return true;
 }
 
 async function scan() {
@@ -346,11 +348,31 @@ async function scan() {
   setProgress(0);
 
   // Phase 2: process with accurate progress bar
-  for (const file of allFiles) {
+  const failedFiles = [];
+  await processFiles(allFiles, total, stats, pool, inFlight, failedFiles);
+
+  log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
+  await Promise.all(pool);
+  clearScanStatus();
+  const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
+  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
+  setProgress(100);
+
+  if (failedFiles.length > 0) {
+    log('Scan errors', `${failedFiles.length} files failed to download`);
+    showRetryDialog(failedFiles, stats);
+  }
+}
+
+async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
+  const CONCURRENCY = 6;
+  for (const file of files) {
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, total);
 
-    const p = processFile(file, stats).finally(() => {
+    const p = processFile(file, stats).then(ok => {
+      if (!ok) failedFiles.push(file);
+    }).finally(() => {
       pool.delete(p);
       inFlight.delete(p);
       stats.completed++;
@@ -362,13 +384,35 @@ async function scan() {
 
     if (pool.size >= CONCURRENCY) await Promise.race(pool);
   }
+}
 
-  log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
-  await Promise.all(pool);
-  clearScanStatus();
-  const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
-  setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
-  setProgress(100);
+function showRetryDialog(failedFiles, stats) {
+  const dialog = document.createElement('div');
+  dialog.id = 'retry-dialog';
+  dialog.innerHTML = `
+    <div id="retry-box">
+      <p>${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed to download and were skipped.</p>
+      <div id="retry-actions">
+        <button id="retry-yes">Retry</button>
+        <button id="retry-no">Dismiss</button>
+      </div>
+    </div>`;
+  document.body.appendChild(dialog);
+
+  document.getElementById('retry-no').addEventListener('click', () => dialog.remove());
+  document.getElementById('retry-yes').addEventListener('click', async () => {
+    dialog.remove();
+    const total = failedFiles.length;
+    stats.scanned = 0; stats.completed = 0;
+    const pool = new Set(), inFlight = new Map(), retryFailed = [];
+    setProgress(0);
+    await processFiles(failedFiles, total, stats, pool, inFlight, retryFailed);
+    await Promise.all(pool);
+    clearScanStatus();
+    setProgress(100);
+    log('Retry done', `${retryFailed.length} still failing after retry`);
+    if (retryFailed.length > 0) showRetryDialog(retryFailed, stats);
+  });
 }
 
 async function main() {

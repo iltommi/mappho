@@ -518,6 +518,48 @@ body.filter-open #map { top: 120px; }
   user-select: none;
 }
 
+/* Retry dialog */
+#retry-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.55);
+}
+#retry-box {
+  background: #16213e;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(320px, 88vw);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  font-size: .92rem;
+  color: #e2e8f0;
+  text-align: center;
+}
+#retry-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+#retry-yes, #retry-no {
+  padding: 8px 22px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#retry-yes { background: #16a34a; color: #fff; }
+#retry-yes:hover { background: #15803d; }
+#retry-no  { background: #334155; color: #e2e8f0; }
+#retry-no:hover  { background: #475569; }
+
 /* Pin-drop bar */
 #pin-drop-bar {
   position: fixed;
