@@ -317,6 +317,7 @@ async function processFile(file, stats) {
     log(`${file.name} → GPS`, exif.lat != null ? `${exif.lat.toFixed(4)},${exif.lng.toFixed(4)}` : 'null');
   } catch (e) {
     log(`${file.name} ERROR`, e.message);
+    if (e.message.includes('timed out')) await new Promise(r => setTimeout(r, 3000));
     return false;
   }
   const record = { fileid: file.fileid, name: file.name, lat: exif.lat ?? null, lng: exif.lng ?? null, ts: exif.ts ?? null };
@@ -327,7 +328,7 @@ async function processFile(file, stats) {
 }
 
 async function scan() {
-  const CONCURRENCY = 2;
+  const CONCURRENCY = 6;
   const stats = { scanned: 0, geotagged: 0, completed: 0 };
   const pool = new Set();
   const inFlight = new Map();
@@ -365,7 +366,7 @@ async function scan() {
 }
 
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
-  const CONCURRENCY = 2;
+  const CONCURRENCY = 6;
   for (const file of files) {
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, total);
