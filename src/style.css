@@ -157,7 +157,7 @@ html, body {
 #log-panel {
   display: none;
   position: fixed;
-  bottom: 4px;
+  bottom: 26px;
   right: 0;
   z-index: 3000;
   width: min(420px, 100vw);
