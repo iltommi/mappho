@@ -46,6 +46,7 @@ export async function* listImages(folderid = 0) {
       log(`listfolder error (id=${fid})`, e.message);
       continue;
     }
+    log(`traversing folder`, `${data.metadata.name} (id=${fid})`);
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
         queue.push(item.folderid);
