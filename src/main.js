@@ -92,12 +92,15 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 document.getElementById('import-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   try {
+    showBriefStatus('Downloading backup from pCloud…', 120000);
     log('Restore', 'downloading from pCloud…');
     const backup = await downloadBackup();
     if (!backup?.photos) throw new Error('Invalid backup file');
+    showBriefStatus(`Importing ${backup.photos.length} records…`, 120000);
     await importDb(backup);
     clearMarkers();
     const cached = await getAllCached();
+    showBriefStatus(`Loading ${cached.length} photos…`, 120000);
     const orphanWrites = [];
     let geo = 0;
     for (const p of cached) {
@@ -109,10 +112,10 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     topbarTotal = cached.length;
     updateTopbar();
     log('Restore', `${geo} geotagged, ${backup.orphans?.length ?? 0} unlocalised`);
-    setStatus(`Restored — ${geo} geotagged photos loaded.`);
+    showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
   } catch (e) {
     log('Restore error', e.message);
-    setStatus(`Restore failed: ${e.message}`);
+    showBriefStatus(`Restore failed: ${e.message}`);
   }
 });
 
