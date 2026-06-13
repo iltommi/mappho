@@ -122,6 +122,13 @@ export function toggleFilter() {
   else filterMarkers(-Infinity, Infinity);
 }
 
+export function closeFilter() {
+  if (!panel.classList.contains('open')) return;
+  panel.classList.remove('open');
+  document.body.classList.remove('filter-open');
+  minTs = 0; maxTs = 0;
+}
+
 // Returns { from, to } in ms if the filter panel is open and has a valid range, else null.
 export function getActiveFilterRange() {
   if (!panel.classList.contains('open') || minTs === maxTs) return null;

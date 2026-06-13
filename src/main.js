@@ -1,6 +1,6 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
 import { log, toggleLog } from './log.js';
-import { toggleFilter, getActiveFilterRange } from './filter.js';
+import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
 import { extractEXIF } from './exif.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
@@ -299,6 +299,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
+  closeFilter();
   topbarGeotagged = 0;
   topbarTotal = 0;
   sessionGeotagged = 0;
