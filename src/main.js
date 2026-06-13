@@ -10,7 +10,7 @@ import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, 
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
 
-registerSW({ onNeedRefresh() { window.location.reload(); } });
+registerSW();
 
 const authBtn = document.getElementById('auth-btn');
 
