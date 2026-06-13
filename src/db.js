@@ -96,11 +96,12 @@ export async function importDb(backup) {
   await tx.done;
 }
 
-export async function getOrphansPage(offset, limit) {
+export async function getOrphansPage(offset, limit, fromTs = null, toTs = null) {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');
   const index = tx.store.index('by_ts');
-  let cursor = await index.openCursor(null, 'next');
+  const range = (fromTs != null && toTs != null) ? IDBKeyRange.bound(fromTs, toTs) : null;
+  let cursor = await index.openCursor(range, 'next');
   if (offset > 0 && cursor) cursor = await cursor.advance(offset);
   const results = [];
   while (cursor && results.length < limit) {
@@ -108,4 +109,10 @@ export async function getOrphansPage(offset, limit) {
     cursor = await cursor.continue();
   }
   return results;
+}
+
+export async function countOrphansInRange(fromTs, toTs) {
+  const d = await db();
+  const tx = d.transaction(ORPHAN_STORE, 'readonly');
+  return tx.store.index('by_ts').count(IDBKeyRange.bound(fromTs, toTs));
 }

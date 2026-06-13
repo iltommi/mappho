@@ -1,12 +1,12 @@
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
 import { log, toggleLog } from './log.js';
-import { toggleFilter } from './filter.js';
+import { toggleFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
 import { extractEXIF } from './exif.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, exportDb, importDb } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
 
@@ -117,14 +117,29 @@ document.getElementById('import-btn').addEventListener('click', async () => {
 });
 
 async function openOrphanSlideshow() {
-  const total = await countOrphans();
-  if (!total) { log('No location', 'no unlocalised photos in cache — scan first'); return; }
-  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit), total);
+  const range = getActiveFilterRange();
+  let total, fetcher;
+  if (range) {
+    total = await countOrphansInRange(range.from, range.to);
+    fetcher = (offset, limit) => getOrphansPage(offset, limit, range.from, range.to);
+  } else {
+    total = await countOrphans();
+    fetcher = (offset, limit) => getOrphansPage(offset, limit);
+  }
+  if (!total) { log('No location', range ? 'no unlocalised photos in this date range' : 'no unlocalised photos in cache — scan first'); return; }
+  openLazySlideshow(fetcher, total);
 }
 
 document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await openOrphanSlideshow();
+});
+
+document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  const total = await countOrphansInRange(0, 0);
+  if (!total) { log('No date/location', 'no photos without both date and location'); return; }
+  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
 });
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {

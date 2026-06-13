@@ -20,7 +20,7 @@ document.getElementById('log-save').addEventListener('click', async () => {
   const text     = lines.join('\n');
   const filename = `sharpho-log-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
 
-  // Try Web Share API first (shows Android share sheet)
+  // Try file share (shows Android share sheet with a .txt attachment)
   try {
     const file = new File([text], filename, { type: 'text/plain' });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -28,20 +28,29 @@ document.getElementById('log-save').addEventListener('click', async () => {
       return;
     }
   } catch (e) {
-    if (e.name === 'AbortError') return; // user dismissed share sheet
-    console.warn('share failed, falling back to download', e);
+    if (e.name === 'AbortError') return;
   }
 
-  // Fallback: anchor download (desktop / unsupported WebViews)
-  const blob = new Blob([text], { type: 'text/plain' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // Try text share (works in Capacitor WebView without file support)
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: filename, text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+    }
+  }
+
+  // Fallback: copy to clipboard
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('log-save');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  } catch {
+    console.warn('clipboard write failed');
+  }
 });
 
 export function toggleLog() {

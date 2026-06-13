@@ -63,3 +63,9 @@ export function toggleFilter() {
   if (open) init();
   else filterMarkers(-Infinity, Infinity);
 }
+
+// Returns { from, to } in ms if the filter panel is open and has a valid range, else null.
+export function getActiveFilterRange() {
+  if (!panel.classList.contains('open') || minTs === maxTs) return null;
+  return { from: tsAt(fromSlider.value), to: tsAt(toSlider.value) };
+}
