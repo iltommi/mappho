@@ -383,7 +383,10 @@ function setupAuthBtn(isLoggedIn) {
   if (isLoggedIn) showApp();
 }
 
+let startScanInProgress = false;
 async function startScan() {
+  if (startScanInProgress) return;
+  startScanInProgress = true;
   // Load cached markers first — no network needed, works immediately after wake.
   showBriefStatus('Loading cache…', 30000);
   const cached = await getAllCached();
@@ -410,6 +413,7 @@ async function startScan() {
     log('folder picker error', e.message);
     showBriefStatus(`Could not load folders: ${e.message}`);
   }
+  startScanInProgress = false;
 }
 
 async function runScan() {
