@@ -276,6 +276,10 @@ eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
+  topbarGeotagged = 0;
+  topbarTotal = 0;
+  sessionGeotagged = 0;
+  updateTopbar();
   log('Cache erased');
   setStatus('Cache erased — click Scan to rebuild.');
 });
