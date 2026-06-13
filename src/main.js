@@ -1,4 +1,7 @@
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
+
+const BUILD_TIME = new Date(__BUILD_TIME__);
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
@@ -172,6 +175,28 @@ document.getElementById('log-menu-btn').addEventListener('click', () => {
   toggleLog();
 });
 
+document.getElementById('check-update-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  showBriefStatus('Checking for updates…', 15000);
+  try {
+    const resp = await CapacitorHttp.request({
+      method: 'GET',
+      url: 'https://api.github.com/repos/iltommi/sharpho/releases/latest',
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    const release = resp.data;
+    const releaseDate = new Date(release.published_at);
+    if (releaseDate > BUILD_TIME) {
+      showBriefStatus(`Update available (${release.tag_name}) — downloading…`, 30000);
+      window.open('https://github.com/iltommi/sharpho/releases/download/latest/SharPho.apk', '_system');
+    } else {
+      showBriefStatus('Already up to date.');
+    }
+  } catch (e) {
+    log('Update check error', e.message);
+    showBriefStatus(`Update check failed: ${e.message}`);
+  }
+});
 
 menuBtn.addEventListener('click', (e) => {
   e.stopPropagation();
