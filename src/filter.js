@@ -1,4 +1,5 @@
 import { filterMarkers, getDateRange } from './map.js';
+import { getOrphanDateRange } from './db.js';
 
 const panel   = document.getElementById('filter-panel');
 const fromSlider = document.getElementById('filter-from');
@@ -36,9 +37,13 @@ toSlider.addEventListener('input', () => {
   apply();
 });
 
-function init() {
+async function init() {
   const noDatesEl = panel.querySelector('.filter-no-dates');
-  const range = getDateRange();
+  const gpsRange    = getDateRange();
+  const orphanRange = await getOrphanDateRange();
+  const mins = [gpsRange?.min, orphanRange?.min].filter(Boolean);
+  const maxs = [gpsRange?.max, orphanRange?.max].filter(Boolean);
+  const range = mins.length ? { min: Math.min(...mins), max: Math.max(...maxs) } : null;
   if (!range) {
     noDatesEl.textContent = 'No photo dates in cache — rescan to pick up dates.';
     noDatesEl.style.display = '';
