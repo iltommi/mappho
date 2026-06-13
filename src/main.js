@@ -7,17 +7,7 @@ import { initMap, addMarker, clearMarkers } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
-import { registerSW } from 'virtual:pwa-register';
 import './style.css';
-
-let applyUpdate = null;
-registerSW({
-  onNeedRefresh() {
-    applyUpdate = () => window.location.reload();
-    const btn = document.getElementById('check-update-btn');
-    btn.textContent = '⬆ Restart to update';
-  },
-});
 
 const authBtn = document.getElementById('auth-btn');
 
@@ -182,23 +172,6 @@ document.getElementById('log-menu-btn').addEventListener('click', () => {
   toggleLog();
 });
 
-document.getElementById('check-update-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  if (applyUpdate) { applyUpdate(); return; }
-  showBriefStatus('Checking for updates…', 10000);
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    if (reg) {
-      await reg.update();
-      await new Promise(r => setTimeout(r, 2500));
-      if (!applyUpdate) showBriefStatus('Already up to date.');
-    } else {
-      showBriefStatus('No service worker found.');
-    }
-  } catch (e) {
-    showBriefStatus(`Update check failed: ${e.message}`);
-  }
-});
 
 menuBtn.addEventListener('click', (e) => {
   e.stopPropagation();
