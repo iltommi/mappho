@@ -81,18 +81,22 @@ export async function findClosestGeotagged(ts) {
 
 export async function exportDb() {
   const d = await db();
-  const photos  = await d.getAll(STORE);
-  const orphans = await d.getAll(ORPHAN_STORE);
-  return { version: 1, photos, orphans };
+  const photos = await d.getAll(STORE);
+  return { version: 2, photos };
 }
 
 export async function importDb(backup) {
   const d = await db();
   const tx = d.transaction([STORE, ORPHAN_STORE], 'readwrite');
-  await tx.objectStore(STORE).clear();
-  await tx.objectStore(ORPHAN_STORE).clear();
-  for (const r of backup.photos  ?? []) await tx.objectStore(STORE).put(r);
-  for (const r of backup.orphans ?? []) await tx.objectStore(ORPHAN_STORE).put(r);
+  tx.objectStore(STORE).clear();
+  tx.objectStore(ORPHAN_STORE).clear();
+  const photos = backup.photos ?? [];
+  for (const r of photos) tx.objectStore(STORE).put(r);
+  // Reconstruct orphan store from non-GPS photos (v1 backups had a separate orphans array)
+  const orphanSource = backup.version >= 2
+    ? photos.filter(r => r.lat == null)
+    : (backup.orphans ?? []);
+  for (const r of orphanSource) tx.objectStore(ORPHAN_STORE).put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0 });
   await tx.done;
 }
 
