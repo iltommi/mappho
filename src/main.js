@@ -78,14 +78,22 @@ const overflowMenu = document.getElementById('overflow-menu');
 document.getElementById('export-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   try {
+    progressFill.classList.add('indeterminate');
+    showBriefStatus('Reading local cache…', 60000);
     log('Backup', 'exporting…');
     const backup = await exportDb();
+    showBriefStatus(`Uploading ${backup.photos.length} records to pCloud…`, 120000);
     await uploadBackup(JSON.stringify(backup));
+    progressFill.classList.remove('indeterminate');
+    setProgress(100);
     log('Backup', `saved ${backup.photos.length} records to pCloud`);
-    setStatus(`Backup saved — ${backup.photos.length} photos exported.`);
+    showBriefStatus(`Backup saved — ${backup.photos.length} photos exported.`);
+    setTimeout(() => setProgress(0), 1000);
   } catch (e) {
+    progressFill.classList.remove('indeterminate');
+    setProgress(0);
     log('Backup error', e.message);
-    setStatus(`Backup failed: ${e.message}`);
+    showBriefStatus(`Backup failed: ${e.message}`);
   }
 });
 
