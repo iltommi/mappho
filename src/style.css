@@ -661,7 +661,7 @@ body.filter-open #map { top: 120px; }
   gap: 12px;
   justify-content: center;
 }
-#retry-yes, #retry-no {
+#retry-yes, #retry-copy, #retry-no {
   padding: 8px 22px;
   border: none;
   border-radius: 8px;
@@ -671,6 +671,8 @@ body.filter-open #map { top: 120px; }
 }
 #retry-yes { background: #16a34a; color: #fff; }
 #retry-yes:hover { background: #15803d; }
+#retry-copy { background: #0f3460; color: #7dd3fc; }
+#retry-copy:hover { background: #1e3a5f; }
 #retry-no  { background: #334155; color: #e2e8f0; }
 #retry-no:hover  { background: #475569; }
 
