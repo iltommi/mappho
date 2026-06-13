@@ -36,7 +36,7 @@ html, body {
   border-bottom: 1px solid #1e3a5f;
 }
 
-#folder-select {
+#folder-btn {
   flex: 1;
   min-width: 0;
   padding: 6px 8px;
@@ -45,6 +45,77 @@ html, body {
   background: #0f3460;
   color: #e2e8f0;
   font-size: .82rem;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Folder picker overlay */
+#folder-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  background: #0d1b2a;
+}
+#fp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #1e3a5f;
+  background: #16213e;
+}
+#fp-back, #fp-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.1rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+#fp-back:disabled { opacity: .3; }
+#fp-breadcrumb {
+  flex: 1;
+  font-size: .92rem;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#fp-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.fp-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #1e3a5f;
+  color: #e2e8f0;
+  font-size: .95rem;
+  cursor: pointer;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  width: 100%;
+  text-align: left;
+}
+.fp-item:active { background: #1e3a5f; }
+.fp-item.fp-select {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+.fp-item-arrow {
+  color: #4a6fa5;
+  font-size: .85rem;
 }
 
 #scan-btn {
