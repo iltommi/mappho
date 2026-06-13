@@ -92,6 +92,7 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 document.getElementById('import-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   try {
+    progressFill.classList.add('indeterminate');
     showBriefStatus('Downloading backup from pCloud…', 120000);
     log('Restore', 'downloading from pCloud…');
     const backup = await downloadBackup();
@@ -101,19 +102,30 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     clearMarkers();
     const cached = await getAllCached();
     showBriefStatus(`Loading ${cached.length} photos…`, 120000);
+    progressFill.classList.remove('indeterminate');
+    setProgress(0);
     const orphanWrites = [];
     let geo = 0;
-    for (const p of cached) {
+    for (let i = 0; i < cached.length; i++) {
+      const p = cached[i];
       if (p.lat != null) { addMarker(p); geo++; }
       else orphanWrites.push(putOrphan(p));
+      if (i % 500 === 499) {
+        setProgress((i + 1) / cached.length * 100);
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
+    setProgress(100);
     await Promise.all(orphanWrites);
     topbarGeotagged = geo;
     topbarTotal = cached.length;
     updateTopbar();
-    log('Restore', `${geo} geotagged, ${backup.orphans?.length ?? 0} unlocalised`);
+    log('Restore', `${geo} geotagged out of ${cached.length}`);
     showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
+    setTimeout(() => setProgress(0), 1000);
   } catch (e) {
+    progressFill.classList.remove('indeterminate');
+    setProgress(0);
     log('Restore error', e.message);
     showBriefStatus(`Restore failed: ${e.message}`);
   }
