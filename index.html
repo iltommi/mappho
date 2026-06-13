@@ -14,7 +14,7 @@
       <button id="menu-btn" title="More options">⋮</button>
       <div id="overflow-menu">
         <div id="folder-row">
-          <select id="folder-select"><option value="0">All photos</option></select>
+          <button id="folder-btn">All photos</button>
           <button id="scan-btn">Scan</button>
         </div>
         <button id="export-btn" class="menu-item">📤 Backup to pCloud</button>
@@ -103,6 +103,15 @@
   <div id="scan-status"></div>
   <button id="stop-scan-btn" style="display:none" title="Stop scan">✕ Stop</button>
   <div id="progress-bar"><div id="progress-fill"></div></div>
+
+  <div id="folder-picker" style="display:none">
+    <div id="fp-header">
+      <button id="fp-back">←</button>
+      <span id="fp-breadcrumb"></span>
+      <button id="fp-close">✕</button>
+    </div>
+    <div id="fp-list"></div>
+  </div>
 
   <div id="log-panel">
     <div id="log-header">

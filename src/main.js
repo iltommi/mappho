@@ -32,7 +32,7 @@ let topbarTotal = 0;
 const topbarTitle = document.getElementById('topbar-title');
 function updateTopbar() {
   const tagged = topbarGeotagged + sessionGeotagged;
-  topbarTitle.textContent = topbarTotal > 0 ? `${tagged} / ${topbarTotal}` : '';
+  topbarTitle.textContent = tagged > 0 && topbarTotal > 0 ? `${tagged} / ${topbarTotal}` : '';
 }
 
 function setScanStatus(scanned, geotagged, total = null) {
@@ -59,7 +59,7 @@ const loginForm = document.getElementById('login-form');
 const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
-const folderSelect = document.getElementById('folder-select');
+const folderBtn = document.getElementById('folder-btn');
 const scanBtn = document.getElementById('scan-btn');
 const stopScanBtn = document.getElementById('stop-scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
@@ -105,6 +105,9 @@ document.getElementById('import-btn').addEventListener('click', async () => {
       else orphanWrites.push(putOrphan(p));
     }
     await Promise.all(orphanWrites);
+    topbarGeotagged = geo;
+    topbarTotal = cached.length;
+    updateTopbar();
     log('Restore', `${geo} geotagged, ${backup.orphans?.length ?? 0} unlocalised`);
     setStatus(`Restored — ${geo} geotagged photos loaded.`);
   } catch (e) {
@@ -168,24 +171,82 @@ function getSelectedFolder() {
   return JSON.parse(localStorage.getItem(FOLDER_KEY) ?? '{"id":0}');
 }
 
-async function populateFolderPicker() {
-  folderSelect.innerHTML = '<option value="0">All photos</option>';
-  const folders = await listFolders(0);
-  for (const f of folders) {
-    const opt = document.createElement('option');
-    opt.value = String(f.folderid);
-    opt.textContent = f.name;
-    folderSelect.appendChild(opt);
+const folderPicker  = document.getElementById('folder-picker');
+const fpBack        = document.getElementById('fp-back');
+const fpClose       = document.getElementById('fp-close');
+const fpBreadcrumb  = document.getElementById('fp-breadcrumb');
+const fpList        = document.getElementById('fp-list');
+
+// Stack of { id, name } — root entry is always { id: 0, name: 'All photos' }
+let fpStack = [];
+
+async function fpRender() {
+  const current = fpStack[fpStack.length - 1];
+  fpBreadcrumb.textContent = current.name;
+  fpBack.disabled = fpStack.length <= 1;
+  fpList.innerHTML = '';
+
+  // "Select this folder" row
+  const selectRow = document.createElement('button');
+  selectRow.className = 'fp-item fp-select';
+  selectRow.textContent = `✓ Scan "${current.name}"`;
+  selectRow.addEventListener('click', () => {
+    localStorage.setItem(FOLDER_KEY, JSON.stringify({ id: String(current.id), name: current.name }));
+    folderBtn.textContent = current.name;
+    folderPicker.style.display = 'none';
+  });
+  fpList.appendChild(selectRow);
+
+  // Loading indicator
+  const loadingRow = document.createElement('div');
+  loadingRow.style.cssText = 'padding:14px 20px;color:#94a3b8;font-size:.9rem';
+  loadingRow.textContent = 'Loading…';
+  fpList.appendChild(loadingRow);
+
+  let subfolders;
+  try {
+    subfolders = await listFolders(current.id);
+  } catch (e) {
+    loadingRow.textContent = `Error: ${e.message}`;
+    return;
   }
-  const saved = getSelectedFolder();
-  folderSelect.value = String(saved.id);
+  loadingRow.remove();
+
+  for (const f of subfolders) {
+    const row = document.createElement('button');
+    row.className = 'fp-item';
+    row.innerHTML = `<span>📁 ${f.name}</span><span class="fp-item-arrow">›</span>`;
+    row.addEventListener('click', () => {
+      fpStack.push({ id: f.folderid, name: f.name });
+      fpRender();
+    });
+    fpList.appendChild(row);
+  }
+
+  if (subfolders.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:14px 20px;color:#94a3b8;font-size:.9rem';
+    empty.textContent = 'No subfolders';
+    fpList.appendChild(empty);
+  }
 }
 
-folderSelect.addEventListener('change', () => {
-  const id = folderSelect.value;
-  const name = folderSelect.options[folderSelect.selectedIndex].text;
-  localStorage.setItem(FOLDER_KEY, JSON.stringify({ id, name }));
+function openFolderPicker() {
+  fpStack = [{ id: 0, name: 'All photos' }];
+  folderPicker.style.display = 'flex';
+  fpRender();
+}
+
+fpBack.addEventListener('click', () => {
+  if (fpStack.length > 1) { fpStack.pop(); fpRender(); }
 });
+fpClose.addEventListener('click', () => { folderPicker.style.display = 'none'; });
+folderBtn.addEventListener('click', () => { overflowMenu.classList.remove('open'); openFolderPicker(); });
+
+async function populateFolderPicker() {
+  const saved = getSelectedFolder();
+  folderBtn.textContent = saved.name ?? 'All photos';
+}
 
 scanBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
