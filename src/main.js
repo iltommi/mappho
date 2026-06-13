@@ -10,7 +10,14 @@ import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, 
 import { registerSW } from 'virtual:pwa-register';
 import './style.css';
 
-registerSW();
+let applyUpdate = null;
+registerSW({
+  onNeedRefresh() {
+    applyUpdate = () => window.location.reload();
+    const btn = document.getElementById('check-update-btn');
+    btn.textContent = '⬆ Restart to update';
+  },
+});
 
 const authBtn = document.getElementById('auth-btn');
 
@@ -173,6 +180,24 @@ document.getElementById('filter-menu-btn').addEventListener('click', () => {
 document.getElementById('log-menu-btn').addEventListener('click', () => {
   overflowMenu.classList.remove('open');
   toggleLog();
+});
+
+document.getElementById('check-update-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  if (applyUpdate) { applyUpdate(); return; }
+  showBriefStatus('Checking for updates…', 10000);
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.update();
+      await new Promise(r => setTimeout(r, 2500));
+      if (!applyUpdate) showBriefStatus('Already up to date.');
+    } else {
+      showBriefStatus('No service worker found.');
+    }
+  } catch (e) {
+    showBriefStatus(`Update check failed: ${e.message}`);
+  }
 });
 
 menuBtn.addEventListener('click', (e) => {
