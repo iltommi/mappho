@@ -548,12 +548,20 @@ function showRetryDialog(failedFiles, stats) {
       <p>${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed to download and were skipped.</p>
       <div id="retry-actions">
         <button id="retry-yes">Retry</button>
+        <button id="retry-copy">Copy list</button>
         <button id="retry-no">Dismiss</button>
       </div>
     </div>`;
   document.body.appendChild(dialog);
 
   document.getElementById('retry-no').addEventListener('click', () => dialog.remove());
+  document.getElementById('retry-copy').addEventListener('click', async () => {
+    const text = failedFiles.map(f => f.name).join('\n');
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('retry-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy list'; }, 2000);
+  });
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
     const total = failedFiles.length;
