@@ -120,3 +120,15 @@ export async function countOrphansInRange(fromTs, toTs) {
   const tx = d.transaction(ORPHAN_STORE, 'readonly');
   return tx.store.index('by_ts').count(IDBKeyRange.bound(fromTs, toTs));
 }
+
+// Returns { min, max } ms timestamps across all dated orphans, or null if none.
+export async function getOrphanDateRange() {
+  const d = await db();
+  const tx = d.transaction(ORPHAN_STORE, 'readonly');
+  const index = tx.store.index('by_ts');
+  const dated = IDBKeyRange.lowerBound(1); // exclude ts=0 (no-date sentinel)
+  const minCursor = await index.openCursor(dated, 'next');
+  const maxCursor = await index.openCursor(dated, 'prev');
+  if (!minCursor || !maxCursor) return null;
+  return { min: minCursor.value.ts, max: maxCursor.value.ts };
+}
