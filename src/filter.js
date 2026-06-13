@@ -17,6 +17,17 @@ function tsAt(sliderValue) {
   return minTs + (parseInt(sliderValue) / 1000) * (maxTs - minTs);
 }
 
+function sliderAt(ts) {
+  return Math.round(Math.max(0, Math.min(1000, (ts - minTs) / (maxTs - minTs) * 1000)));
+}
+
+// Format ms timestamp as "YYYY-MM-DDTHH:MM" for datetime-local input value.
+function toInputValue(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function apply() {
   const from = tsAt(fromSlider.value);
   const to   = tsAt(toSlider.value);
@@ -35,6 +46,48 @@ toSlider.addEventListener('input', () => {
   if (parseInt(toSlider.value) < parseInt(fromSlider.value))
     toSlider.value = fromSlider.value;
   apply();
+});
+
+// Hidden datetime-local inputs for precise date picking.
+function makeDatePicker(onPick) {
+  const input = document.createElement('input');
+  input.type = 'datetime-local';
+  input.className = 'filter-dt-input';
+  panel.appendChild(input);
+  input.addEventListener('change', () => {
+    const ts = new Date(input.value).getTime();
+    if (!isNaN(ts)) onPick(ts);
+  });
+  return input;
+}
+
+let fromPicker, toPicker;
+function ensurePickers() {
+  if (fromPicker) return;
+  fromPicker = makeDatePicker(ts => {
+    fromSlider.value = sliderAt(Math.min(ts, tsAt(toSlider.value)));
+    apply();
+  });
+  toPicker = makeDatePicker(ts => {
+    toSlider.value = sliderAt(Math.max(ts, tsAt(fromSlider.value)));
+    apply();
+  });
+}
+
+fromVal.addEventListener('click', () => {
+  ensurePickers();
+  fromPicker.min = toInputValue(minTs);
+  fromPicker.max = toInputValue(tsAt(toSlider.value));
+  fromPicker.value = toInputValue(tsAt(fromSlider.value));
+  fromPicker.showPicker?.() ?? fromPicker.click();
+});
+
+toVal.addEventListener('click', () => {
+  ensurePickers();
+  toPicker.min = toInputValue(tsAt(fromSlider.value));
+  toPicker.max = toInputValue(maxTs);
+  toPicker.value = toInputValue(tsAt(toSlider.value));
+  toPicker.showPicker?.() ?? toPicker.click();
 });
 
 async function init() {

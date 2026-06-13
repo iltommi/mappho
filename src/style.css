@@ -474,6 +474,14 @@ body.filter-open #map { top: 120px; }
   width: 100px;
   flex-shrink: 0;
   text-align: right;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.filter-dt-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px; height: 1px;
 }
 .filter-no-dates {
   font-size: .78rem;
