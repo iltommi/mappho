@@ -1,12 +1,16 @@
 import Panzoom from '@panzoom/panzoom';
 import { fetchThumbSrc } from './pcloud.js';
+import { showExif } from './exif.js';
 
 const el       = document.getElementById('lightbox');
 const img      = document.getElementById('lightbox-img');
 const closeBtn = document.getElementById('lightbox-close');
+const exifBtn  = document.getElementById('lightbox-exif-btn');
 
 let pz = null;
 let wheelHandler = null;
+let currentFileid = null;
+let currentName   = null;
 
 function destroyPanzoom() {
   if (pz) {
@@ -27,14 +31,19 @@ function close() {
   el.classList.remove('open', 'loading');
   img.onload = null;
   img.src = '';
+  currentFileid = null;
+  currentName   = null;
   destroyPanzoom();
 }
 
 closeBtn.addEventListener('click', close);
+exifBtn.addEventListener('click', () => { if (currentFileid) showExif(currentFileid, currentName); });
 el.addEventListener('pointerup', e => { if (e.target === el) close(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classList.contains('open')) close(); });
 
 export function openLightbox(fileid, name) {
+  currentFileid = fileid;
+  currentName   = name;
   el.classList.add('open', 'loading');
   img.alt = name;
   img.onload = null;
