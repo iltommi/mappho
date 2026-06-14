@@ -25,12 +25,22 @@ export async function extractEXIF(buffer) {
   return result;
 }
 
-// Try to extract a Unix timestamp from a filename like 2024-01-15_14-30-22_anything.jpg
+// Try to extract a Unix timestamp from filenames like:
+//   2024-01-15_14-30-22_anything.jpg
+//   20240613_121250.jpg
 export function parseDateFromFilename(name) {
-  const m = name.match(/(\d{4})-(\d{2})-(\d{2})[_T ](\d{2})[-:](\d{2})[-:](\d{2})/);
-  if (!m) return null;
-  const dt = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-  return isNaN(dt.getTime()) ? null : dt.getTime();
+  const patterns = [
+    /(\d{4})-(\d{2})-(\d{2})[_T ](\d{2})[-:](\d{2})[-:](\d{2})/,
+    /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/,
+  ];
+  for (const re of patterns) {
+    const m = name.match(re);
+    if (m) {
+      const dt = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+      if (!isNaN(dt.getTime())) return dt.getTime();
+    }
+  }
+  return null;
 }
 
 // Inject GPS coordinates into a JPEG ArrayBuffer, return new ArrayBuffer.
