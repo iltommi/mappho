@@ -68,8 +68,16 @@ saveBtn.addEventListener('click', async () => {
   try {
     const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
     const isHeic = /\.heic$/i.test(name);
+    const isMP4  = /\.mp4$/i.test(name);
 
-    if (isHeic) {
+    if (isMP4) {
+      // MP4 files can be hundreds of MB — save GPS to local cache only.
+      log('Geotag', `MP4: saving GPS to cache only`);
+      await deleteRecord(fileid);
+      await deleteOrphan(fileid);
+      await putCached({ fileid, name, lat, lng, ts: realTs });
+      addMarker({ fileid, name, lat, lng, ts: realTs });
+    } else if (isHeic) {
       log('Geotag', `HEIC → JPEG: fetching metadata…`);
       saveBtn.textContent = '⏳ Fetching…';
       const meta = await extractHeicMeta(fileid);

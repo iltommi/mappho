@@ -1,6 +1,15 @@
 import { fetchThumbSrc } from './pcloud.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
+import { isVideo } from './mp4.js';
+import { openVideoPlayer } from './videoplayer.js';
+
+const VIDEO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3">' +
+  '<rect width="4" height="3" fill="#1a1a2e"/>' +
+  '<polygon points="1.4,0.6 2.8,1.5 1.4,2.4" fill="#94a3b8"/>' +
+  '</svg>'
+)}`;
 
 const el        = document.getElementById('slideshow');
 const trackEl   = document.getElementById('ss-track');
@@ -119,8 +128,10 @@ prevBtn.addEventListener('click', () => navigate(-1));
 nextBtn.addEventListener('click', () => navigate(1));
 
 curImg.addEventListener('click', () => {
-  if (photos[current] && imgScale === 1)
-    openLightbox(photos[current].fileid, photos[current].name);
+  const photo = photos[current];
+  if (!photo || imgScale !== 1) return;
+  if (isVideo(photo.name)) openVideoPlayer(photo.fileid);
+  else                      openLightbox(photo.fileid, photo.name);
 });
 
 // ── Touch ─────────────────────────────────────────────────────────────────────
@@ -288,7 +299,7 @@ async function navigate(dir) {
   busy = false;
 
   if (!curImg.style.display || curImg.style.display === 'none') {
-    const src = await fetchCached(photos[current].fileid);
+    const src = await fetchCached(photos[current].fileid, photos[current].name);
     if (id !== reqId) return;
     loadingEl.style.display = 'none';
     if (src) { curImg.src = src; curImg.style.display = 'block'; }
@@ -300,9 +311,9 @@ async function navigate(dir) {
 
 // ── Cache / preload ───────────────────────────────────────────────────────────
 
-async function fetchCached(fileid) {
+async function fetchCached(fileid, name = '') {
   if (imgCache.has(fileid)) return imgCache.get(fileid);
-  const src = await fetchThumbSrc(fileid, '512x512');
+  const src = isVideo(name) ? VIDEO_PLACEHOLDER : await fetchThumbSrc(fileid, '512x512');
   imgCache.set(fileid, src);
   if (imgCache.size > MAX_CACHE) imgCache.delete(imgCache.keys().next().value);
   return src;
@@ -313,8 +324,8 @@ function loadSidePanes() {
   const nIdx = (current + 1) % photos.length;
   prevImg.src = '';
   nextImg.src = '';
-  if (photos[pIdx]) fetchCached(photos[pIdx].fileid).then(s => { if (s) prevImg.src = s; });
-  if (photos[nIdx]) fetchCached(photos[nIdx].fileid).then(s => { if (s) nextImg.src = s; });
+  if (photos[pIdx]) fetchCached(photos[pIdx].fileid, photos[pIdx].name).then(s => { if (s) prevImg.src = s; });
+  if (photos[nIdx]) fetchCached(photos[nIdx].fileid, photos[nIdx].name).then(s => { if (s) nextImg.src = s; });
 }
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
@@ -331,9 +342,8 @@ function updateCaption() {
   updateCounter();
   const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
   captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
-  if (geotagHandler) {
-    geotagBtn.style.display = '';
-  }
+  if (geotagHandler) geotagBtn.style.display = '';
+  exifBtn.style.display = isVideo(name) ? 'none' : '';
 }
 
 // ── Lazy loading ──────────────────────────────────────────────────────────────
@@ -367,7 +377,7 @@ async function go(index) {
   nextImg.src = '';
   centerTrack(false);
 
-  const src = await fetchCached(photos[current].fileid);
+  const src = await fetchCached(photos[current].fileid, photos[current].name);
   if (id !== reqId) return;
 
   loadingEl.style.display = 'none';
