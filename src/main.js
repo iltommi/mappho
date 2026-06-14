@@ -62,7 +62,6 @@ const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderBtn = document.getElementById('folder-btn');
-const scanBtn = document.getElementById('scan-btn');
 const stopScanBtn = document.getElementById('stop-scan-btn');
 const clearCacheBtn = document.getElementById('clear-cache-btn');
 const eraseCacheBtn = document.getElementById('erase-cache-btn');
@@ -259,11 +258,15 @@ async function fpRender() {
   // "Select this folder" row
   const selectRow = document.createElement('button');
   selectRow.className = 'fp-item fp-select';
-  selectRow.textContent = `✓ Scan "${current.name}"`;
+  selectRow.textContent = `▶ Scan "${current.name}"`;
   selectRow.addEventListener('click', () => {
+    if (clearCacheBtn.disabled) return; // scan already running
     localStorage.setItem(FOLDER_KEY, JSON.stringify({ id: String(current.id), name: current.name }));
     folderBtn.textContent = current.name;
     folderPicker.style.display = 'none';
+    overflowMenu.classList.remove('open');
+    clearCacheBtn.disabled = true;
+    runScan().finally(() => { clearCacheBtn.disabled = false; });
   });
   fpList.appendChild(selectRow);
 
@@ -318,15 +321,6 @@ async function populateFolderPicker() {
   folderBtn.textContent = saved.name ?? 'All photos';
 }
 
-scanBtn.addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  scanBtn.disabled = true;
-  clearCacheBtn.disabled = true;
-  await runScan();
-  scanBtn.disabled = false;
-  clearCacheBtn.disabled = false;
-});
-
 eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await Promise.all([clearAll(), clearOrphans()]);
@@ -338,7 +332,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   sessionGeotagged = 0;
   updateTopbar();
   log('Cache erased');
-  setStatus('Cache erased — click Scan to rebuild.');
+  setStatus('Cache erased — pick a folder to scan.');
 });
 
 clearCacheBtn.addEventListener('click', async () => {
@@ -346,10 +340,8 @@ clearCacheBtn.addEventListener('click', async () => {
   await Promise.all([clearAll(), clearOrphans()]);
   log('Cache cleared');
   setStatus('Cache cleared — scanning…');
-  scanBtn.disabled = true;
   clearCacheBtn.disabled = true;
   await runScan();
-  scanBtn.disabled = false;
   clearCacheBtn.disabled = false;
 });
 
@@ -442,7 +434,7 @@ async function startScan() {
   updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
-    : 'Cache empty — open the menu and tap Scan.');
+    : 'Cache empty — open the menu and pick a folder to scan.');
 
   // Migrate non-GPS records to orphans store in background — don't block the folder picker.
   if (toMigrate.length > 0) Promise.all(toMigrate.map(putOrphan)).catch(() => {});
