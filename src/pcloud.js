@@ -50,7 +50,7 @@ export async function* listImages(folderid = 0) {
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
         queue.push(item.folderid);
-      } else if (/\.(jpe?g|heic)$/i.test(item.name)) {
+      } else if (/\.(jpe?g|heic|mp4)$/i.test(item.name)) {
         yield item;
       }
     }
@@ -108,6 +108,10 @@ export async function downloadFullFile(fileid) {
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
+}
+
+export async function fetchVideoSrc(fileid) {
+  return getCdnUrl(fileid);
 }
 
 export async function getFileStat(fileid) {

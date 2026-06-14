@@ -6,7 +6,8 @@ const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
-import { extractEXIF } from './exif.js';
+import { extractEXIF, parseDateFromFilename } from './exif.js';
+import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
@@ -482,9 +483,17 @@ async function processFile(file, stats) {
   let exif;
   try {
     const isHeic = /\.heic$/i.test(file.name);
-    const buf = isHeic ? null : await fetchFileHead(file.fileid);
-    if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
-    exif = await extractEXIF(buf, file.fileid, file.name);
+    const isMP4  = /\.mp4$/i.test(file.name);
+    if (isMP4) {
+      const buf = await fetchFileHead(file.fileid);
+      if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
+      exif = extractMP4Meta(buf);
+      if (!exif.ts) { const ts = parseDateFromFilename(file.name); if (ts) exif.ts = ts; }
+    } else {
+      const buf = isHeic ? null : await fetchFileHead(file.fileid);
+      if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
+      exif = await extractEXIF(buf, file.fileid, file.name);
+    }
     log(`${file.name} → GPS`, exif.lat != null ? `${exif.lat.toFixed(4)},${exif.lng.toFixed(4)}` : 'null');
   } catch (e) {
     log(`${file.name} ERROR`, e.message);
