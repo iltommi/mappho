@@ -1,6 +1,6 @@
 import exifr from 'exifr';
 import piexif from 'piexifjs';
-import { fetchFileHead } from './pcloud.js';
+import { fetchFileHead, fetchFileRange } from './pcloud.js';
 
 // Returns { lat, lng, ts } — any field may be absent if not in EXIF.
 export async function extractEXIF(buffer) {
@@ -79,6 +79,110 @@ function toDMS(decimal) {
   return [[deg, 1], [min, 1], [sec, 1000]];
 }
 
+// ── HEIC EXIF location (2-pass range fetch) ───────────────────────────────────
+
+// Parse enough of the ISOBMFF container in `buf` to find where the Exif item
+// is stored in the file. Returns { offset, length } or null.
+function heicExifLocation(buf) {
+  const view = new DataView(buf);
+  const end  = buf.byteLength;
+
+  function u8(o)  { return view.getUint8(o); }
+  function u16(o) { return view.getUint16(o, false); }
+  function u32(o) { return view.getUint32(o, false); }
+  function s4(o)  { return String.fromCharCode(u8(o), u8(o+1), u8(o+2), u8(o+3)); }
+  function uN(o, n) {
+    if (n === 0) return 0;
+    if (n === 1) return u8(o);
+    if (n === 2) return u16(o);
+    if (n === 4) return u32(o);
+    if (n === 8) return Number(view.getBigUint64(o, false));
+    return 0;
+  }
+
+  // Iterate ISOBMFF boxes at [start, stop); yield {type, ps, end}
+  // ps = payload start (after 8-byte box header)
+  function* boxes(start, stop) {
+    let p = start;
+    while (p + 8 <= stop) {
+      const sz = u32(p);
+      if (sz < 8) break;
+      yield { type: s4(p + 4), ps: p + 8, end: p + sz };
+      p += sz;
+    }
+  }
+
+  // Find the 'meta' box at top level
+  let meta = null;
+  for (const b of boxes(0, end)) { if (b.type === 'meta') { meta = b; break; } }
+  if (!meta) return null;
+
+  // meta is a FullBox: 4-byte version+flags before its children
+  const mc = meta.ps + 4;
+
+  let iinf = null, iloc = null;
+  for (const b of boxes(mc, meta.end)) {
+    if (b.type === 'iinf') iinf = b;
+    if (b.type === 'iloc') iloc = b;
+  }
+  if (!iinf || !iloc) return null;
+
+  // Parse iinf → find item ID with item_type 'Exif'
+  const iinfVer = u8(iinf.ps);
+  let p = iinf.ps + 4;
+  const entryCount = iinfVer === 0 ? u16(p) : u32(p);
+  p += iinfVer === 0 ? 2 : 4;
+
+  let exifId = null;
+  for (const infe of boxes(p, iinf.end)) {
+    if (infe.type !== 'infe') continue;
+    const v = u8(infe.ps);
+    if (v < 2) continue;
+    const idOff  = infe.ps + 4;
+    const itemId = v === 2 ? u16(idOff) : u32(idOff);
+    const typeOff = idOff + (v === 2 ? 2 : 4) + 2; // +2 for item_protection_index
+    if (s4(typeOff) === 'Exif') { exifId = itemId; break; }
+  }
+  if (exifId === null) return null;
+
+  // Parse iloc → find offset+length for exifId
+  const ilocVer = u8(iloc.ps);
+  p = iloc.ps + 4;
+  const b1 = u8(p++), b2 = u8(p++);
+  const offSz  = (b1 >> 4) & 0xF;
+  const lenSz  = b1 & 0xF;
+  const baseSz = (b2 >> 4) & 0xF;
+  const idxSz  = (ilocVer === 1 || ilocVer === 2) ? (b2 & 0xF) : 0;
+  const itemIdSz = ilocVer === 2 ? 4 : 2;
+  const cmSz    = (ilocVer === 1 || ilocVer === 2) ? 2 : 0;
+  const extSz   = idxSz + offSz + lenSz;
+
+  const itemCount = ilocVer === 2 ? u32(p) : u16(p);
+  p += ilocVer === 2 ? 4 : 2;
+
+  for (let i = 0; i < itemCount; i++) {
+    const itemId = uN(p, itemIdSz); p += itemIdSz;
+    p += cmSz + 2 + baseSz;
+    const extCount = u16(p); p += 2;
+    if (itemId === exifId) {
+      const offset = uN(p + idxSz,         offSz);
+      const length = uN(p + idxSz + offSz, lenSz);
+      return { offset, length };
+    }
+    p += extCount * extSz;
+  }
+  return null;
+}
+
+// Given raw HEIC Exif item bytes, find the start of the TIFF header ("II" or "MM").
+function tiffStart(buf) {
+  const a = new Uint8Array(buf);
+  for (let i = 0; i < Math.min(32, a.length - 1); i++) {
+    if ((a[i] === 0x49 && a[i+1] === 0x49) || (a[i] === 0x4D && a[i+1] === 0x4D)) return i;
+  }
+  return 0;
+}
+
 // ── EXIF viewer panel ─────────────────────────────────────────────────────────
 
 const exifPanel   = document.getElementById('exif-panel');
@@ -110,17 +214,42 @@ export async function showExif(fileid, name) {
   exifPanel.classList.add('open', 'loading');
 
   try {
-    const buf  = await fetchFileHead(fileid, 131072);
-    const data = await exifr.parse(buf, { all: true });
+    let data;
+    const isHeic = /\.heic$/i.test(name ?? '');
+
+    if (isHeic) {
+      // Pass 1: fetch first 64 KB to parse ISOBMFF and locate the Exif item.
+      const head = await fetchFileHead(fileid, 65536);
+      const loc  = heicExifLocation(head);
+      if (loc && loc.length > 0) {
+        // Pass 2: fetch only the Exif item bytes.
+        const item = await fetchFileRange(fileid, loc.offset, loc.offset + loc.length - 1);
+        // The Exif item starts with a 4-byte prefix; the TIFF header follows.
+        const tiff = item.slice(tiffStart(item));
+        data = await exifr.parse(new Uint8Array(tiff), {
+          ifd0: true, ifd1: true, exif: true, gps: true, interop: true,
+          translateKeys: true, translateValues: true, reviveValues: true,
+          mergeOutput: true, unknown: true,
+        });
+      }
+    } else {
+      const buf = await fetchFileHead(fileid, 131072);
+      data = await exifr.parse(new Uint8Array(buf), { all: true });
+    }
+
     exifPanel.classList.remove('loading');
 
-    if (!data || !Object.keys(data).length) {
+    const entries = data
+      ? Object.entries(data).filter(([k]) => k !== 'errors')
+      : [];
+
+    if (!entries.length) {
       exifListEl.innerHTML = '<p class="exif-empty">No EXIF data found.</p>';
       return;
     }
 
     const frag = document.createDocumentFragment();
-    for (const [key, val] of Object.entries(data)) {
+    for (const [key, val] of entries) {
       const row = document.createElement('div');
       row.className = 'exif-row';
       const k = document.createElement('span');

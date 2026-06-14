@@ -88,6 +88,17 @@ export async function fetchFileHead(fileid, bytes = 131072) {
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
 }
 
+export async function fetchFileRange(fileid, from, to) {
+  const cdnUrl = await getCdnUrl(fileid);
+  const dlResp = await withTimeout(
+    CapacitorHttp.request({ method: 'GET', url: cdnUrl, headers: { Range: `bytes=${from}-${to}` }, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
+    CDN_TIMEOUT,
+  );
+  const raw = dlResp.data;
+  if (!raw) throw new Error('Empty CDN response');
+  return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
+}
+
 export async function downloadFullFile(fileid) {
   const cdnUrl = await getCdnUrl(fileid);
   const dlResp = await withTimeout(
