@@ -66,22 +66,33 @@ saveBtn.addEventListener('click', async () => {
   const { lat, lng }         = pendingLatLng;
 
   try {
-    log('Geotag', `Downloading ${name}…`);
-    const buffer = await downloadFullFile(fileid);
-
-    log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
-    const modified = injectGPS(buffer, lat, lng);
-
-    log('Geotag', 'Uploading to pCloud…');
-    const newFileid = await overwriteFile(fileid, modified);
-
     const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
-    await deleteRecord(fileid);
-    await deleteOrphan(fileid);
-    await putCached({ fileid: newFileid, name, lat, lng, ts: realTs });
-    addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
+    const isHeic = /\.heic$/i.test(name);
 
-    log('Geotag', `Saved — new fileid ${newFileid}`);
+    if (isHeic) {
+      // HEIC files cannot have GPS injected — save location in local cache only.
+      log('Geotag', `HEIC: saving GPS to cache only (file on pCloud unchanged)`);
+      await deleteRecord(fileid);
+      await deleteOrphan(fileid);
+      await putCached({ fileid, name, lat, lng, ts: realTs });
+      addMarker({ fileid, name, lat, lng, ts: realTs });
+    } else {
+      log('Geotag', `Downloading ${name}…`);
+      const buffer = await downloadFullFile(fileid);
+
+      log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
+      const modified = injectGPS(buffer, lat, lng);
+
+      log('Geotag', 'Uploading to pCloud…');
+      const newFileid = await overwriteFile(fileid, modified);
+
+      await deleteRecord(fileid);
+      await deleteOrphan(fileid);
+      await putCached({ fileid: newFileid, name, lat, lng, ts: realTs });
+      addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
+      log('Geotag', `Saved — new fileid ${newFileid}`);
+    }
+
     finish();
     onDone?.({ success: true });
   } catch (e) {
