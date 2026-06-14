@@ -48,16 +48,22 @@ export async function extractEXIF(buffer, fileid = null, name = '') {
 //   2024-01-15_14-30-22_anything.jpg
 //   20240613_121250.jpg
 export function parseDateFromFilename(name) {
-  const patterns = [
-    /(\d{4})-(\d{2})-(\d{2})[_T ](\d{2})[-:](\d{2})[-:](\d{2})/,
-    /(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/,
-  ];
-  for (const re of patterns) {
-    const m = name.match(re);
-    if (m) {
-      const dt = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-      if (!isNaN(dt.getTime())) return dt.getTime();
-    }
+  // Full datetime: 2024-01-15_14-30-22 or 20240613_121250
+  let m = name.match(/(\d{4})-(\d{2})-(\d{2})[_T ](\d{2})[-:](\d{2})[-:](\d{2})/);
+  if (m) {
+    const dt = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+    if (!isNaN(dt)) return dt.getTime();
+  }
+  m = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (m) {
+    const dt = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+    if (!isNaN(dt)) return dt.getTime();
+  }
+  // Date only: 2024-06-13_001.jpg — midnight, no time info
+  m = name.match(/(\d{4})-(\d{2})-(\d{2})_/);
+  if (m) {
+    const dt = new Date(+m[1], +m[2]-1, +m[3]);
+    if (!isNaN(dt)) return dt.getTime();
   }
   return null;
 }
