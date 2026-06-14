@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
+import 'leaflet.heat';
 import { fetchThumbSrc } from './pcloud.js';
 import { log } from './log.js';
 import { openLightbox } from './lightbox.js';
@@ -21,6 +22,8 @@ L.Icon.Default.mergeOptions({
 
 let map;
 let cluster;
+let heatLayer = null;
+let heatmapActive = false;
 const addedIds = new Set();
 const markerIndex = []; // { marker, ts }
 const markerData = new Map(); // marker -> { fileid, name, ts }
@@ -148,6 +151,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   cluster.addLayer(marker);
   markerIndex.push({ marker, ts: ts ?? null });
   markerData.set(marker, { fileid, name, ts: ts ?? null });
+  if (heatmapActive && heatLayer) heatLayer.addLatLng([lat, lng]);
 }
 
 // Show only markers whose ts falls within [fromTs, toTs].
@@ -161,6 +165,12 @@ export function filterMarkers(fromTs, toTs) {
       cluster.removeLayer(marker);
     }
   }
+  if (heatmapActive && heatLayer) {
+    const pts = markerIndex
+      .filter(({ marker }) => cluster.hasLayer(marker))
+      .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
+    heatLayer.setLatLngs(pts);
+  }
 }
 
 export function clearMarkers() {
@@ -168,6 +178,23 @@ export function clearMarkers() {
   addedIds.clear();
   markerIndex.length = 0;
   markerData.clear();
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  heatmapActive = false;
+}
+
+export function toggleHeatmap() {
+  heatmapActive = !heatmapActive;
+  if (heatmapActive) {
+    map.removeLayer(cluster);
+    const pts = markerIndex.map(({ marker }) => {
+      const ll = marker.getLatLng(); return [ll.lat, ll.lng];
+    });
+    heatLayer = L.heatLayer(pts, { radius: 28, blur: 18, maxZoom: 17 }).addTo(map);
+  } else {
+    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+    map.addLayer(cluster);
+  }
+  return heatmapActive;
 }
 
 // Returns { min, max } timestamps across all dated markers, or null if none.

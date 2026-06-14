@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
-import { initMap, addMarker, clearMarkers } from './map.js';
+import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
@@ -331,6 +331,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
+  heatmapBtn.classList.remove('active');
   closeFilter();
   topbarGeotagged = 0;
   topbarTotal = 0;
@@ -368,9 +369,16 @@ function setProgress(pct) {
   progressFill.style.width = `${Math.min(100, pct)}%`;
 }
 
+const heatmapBtn = document.getElementById('heatmap-btn');
+heatmapBtn.addEventListener('click', () => {
+  const active = toggleHeatmap();
+  heatmapBtn.classList.toggle('active', active);
+});
+
 function showApp() {
   loginOverlay.style.display = 'none';
   menuWrap.style.display = '';
+  heatmapBtn.style.display = '';
   authBtn.onclick = () => { logout(); location.reload(); };
 }
 
