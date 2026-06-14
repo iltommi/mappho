@@ -481,8 +481,9 @@ async function processFile(file, stats) {
   }
   let exif;
   try {
-    const buf = await fetchFileHead(file.fileid);
-    log(`${file.name}`, `buffer: ${buf.byteLength}B`);
+    const isHeic = /\.heic$/i.test(file.name);
+    const buf = isHeic ? null : await fetchFileHead(file.fileid);
+    if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
     exif = await extractEXIF(buf, file.fileid, file.name);
     log(`${file.name} → GPS`, exif.lat != null ? `${exif.lat.toFixed(4)},${exif.lng.toFixed(4)}` : 'null');
   } catch (e) {

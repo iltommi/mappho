@@ -17,21 +17,29 @@ export async function extractEXIF(buffer, fileid = null, name = '') {
     } catch { /* fall back to original buffer */ }
   }
 
-  try {
-    const gps = await exifr.gps(parseTarget);
-    if (gps?.latitude != null && gps?.longitude != null &&
-        !isNaN(gps.latitude) && !isNaN(gps.longitude)) {
-      result.lat = gps.latitude;
-      result.lng = gps.longitude;
-    }
-  } catch { /* no GPS */ }
+  if (parseTarget) {
+    try {
+      const gps = await exifr.gps(parseTarget);
+      if (gps?.latitude != null && gps?.longitude != null &&
+          !isNaN(gps.latitude) && !isNaN(gps.longitude)) {
+        result.lat = gps.latitude;
+        result.lng = gps.longitude;
+      }
+    } catch { /* no GPS */ }
 
-  try {
-    const tags = await exifr.parse(parseTarget, { exif: true, tiff: false, gps: false,
-      pick: ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized'] });
-    const d = tags?.DateTimeOriginal ?? tags?.DateTime ?? tags?.DateTimeDigitized;
-    if (d instanceof Date && !isNaN(d)) result.ts = d.getTime();
-  } catch { /* no date */ }
+    try {
+      const tags = await exifr.parse(parseTarget, { exif: true, tiff: false, gps: false,
+        pick: ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized'] });
+      const d = tags?.DateTimeOriginal ?? tags?.DateTime ?? tags?.DateTimeDigitized;
+      if (d instanceof Date && !isNaN(d)) result.ts = d.getTime();
+    } catch { /* no date */ }
+  }
+
+  // Fallback: parse date from filename (e.g. 20250710_202139.heic, 2024-01-15_14-30-22.jpg)
+  if (!result.ts && name) {
+    const ts = parseDateFromFilename(name);
+    if (ts) result.ts = ts;
+  }
 
   return result;
 }
