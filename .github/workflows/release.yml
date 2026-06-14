@@ -39,11 +39,12 @@ jobs:
 
       - name: Publish latest release
         run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk SharPho.apk
           gh release delete latest --cleanup-tag --yes 2>/dev/null || true
           gh release create latest \
             --title "Latest" \
             --notes "Built from ${{ github.sha }}" \
             --latest \
-            android/app/build/outputs/apk/debug/app-debug.apk#SharPho.apk
+            SharPho.apk
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
