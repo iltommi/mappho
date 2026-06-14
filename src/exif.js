@@ -62,6 +62,94 @@ export function parseDateFromFilename(name) {
   return null;
 }
 
+// Convert a HEIC ArrayBuffer to JPEG by rendering through a Canvas element.
+// Canvas strips all metadata, so inject EXIF separately afterwards.
+// Requires Android WebView with HEIC decode support (Android 10+).
+export async function heicToJpeg(heicBuffer) {
+  const blob = new Blob([heicBuffer], { type: 'image/heic' });
+  const url  = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    await new Promise((resolve, reject) => {
+      img.onload  = resolve;
+      img.onerror = () => reject(new Error('WebView could not decode HEIC image'));
+      img.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(b => {
+        if (!b) { reject(new Error('Canvas toBlob failed')); return; }
+        b.arrayBuffer().then(resolve, reject);
+      }, 'image/jpeg', 0.92);
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Fetch Make and Model from a HEIC file's EXIF for metadata preservation.
+export async function extractHeicMeta(fileid) {
+  try {
+    const tiff = await fetchHeicExifTiff(fileid);
+    if (!tiff) return {};
+    const parsed = await exifr.parse(new Uint8Array(tiff), {
+      ifd0: true, exif: false, gps: false, translateValues: false,
+      pick: ['Make', 'Model'],
+    });
+    return parsed ?? {};
+  } catch { return {}; }
+}
+
+function fmtExifDate(ts) {
+  const d = new Date(ts);
+  if (isNaN(d)) return null;
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}:${p(d.getMonth()+1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+// Inject GPS, date, make and model into a JPEG ArrayBuffer.
+// Canvas-converted images have no EXIF and Orientation=1 (already oriented).
+export function injectExif(jpegBuffer, { lat, lng, ts, make, model } = {}) {
+  const bytes = new Uint8Array(jpegBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  }
+
+  let exifObj;
+  try   { exifObj = piexif.load(binary); }
+  catch { exifObj = { '0th': {}, Exif: {}, GPS: {}, Interop: {}, '1st': {} }; }
+
+  if (lat != null && lng != null) {
+    exifObj.GPS[piexif.GPSIFD.GPSLatitudeRef]  = lat >= 0 ? 'N' : 'S';
+    exifObj.GPS[piexif.GPSIFD.GPSLatitude]     = toDMS(Math.abs(lat));
+    exifObj.GPS[piexif.GPSIFD.GPSLongitudeRef] = lng >= 0 ? 'E' : 'W';
+    exifObj.GPS[piexif.GPSIFD.GPSLongitude]    = toDMS(Math.abs(lng));
+  }
+
+  if (ts) {
+    const dateStr = fmtExifDate(ts);
+    if (dateStr) {
+      exifObj['0th'][piexif.ImageIFD.DateTime]         = dateStr;
+      exifObj['Exif'][piexif.ExifIFD.DateTimeOriginal]  = dateStr;
+      exifObj['Exif'][piexif.ExifIFD.DateTimeDigitized] = dateStr;
+    }
+  }
+
+  if (make)  exifObj['0th'][piexif.ImageIFD.Make]  = make;
+  if (model) exifObj['0th'][piexif.ImageIFD.Model] = model;
+  exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
+
+  const exifBytes = piexif.dump(exifObj);
+  const modified  = piexif.insert(exifBytes, binary);
+  const out = new Uint8Array(modified.length);
+  for (let i = 0; i < modified.length; i++) out[i] = modified.charCodeAt(i);
+  return out.buffer;
+}
+
 // Inject GPS coordinates into a JPEG ArrayBuffer, return new ArrayBuffer.
 export function injectGPS(buffer, lat, lng) {
   const bytes = new Uint8Array(buffer);

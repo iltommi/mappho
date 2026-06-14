@@ -110,43 +110,50 @@ export async function downloadFullFile(fileid) {
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
 }
 
-export async function overwriteFile(fileid, arrayBuffer) {
-  const stat = await api('stat', { fileid });
-  const { name, parentfolderid } = stat.metadata;
+export async function getFileStat(fileid) {
+  const data = await api('stat', { fileid });
+  return data.metadata;
+}
 
+export async function uploadFile(folderid, filename, arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 8192) {
     bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
   }
   const b64 = btoa(bin);
-
   const boundary = 'SharPhoUpload' + crypto.randomUUID().replace(/-/g, '');
   const crlf = '\r\n';
   const body = [
     '--' + boundary,
-    `Content-Disposition: form-data; name="file"; filename="${name}"`,
+    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
     'Content-Type: image/jpeg',
     'Content-Transfer-Encoding: base64',
     '',
     b64,
     '--' + boundary + '--',
   ].join(crlf);
-
-  // Upload first — only delete original once the new file is confirmed
   const resp = await CapacitorHttp.request({
     method: 'POST',
-    url: buildUrl('uploadfile', { folderid: parentfolderid, nopartial: 1 }).toString(),
+    url: buildUrl('uploadfile', { folderid, nopartial: 1 }).toString(),
     headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
     data: body,
     connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
-
   const newFileid = resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
   if (!newFileid) throw new Error('Upload succeeded but pCloud returned no file ID');
+  return newFileid;
+}
 
+export async function deleteFile(fileid) {
   await api('deletefile', { fileid });
+}
+
+export async function overwriteFile(fileid, arrayBuffer) {
+  const { name, parentfolderid } = await getFileStat(fileid);
+  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
+  await deleteFile(fileid);
   return newFileid;
 }
 

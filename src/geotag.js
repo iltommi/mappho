@@ -1,6 +1,6 @@
-import { parseDateFromFilename, injectGPS } from './exif.js';
+import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectExif } from './exif.js';
 import { findClosestGeotagged, deleteRecord, deleteOrphan, putCached } from './db.js';
-import { downloadFullFile, overwriteFile } from './pcloud.js';
+import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, addMarker } from './map.js';
 import { log } from './log.js';
 
@@ -70,12 +70,38 @@ saveBtn.addEventListener('click', async () => {
     const isHeic = /\.heic$/i.test(name);
 
     if (isHeic) {
-      // HEIC files cannot have GPS injected — save location in local cache only.
-      log('Geotag', `HEIC: saving GPS to cache only (file on pCloud unchanged)`);
+      log('Geotag', `HEIC → JPEG: fetching metadata…`);
+      saveBtn.textContent = '⏳ Fetching…';
+      const meta = await extractHeicMeta(fileid);
+
+      log('Geotag', `Downloading ${name}…`);
+      saveBtn.textContent = '⏳ Downloading…';
+      const heicBuf = await downloadFullFile(fileid);
+
+      log('Geotag', 'Converting to JPEG…');
+      saveBtn.textContent = '⏳ Converting…';
+      const jpegBuf = await heicToJpeg(heicBuf);
+
+      log('Geotag', `Injecting EXIF (${lat.toFixed(5)}, ${lng.toFixed(5)})…`);
+      saveBtn.textContent = '⏳ Injecting EXIF…';
+      const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model });
+
+      const jpegName = name.replace(/\.heic$/i, '.jpg');
+      const { parentfolderid } = await getFileStat(fileid);
+
+      log('Geotag', `Uploading ${jpegName}…`);
+      saveBtn.textContent = '⏳ Uploading…';
+      const newFileid = await uploadFile(parentfolderid, jpegName, jpegWithExif);
+
+      log('Geotag', `Removing original HEIC…`);
+      saveBtn.textContent = '⏳ Removing HEIC…';
+      await deleteFile(fileid);
+
       await deleteRecord(fileid);
       await deleteOrphan(fileid);
-      await putCached({ fileid, name, lat, lng, ts: realTs });
-      addMarker({ fileid, name, lat, lng, ts: realTs });
+      await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
+      addMarker({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
+      log('Geotag', `Done — HEIC replaced by ${jpegName} (fileid ${newFileid})`);
     } else {
       log('Geotag', `Downloading ${name}…`);
       const buffer = await downloadFullFile(fileid);
