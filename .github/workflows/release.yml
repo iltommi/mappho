@@ -34,17 +34,20 @@ jobs:
       - name: Set Android SDK path
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
-      - name: Restore debug keystore
-        run: |
-          mkdir -p ~/.android
-          echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 -d > ~/.android/debug.keystore
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
 
-      - name: Build debug APK
-        run: cd android && ./gradlew assembleDebug --no-daemon
+      - name: Build release APK
+        run: |
+          cd android && ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file=$(pwd)/app/keystore.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
       - name: Publish latest release
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk SharPho.apk
+          cp android/app/build/outputs/apk/release/app-release.apk SharPho.apk
           gh release delete latest --cleanup-tag --yes 2>/dev/null || true
           git push --delete origin refs/tags/latest 2>/dev/null || true
           gh release create latest \
