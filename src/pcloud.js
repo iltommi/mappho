@@ -50,7 +50,7 @@ export async function* listImages(folderid = 0) {
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
         queue.push(item.folderid);
-      } else if (/\.(jpe?g)$/i.test(item.name)) {
+      } else if (/\.(jpe?g|heic)$/i.test(item.name)) {
         yield item;
       }
     }
