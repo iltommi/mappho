@@ -34,6 +34,11 @@ jobs:
       - name: Set Android SDK path
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
 
+      - name: Restore debug keystore
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_B64 }}" | base64 -d > ~/.android/debug.keystore
+
       - name: Build debug APK
         run: cd android && ./gradlew assembleDebug --no-daemon
 
