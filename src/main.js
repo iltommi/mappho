@@ -2,6 +2,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
 
 const BUILD_TIME = new Date(__BUILD_TIME__);
+const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
@@ -185,9 +186,16 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       headers: { Accept: 'application/vnd.github+json' },
     });
     const release = resp.data;
-    const releaseDate = new Date(release.published_at);
-    if (releaseDate > BUILD_TIME) {
-      showBriefStatus(`Update available (${release.tag_name}) — downloading…`, 30000);
+    if (!resp.status || resp.status < 200 || resp.status >= 300 || !release.published_at) {
+      throw new Error(release.message ?? `HTTP ${resp.status}`);
+    }
+    // Compare the SHA embedded in the release notes with the one baked into this build.
+    const releaseSha = (release.body ?? '').match(/Built from ([0-9a-f]{40})/i)?.[1];
+    const upToDate = releaseSha
+      ? releaseSha === APP_SHA
+      : new Date(release.published_at) <= BUILD_TIME;
+    if (!upToDate) {
+      showBriefStatus(`Update available — downloading…`, 30000);
       window.open('https://github.com/iltommi/sharpho/releases/download/latest/SharPho.apk', '_system');
     } else {
       showBriefStatus('Already up to date.');
