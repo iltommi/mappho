@@ -20,10 +20,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
+// Gradient shared by leaflet.heat and the legend bar — keys are 0–1 intensity.
+const HEAT_GRADIENT = { 0.0: '#60a5fa', 0.3: '#34d399', 0.6: '#fbbf24', 0.85: '#f97316', 1.0: '#ef4444' };
+
 let map;
 let cluster;
-let heatLayer = null;
+let heatLayer     = null;
 let heatmapActive = false;
+let heatPoints    = []; // [lat, lng] pairs currently fed to the heat layer
+let legendControl = null;
+let legendCountEl = null;
 const addedIds = new Set();
 const markerIndex = []; // { marker, ts }
 const markerData = new Map(); // marker -> { fileid, name, ts }
@@ -77,12 +83,45 @@ export function exitPinDropMode() {
   pinDropOnPlace = null;
 }
 
+function buildLegendControl() {
+  const ctrl = L.control({ position: 'bottomright' });
+  ctrl.onAdd = () => {
+    const stops = Object.entries(HEAT_GRADIENT)
+      .sort(([a], [b]) => +a - +b)
+      .map(([k, v]) => `${v} ${(+k * 100).toFixed(0)}%`)
+      .join(', ');
+    const div = L.DomUtil.create('div', 'heat-legend');
+    div.innerHTML =
+      '<div class="heat-bar-col">' +
+        '<span class="heat-lbl">high</span>' +
+        `<div class="heat-bar" style="background:linear-gradient(to top,${stops})"></div>` +
+        '<span class="heat-lbl">low</span>' +
+      '</div>' +
+      '<span class="heat-count">—</span>';
+    legendCountEl = div.querySelector('.heat-count');
+    return div;
+  };
+  return ctrl;
+}
+
+function countInViewport() {
+  const bounds = map.getBounds();
+  return heatPoints.filter(([lat, lng]) => bounds.contains(L.latLng(lat, lng))).length;
+}
+
+function updateLegend() {
+  if (!heatmapActive || !legendCountEl) return;
+  legendCountEl.textContent = countInViewport().toLocaleString();
+}
+
 export function initMap() {
   map = L.map('map').setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   }).addTo(map);
+
+  map.on('moveend zoomend', updateLegend);
 
   cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false });
   cluster.on('clusterclick', e => {
@@ -151,7 +190,10 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   cluster.addLayer(marker);
   markerIndex.push({ marker, ts: ts ?? null });
   markerData.set(marker, { fileid, name, ts: ts ?? null });
-  if (heatmapActive && heatLayer) heatLayer.addLatLng([lat, lng]);
+  if (heatmapActive && heatLayer) {
+    heatLayer.addLatLng([lat, lng]);
+    heatPoints.push([lat, lng]);
+  }
 }
 
 // Show only markers whose ts falls within [fromTs, toTs].
@@ -166,10 +208,11 @@ export function filterMarkers(fromTs, toTs) {
     }
   }
   if (heatmapActive && heatLayer) {
-    const pts = markerIndex
+    heatPoints = markerIndex
       .filter(({ marker }) => cluster.hasLayer(marker))
       .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
-    heatLayer.setLatLngs(pts);
+    heatLayer.setLatLngs(heatPoints);
+    updateLegend();
   }
 }
 
@@ -178,7 +221,9 @@ export function clearMarkers() {
   addedIds.clear();
   markerIndex.length = 0;
   markerData.clear();
-  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  heatPoints = [];
+  if (heatLayer)     { map.removeLayer(heatLayer); heatLayer = null; }
+  if (legendControl) { legendControl.remove(); legendControl = null; legendCountEl = null; }
   heatmapActive = false;
 }
 
@@ -186,12 +231,21 @@ export function toggleHeatmap() {
   heatmapActive = !heatmapActive;
   if (heatmapActive) {
     map.removeLayer(cluster);
-    const pts = markerIndex.map(({ marker }) => {
-      const ll = marker.getLatLng(); return [ll.lat, ll.lng];
-    });
-    heatLayer = L.heatLayer(pts, { radius: 28, blur: 18, maxZoom: 17 }).addTo(map);
+    heatPoints = markerIndex
+      .filter(({ marker }) => cluster.hasLayer(marker))
+      .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
+    heatLayer = L.heatLayer(heatPoints, {
+      radius: 28, blur: 18, maxZoom: 17,
+      minOpacity: 0.45,
+      gradient: HEAT_GRADIENT,
+    }).addTo(map);
+    legendControl = buildLegendControl();
+    legendControl.addTo(map);
+    updateLegend();
   } else {
-    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+    if (heatLayer)     { map.removeLayer(heatLayer); heatLayer = null; }
+    if (legendControl) { legendControl.remove(); legendControl = null; legendCountEl = null; }
+    heatPoints = [];
     map.addLayer(cluster);
   }
   return heatmapActive;
