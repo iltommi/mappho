@@ -332,7 +332,7 @@ function updateCaption() {
   const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
   captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
   if (geotagHandler) {
-    geotagBtn.style.display = /\.heic$/i.test(name) ? 'none' : '';
+    geotagBtn.style.display = '';
   }
 }
 
