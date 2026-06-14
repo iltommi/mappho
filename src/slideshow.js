@@ -1,5 +1,6 @@
 import { fetchThumbSrc } from './pcloud.js';
 import { openLightbox } from './lightbox.js';
+import { showExif } from './exif.js';
 
 const el        = document.getElementById('slideshow');
 const trackEl   = document.getElementById('ss-track');
@@ -13,6 +14,7 @@ const prevBtn   = document.getElementById('ss-prev');
 const nextBtn   = document.getElementById('ss-next');
 const closeBtn  = document.getElementById('ss-close');
 const geotagBtn = document.getElementById('ss-geotag-btn');
+const exifBtn   = document.getElementById('ss-exif-btn');
 const wrap      = document.getElementById('ss-img-wrap');
 
 let geotagHandler = null;
@@ -96,6 +98,11 @@ geotagBtn.addEventListener('click', () => {
   if (!photo || !geotagHandler) return;
   close();
   geotagHandler(photo);
+});
+
+exifBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (photo) showExif(photo.fileid, photo.name);
 });
 closeBtn.addEventListener('click', close);
 

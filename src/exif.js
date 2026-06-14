@@ -1,5 +1,6 @@
 import exifr from 'exifr';
 import piexif from 'piexifjs';
+import { fetchFileHead } from './pcloud.js';
 
 // Returns { lat, lng, ts } — any field may be absent if not in EXIF.
 export async function extractEXIF(buffer) {
@@ -66,4 +67,65 @@ function toDMS(decimal) {
   const min  = Math.floor(minF);
   const sec  = Math.round((minF - min) * 60 * 1000);
   return [[deg, 1], [min, 1], [sec, 1000]];
+}
+
+// ── EXIF viewer panel ─────────────────────────────────────────────────────────
+
+const exifPanel   = document.getElementById('exif-panel');
+const exifTitleEl = document.getElementById('exif-title');
+const exifCloseBtn= document.getElementById('exif-close');
+const exifListEl  = document.getElementById('exif-list');
+
+exifCloseBtn.addEventListener('click', () => exifPanel.classList.remove('open'));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && exifPanel.classList.contains('open')) exifPanel.classList.remove('open');
+});
+
+function fmtVal(v) {
+  if (v == null) return '—';
+  if (v instanceof ArrayBuffer) return `[binary ${v.byteLength}b]`;
+  if (ArrayBuffer.isView(v)) return `[binary ${v.byteLength ?? v.length}b]`;
+  if (v instanceof Date) return v.toLocaleString();
+  if (Array.isArray(v)) {
+    const parts = v.slice(0, 12).map(fmtVal);
+    return parts.join(', ') + (v.length > 12 ? ` … +${v.length - 12}` : '');
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+export async function showExif(fileid, name) {
+  exifTitleEl.textContent = name ?? 'EXIF';
+  exifListEl.innerHTML = '';
+  exifPanel.classList.add('open', 'loading');
+
+  try {
+    const buf  = await fetchFileHead(fileid, 131072);
+    const data = await exifr.parse(buf, { all: true });
+    exifPanel.classList.remove('loading');
+
+    if (!data || !Object.keys(data).length) {
+      exifListEl.innerHTML = '<p class="exif-empty">No EXIF data found.</p>';
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const [key, val] of Object.entries(data)) {
+      const row = document.createElement('div');
+      row.className = 'exif-row';
+      const k = document.createElement('span');
+      k.className = 'exif-key';
+      k.textContent = key;
+      const v = document.createElement('span');
+      v.className = 'exif-val';
+      v.textContent = fmtVal(val);
+      row.appendChild(k);
+      row.appendChild(v);
+      frag.appendChild(row);
+    }
+    exifListEl.appendChild(frag);
+  } catch (e) {
+    exifPanel.classList.remove('loading');
+    exifListEl.innerHTML = `<p class="exif-empty">Error: ${e.message}</p>`;
+  }
 }

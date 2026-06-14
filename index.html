@@ -93,11 +93,15 @@
     <div id="ss-footer">
       <div id="ss-counter"></div>
       <p id="ss-caption"></p>
-      <button id="ss-geotag-btn" style="display:none">📍 Set location</button>
+      <div id="ss-footer-btns">
+        <button id="ss-geotag-btn" style="display:none">📍 Set location</button>
+        <button id="ss-exif-btn">ℹ EXIF</button>
+      </div>
     </div>
   </div>
   <div id="lightbox">
     <button id="lightbox-close">✕</button>
+    <button id="lightbox-exif-btn">ℹ EXIF</button>
     <span id="lightbox-loading">Loading…</span>
     <img id="lightbox-img" alt="" />
   </div>
@@ -112,6 +116,14 @@
       <button id="fp-close">✕</button>
     </div>
     <div id="fp-list"></div>
+  </div>
+
+  <div id="exif-panel">
+    <div id="exif-header">
+      <span id="exif-title">EXIF</span>
+      <button id="exif-close">✕</button>
+    </div>
+    <div id="exif-list"></div>
   </div>
 
   <div id="log-panel">
