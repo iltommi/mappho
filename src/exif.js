@@ -3,11 +3,22 @@ import piexif from 'piexifjs';
 import { fetchFileHead, fetchFileRange } from './pcloud.js';
 
 // Returns { lat, lng, ts } — any field may be absent if not in EXIF.
-export async function extractEXIF(buffer) {
+// Pass fileid + name for HEIC files so multi-pass fetching can be used when needed.
+export async function extractEXIF(buffer, fileid = null, name = '') {
   const result = {};
 
+  // For HEIC, prefer fetching the raw TIFF bytes directly so exifr gets the full data
+  // regardless of where the meta box sits in the file.
+  let parseTarget = buffer;
+  if (/\.heic$/i.test(name) && fileid) {
+    try {
+      const tiff = await fetchHeicExifTiff(fileid);
+      if (tiff) parseTarget = tiff;
+    } catch { /* fall back to original buffer */ }
+  }
+
   try {
-    const gps = await exifr.gps(buffer);
+    const gps = await exifr.gps(parseTarget);
     if (gps?.latitude != null && gps?.longitude != null &&
         !isNaN(gps.latitude) && !isNaN(gps.longitude)) {
       result.lat = gps.latitude;
@@ -16,7 +27,7 @@ export async function extractEXIF(buffer) {
   } catch { /* no GPS */ }
 
   try {
-    const tags = await exifr.parse(buffer, { exif: true, tiff: false, gps: false,
+    const tags = await exifr.parse(parseTarget, { exif: true, tiff: false, gps: false,
       pick: ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized'] });
     const d = tags?.DateTimeOriginal ?? tags?.DateTime ?? tags?.DateTimeDigitized;
     if (d instanceof Date && !isNaN(d)) result.ts = d.getTime();
@@ -112,9 +123,21 @@ function heicExifLocation(buf) {
     }
   }
 
-  // Find the 'meta' box at top level
+  // Find the 'meta' box at top level.
+  // If a large box (e.g. mdat) extends past the buffer we return { fetchAt } so the
+  // caller can fetch another chunk starting right after that box.
   let meta = null;
-  for (const b of boxes(0, end)) { if (b.type === 'meta') { meta = b; break; } }
+  {
+    let p = 0;
+    while (p + 8 <= end) {
+      const sz = u32(p);
+      if (sz < 8) break;
+      const type = s4(p + 4);
+      if (type === 'meta') { meta = { ps: p + 8, end: Math.min(p + sz, end) }; break; }
+      if (p + sz > end) return { fetchAt: p + sz }; // box content beyond buffer
+      p += sz;
+    }
+  }
   if (!meta) return null;
 
   // meta is a FullBox: 4-byte version+flags before its children
@@ -183,6 +206,22 @@ function tiffStart(buf) {
   return 0;
 }
 
+// Shared helper: fetch the raw TIFF bytes from a HEIC file using 1-3 range requests.
+// Returns an ArrayBuffer (the TIFF data) or null.
+export async function fetchHeicExifTiff(fileid) {
+  const head = await fetchFileHead(fileid, 65536);
+  let loc = heicExifLocation(head);
+
+  if (loc && 'fetchAt' in loc) {
+    const metaBuf = await fetchFileRange(fileid, loc.fetchAt, loc.fetchAt + 32767);
+    loc = heicExifLocation(metaBuf);
+  }
+
+  if (!loc || !('offset' in loc) || loc.length <= 0) return null;
+  const item = await fetchFileRange(fileid, loc.offset, loc.offset + loc.length - 1);
+  return item.slice(tiffStart(item));
+}
+
 // ── EXIF viewer panel ─────────────────────────────────────────────────────────
 
 const exifPanel   = document.getElementById('exif-panel');
@@ -218,14 +257,8 @@ export async function showExif(fileid, name) {
     const isHeic = /\.heic$/i.test(name ?? '');
 
     if (isHeic) {
-      // Pass 1: fetch first 64 KB to parse ISOBMFF and locate the Exif item.
-      const head = await fetchFileHead(fileid, 65536);
-      const loc  = heicExifLocation(head);
-      if (loc && loc.length > 0) {
-        // Pass 2: fetch only the Exif item bytes.
-        const item = await fetchFileRange(fileid, loc.offset, loc.offset + loc.length - 1);
-        // The Exif item starts with a 4-byte prefix; the TIFF header follows.
-        const tiff = item.slice(tiffStart(item));
+      const tiff = await fetchHeicExifTiff(fileid);
+      if (tiff) {
         data = await exifr.parse(new Uint8Array(tiff), {
           ifd0: true, ifd1: true, exif: true, gps: true, interop: true,
           translateKeys: true, translateValues: true, reviveValues: true,
