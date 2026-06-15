@@ -945,6 +945,65 @@ body.filter-open #map { top: 120px; }
 }
 #pin-drop-cancel:hover { background: #475569; }
 
+/* Fix date panel */
+#fix-date-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background: #16213e;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(90vw, 480px);
+  width: max-content;
+}
+
+#fix-date-hint {
+  font-size: .82rem;
+  color: #94a3b8;
+}
+
+#fix-date-inputs {
+  display: flex;
+  gap: 8px;
+}
+
+#fix-date-input, #fix-date-time-input {
+  background: #0f3460;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: .88rem;
+  color-scheme: dark;
+}
+
+#fix-date-actions {
+  display: flex;
+  gap: 10px;
+}
+
+#fix-date-save, #fix-date-cancel {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#fix-date-save { background: #16a34a; color: #fff; }
+#fix-date-save:hover:not(:disabled) { background: #15803d; }
+#fix-date-save:disabled { opacity: .45; cursor: default; }
+#fix-date-cancel { background: #334155; color: #e2e8f0; }
+#fix-date-cancel:hover { background: #475569; }
+
 /* Geotag button in slideshow */
 #ss-footer-btns {
   display: flex;
@@ -965,6 +1024,19 @@ body.filter-open #map { top: 120px; }
   transition: background .15s;
 }
 #ss-geotag-btn:hover { background: #0284c7; }
+
+#ss-fixdate-btn {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #6d28d9;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#ss-fixdate-btn:hover { background: #7c3aed; }
 
 #ss-exif-btn {
   padding: 7px 14px;
