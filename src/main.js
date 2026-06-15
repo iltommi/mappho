@@ -161,7 +161,11 @@ async function openOrphanSlideshow() {
     total = await countOrphans();
     fetcher = (offset, limit) => getOrphansPage(offset, limit);
   }
-  if (!total) { log('No location', range ? 'no unlocalised photos in this date range' : 'no unlocalised photos in cache — scan first'); return; }
+  log('No location', `total orphans=${await countOrphans()}, in range=${total}`);
+  if (!total) {
+    showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
+    return;
+  }
   openLazySlideshow(fetcher, total);
 }
 
@@ -172,8 +176,15 @@ document.getElementById('noloc-menu-btn').addEventListener('click', async () => 
 
 document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
+  const allOrphans = await countOrphans();
   const total = await countOrphansInRange(0, 0);
-  if (!total) { log('No date/location', 'no photos without both date and location'); return; }
+  log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
+  if (!total) {
+    showBriefStatus(allOrphans > 0
+      ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
+      : 'No photos without location in cache.');
+    return;
+  }
   openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
 });
 
