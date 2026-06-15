@@ -1,4 +1,4 @@
-import { fetchThumbSrc } from './pcloud.js';
+import { fetchThumbSrc, getFileDimensions } from './pcloud.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
@@ -338,12 +338,21 @@ function updateCounter() {
 }
 
 function updateCaption() {
-  const { name, ts } = photos[current];
+  const { name, ts, fileid } = photos[current];
   updateCounter();
   const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
   captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
   if (geotagHandler) geotagBtn.style.display = '';
   exifBtn.style.display = isVideo(name) ? 'none' : '';
+
+  if (!isVideo(name)) {
+    getFileDimensions(fileid).then(dim => {
+      if (dim && photos[current]?.fileid === fileid) {
+        const base = dateStr ? `${name} · ${dateStr}` : name;
+        captionEl.textContent = `${base} · ${dim.w}×${dim.h}`;
+      }
+    }).catch(() => {});
+  }
 }
 
 // ── Lazy loading ──────────────────────────────────────────────────────────────
