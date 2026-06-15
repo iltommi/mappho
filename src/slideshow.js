@@ -27,6 +27,7 @@ const captionEl = document.getElementById('ss-caption');
 const prevBtn   = document.getElementById('ss-prev');
 const nextBtn   = document.getElementById('ss-next');
 const closeBtn  = document.getElementById('ss-close');
+const playBadge   = document.getElementById('ss-play-badge');
 const geotagBtn   = document.getElementById('ss-geotag-btn');
 const fixDateBtn  = document.getElementById('ss-fixdate-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
@@ -107,6 +108,7 @@ function centerTrack(animate) {
 
 function close() {
   el.classList.remove('open');
+  playBadge.style.display  = 'none';
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
   ignoreBtn.style.display  = 'none';
@@ -421,7 +423,12 @@ async function navigate(dir) {
 
 async function fetchCached(fileid, name = '') {
   if (imgCache.has(fileid)) return imgCache.get(fileid);
-  const src = isVideo(name) ? VIDEO_PLACEHOLDER : await fetchThumbSrc(fileid, '512x512');
+  let src;
+  if (isVideo(name)) {
+    src = (await fetchThumbSrc(fileid, '512x512')) ?? VIDEO_PLACEHOLDER;
+  } else {
+    src = await fetchThumbSrc(fileid, '512x512');
+  }
   imgCache.set(fileid, src);
   if (imgCache.size > MAX_CACHE) imgCache.delete(imgCache.keys().next().value);
   return src;
@@ -460,6 +467,7 @@ function updateCaption() {
   if (geotagHandler) geotagBtn.style.display = '';
   fixDateBtn.style.display  = fixDateHandler ? '' : 'none';
   ignoreBtn.style.display   = ignoreHandler  ? '' : 'none';
+  playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
