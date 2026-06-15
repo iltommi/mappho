@@ -144,7 +144,12 @@ ignoreBtn.addEventListener('click', async () => {
   photos.splice(current, 1);
   if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
 
-  if (!photos.length) { close(); ignoreHandler(photo); return; }
+  if (!photos.length) {
+    ignoreBtn.disabled = false;
+    close();
+    ignoreHandler(photo).catch(e => console.error('ignore error:', e));
+    return;
+  }
   if (current >= photos.length) current = photos.length - 1;
   ignoreBtn.disabled = false;
   await go(current);
