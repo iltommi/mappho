@@ -69,6 +69,18 @@ export async function deleteRecord(fileid) {
   return (await db()).delete(STORE, fileid);
 }
 
+export async function ignorePhoto(fileid) {
+  const d = await db();
+  const existing = await d.get(STORE, fileid);
+  if (existing) await d.put(STORE, { ...existing, ignored: true });
+  await d.delete(ORPHAN_STORE, fileid);
+}
+
+export async function countIgnored() {
+  const all = await (await db()).getAll(STORE);
+  return all.filter(r => r.ignored).length;
+}
+
 export async function deleteOrphan(fileid) {
   return (await db()).delete(ORPHAN_STORE, fileid);
 }

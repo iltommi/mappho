@@ -9,9 +9,9 @@ import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } 
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setAfterDeleteCallback } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -60,10 +60,11 @@ function clearScanStatus() { /* status bar stays; last message persists */ }
 
 async function reloadTopbarCounts() {
   const total   = await countCached();
+  const ignored = await countIgnored();
   const orphans = await countOrphans();
   const noDate  = await countOrphansInRange(0, 0);
-  topbarTotal     = total;
-  topbarGeotagged = total - orphans;
+  topbarTotal     = total - ignored;
+  topbarGeotagged = total - ignored - orphans;
   topbarDated     = orphans - noDate;
   topbarUnknown   = noDate;
   updateTopbar();
@@ -176,6 +177,7 @@ async function openOrphanSlideshow() {
     return;
   }
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); openOrphanSlideshow(); });
   openLazySlideshow(fetcher, total);
 }
 
@@ -190,6 +192,7 @@ async function openNodatetimeSlideshow() {
     return;
   }
   setFixDateHandler(photo => startFixDate(photo, openNodatetimeSlideshow));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); openNodatetimeSlideshow(); });
   openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
 }
 
@@ -512,16 +515,17 @@ async function startScan() {
   // Load cached markers first — no network needed, works immediately after wake.
   showBriefStatus('Loading cache…', 30000);
   const cached = await getAllCached();
-  let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0;
+  let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
   for (const p of cached) {
+    if (p.ignored) { cachedIgnored++; continue; }
     if (p.lat != null) { addMarker(p); cachedGeo++; }
     else { toMigrate.push(p); if (p.ts != null) cachedDated++; else cachedUnknown++; }
   }
   topbarGeotagged = cachedGeo;
   topbarDated     = cachedDated;
   topbarUnknown   = cachedUnknown;
-  topbarTotal     = cached.length;
+  topbarTotal     = cached.length - cachedIgnored;
 
   // Populate orphan store in one transaction so the No-location / No-date buttons work immediately.
   if (toMigrate.length > 0) {
@@ -571,6 +575,7 @@ async function runScan() {
 async function processFile(file, stats) {
   const hit = await getCached(file.fileid);
   if (hit) {
+    if (hit.ignored) return true;
     log(`${file.name} [cached]`, hit.lat != null ? `GPS: ${hit.lat.toFixed(4)}, ${hit.lng.toFixed(4)}` : 'no GPS');
     if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
     return true;

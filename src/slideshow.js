@@ -29,6 +29,7 @@ const nextBtn   = document.getElementById('ss-next');
 const closeBtn  = document.getElementById('ss-close');
 const geotagBtn   = document.getElementById('ss-geotag-btn');
 const fixDateBtn  = document.getElementById('ss-fixdate-btn');
+const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
 const deleteBtn   = document.getElementById('ss-delete-btn');
@@ -36,9 +37,11 @@ const wrap        = document.getElementById('ss-img-wrap');
 
 let geotagHandler    = null;
 let fixDateHandler   = null;
+let ignoreHandler    = null;
 let afterDeleteCb    = null;
 export function setGeotagHandler(fn)       { geotagHandler = fn; }
 export function setFixDateHandler(fn)      { fixDateHandler = fn; }
+export function setIgnoreHandler(fn)       { ignoreHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
 let photos  = [];
@@ -106,6 +109,7 @@ function close() {
   el.classList.remove('open');
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
+  ignoreBtn.style.display  = 'none';
   photos = [];
   imgCache.clear();
   resetLazy();
@@ -128,6 +132,13 @@ fixDateBtn.addEventListener('click', () => {
   if (!photo || !fixDateHandler) return;
   close();
   fixDateHandler(photo);
+});
+
+ignoreBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo || !ignoreHandler) return;
+  close();
+  ignoreHandler(photo);
 });
 
 exifBtn.addEventListener('click', () => {
@@ -447,7 +458,8 @@ function updateCaption() {
 
   captionEl.textContent = buildCaption('', '');
   if (geotagHandler) geotagBtn.style.display = '';
-  fixDateBtn.style.display = fixDateHandler ? '' : 'none';
+  fixDateBtn.style.display  = fixDateHandler ? '' : 'none';
+  ignoreBtn.style.display   = ignoreHandler  ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
@@ -510,12 +522,15 @@ async function go(index) {
 
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
+  fixDateHandler = null;
+  ignoreHandler  = null;
   resetLazy();
   lazyDone = true;
   photos   = photoList;
   imgCache.clear();
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
+  ignoreBtn.style.display  = 'none';
   el.classList.add('open');
   go(startIndex);
 }
