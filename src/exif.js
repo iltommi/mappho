@@ -65,6 +65,12 @@ export function parseDateFromFilename(name) {
     const dt = new Date(+m[1], +m[2]-1, +m[3]);
     if (!isNaN(dt)) return dt.getTime();
   }
+  // Date only compact: IMG-20240613-* — 8-digit block between non-digit separators
+  m = name.match(/[^0-9](\d{4})(\d{2})(\d{2})[^0-9]/);
+  if (m) {
+    const dt = new Date(+m[1], +m[2]-1, +m[3]);
+    if (!isNaN(dt)) return dt.getTime();
+  }
   return null;
 }
 
