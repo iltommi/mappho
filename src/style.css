@@ -248,6 +248,21 @@ html, body {
   line-height: 16px;
 }
 
+#retry-btn {
+  position: fixed;
+  bottom: 30px;
+  right: 6px;
+  z-index: 1002;
+  padding: 3px 8px;
+  background: #431407;
+  color: #fbbf24;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  font-size: .65rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 #progress-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;

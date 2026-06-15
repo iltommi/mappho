@@ -27,6 +27,7 @@ const scanStatusEl = document.getElementById('scan-status');
 
 let sessionGeotagged = 0;
 let scanCancelled = false;
+let retryQueue = [];
 let topbarGeotagged = 0;
 let topbarDated   = 0;
 let topbarUnknown = 0;
@@ -590,7 +591,9 @@ async function scan() {
 
   if (failedFiles.length > 0) {
     log('Scan errors', `${failedFiles.length} files failed to download`);
-    showRetryDialog(failedFiles, stats);
+    retryQueue = failedFiles;
+    updateRetryBtn();
+    showRetryDialog(failedFiles);
   }
 }
 
@@ -625,12 +628,24 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   clearInterval(diagTimer);
 }
 
-function showRetryDialog(failedFiles, stats) {
+function updateRetryBtn() {
+  const btn = document.getElementById('retry-btn');
+  if (!btn) return;
+  if (retryQueue.length === 0) {
+    btn.style.display = 'none';
+  } else {
+    btn.textContent = `⚠ ${retryQueue.length} failed`;
+    btn.style.display = '';
+  }
+}
+
+function showRetryDialog(files) {
+  document.getElementById('retry-dialog')?.remove();
   const dialog = document.createElement('div');
   dialog.id = 'retry-dialog';
   dialog.innerHTML = `
     <div id="retry-box">
-      <p>${failedFiles.length} file${failedFiles.length > 1 ? 's' : ''} failed to download and were skipped.</p>
+      <p>${files.length} file${files.length > 1 ? 's' : ''} failed to download and were skipped.</p>
       <div id="retry-actions">
         <button id="retry-yes">Retry</button>
         <button id="retry-copy">Copy list</button>
@@ -641,7 +656,7 @@ function showRetryDialog(failedFiles, stats) {
 
   document.getElementById('retry-no').addEventListener('click', () => dialog.remove());
   document.getElementById('retry-copy').addEventListener('click', async () => {
-    const text = failedFiles.map(f => f.name).join('\n');
+    const text = files.map(f => f.name).join('\n');
     await navigator.clipboard.writeText(text);
     const btn = document.getElementById('retry-copy');
     btn.textContent = 'Copied!';
@@ -649,17 +664,19 @@ function showRetryDialog(failedFiles, stats) {
   });
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
-    const total = failedFiles.length;
-    stats.scanned = 0; stats.completed = 0; stats.geotagged = 0;
-    const pool = new Set(), inFlight = new Map(), retryFailed = [];
+    const total = files.length;
+    const stats = { scanned: 0, geotagged: 0, completed: 0 };
+    const pool = new Set(), inFlight = new Map(), stillFailed = [];
     setProgress(0);
-    await processFiles(failedFiles, total, stats, pool, inFlight, retryFailed);
+    await processFiles(files, total, stats, pool, inFlight, stillFailed);
     await Promise.all(pool);
     clearScanStatus();
     await reloadTopbarCounts();
-    setProgress(100);
-    log('Retry done', `${retryFailed.length} still failing after retry`);
-    if (retryFailed.length > 0) showRetryDialog(retryFailed, stats);
+    retryQueue = stillFailed;
+    updateRetryBtn();
+    setProgress(stillFailed.length === 0 ? 100 : 0);
+    log('Retry done', `${stillFailed.length} still failing after retry`);
+    if (stillFailed.length > 0) showRetryDialog(stillFailed);
   });
 }
 
@@ -667,6 +684,9 @@ async function main() {
   handleCallback();
   initMap();
   setAfterDeleteCallback(() => reloadTopbarCounts());
+  document.getElementById('retry-btn').addEventListener('click', () => {
+    if (retryQueue.length > 0) showRetryDialog(retryQueue);
+  });
 
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) {
