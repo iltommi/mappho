@@ -11,7 +11,7 @@ import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -180,21 +180,24 @@ async function openOrphanSlideshow() {
 
 document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  await openOrphanSlideshow();
+  try { await openOrphanSlideshow(); }
+  catch (e) { log('No location error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
 document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  const allOrphans = await countOrphans();
-  const total = await countOrphansInRange(0, 0);
-  log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
-  if (!total) {
-    showBriefStatus(allOrphans > 0
-      ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
-      : 'No photos without location in cache.');
-    return;
-  }
-  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
+  try {
+    const allOrphans = await countOrphans();
+    const total = await countOrphansInRange(0, 0);
+    log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
+    if (!total) {
+      showBriefStatus(allOrphans > 0
+        ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
+        : 'No photos without location in cache.');
+      return;
+    }
+    openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
+  } catch (e) { log('No date/location error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
@@ -467,13 +470,17 @@ async function startScan() {
   topbarDated     = cachedDated;
   topbarUnknown   = cachedUnknown;
   topbarTotal     = cached.length;
+
+  // Populate orphan store in one transaction so the No-location / No-date buttons work immediately.
+  if (toMigrate.length > 0) {
+    try { await bulkPutOrphans(toMigrate); }
+    catch (e) { log('orphan migration error', e.message); }
+  }
+
   updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and pick a folder to scan.');
-
-  // Migrate non-GPS records to orphans store in background — don't block the folder picker.
-  if (toMigrate.length > 0) Promise.all(toMigrate.map(putOrphan)).catch(() => {});
 
   // Populate folder picker — a network failure here shouldn't affect the already-loaded markers.
   try {

@@ -49,6 +49,14 @@ export async function putOrphan({ fileid, name, ts }) {
   return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? 0 });
 }
 
+export async function bulkPutOrphans(records) {
+  if (!records.length) return;
+  const d = await db();
+  const tx = d.transaction(ORPHAN_STORE, 'readwrite');
+  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0 });
+  await tx.done;
+}
+
 export async function countOrphans() {
   return (await db()).count(ORPHAN_STORE);
 }
