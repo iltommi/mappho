@@ -268,6 +268,22 @@ export function toggleHeatmap() {
   return heatmapActive;
 }
 
+// Returns the geotagged marker closest in time to ts, with { lat, lng, name, ts, delta }.
+// Uses the in-memory markerIndex so newly tagged photos are visible immediately.
+export function findClosestMarker(ts) {
+  if (ts == null) return null;
+  let bestMarker = null, bestDiff = Infinity;
+  for (const { marker, ts: mts } of markerIndex) {
+    if (!mts) continue;
+    const diff = Math.abs(mts - ts);
+    if (diff < bestDiff) { bestDiff = diff; bestMarker = marker; }
+  }
+  if (!bestMarker) return null;
+  const { lat, lng } = bestMarker.getLatLng();
+  const data = markerData.get(bestMarker) ?? {};
+  return { lat, lng, name: data.name, ts: data.ts, delta: bestDiff };
+}
+
 // Returns { min, max } timestamps across all dated markers, or null if none.
 export function getDateRange() {
   const dated = markerIndex.map(m => m.ts).filter(t => t != null);
