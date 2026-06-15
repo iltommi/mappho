@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'sharpho';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 
@@ -9,13 +9,23 @@ let _db;
 async function db() {
   if (_db) return _db;
   _db = await openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    async upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         db.createObjectStore(STORE, { keyPath: 'fileid' });
       }
       if (oldVersion < 2) {
         const s = db.createObjectStore(ORPHAN_STORE, { keyPath: 'fileid' });
         s.createIndex('by_ts', 'ts');
+      }
+      if (oldVersion < 3) {
+        const store = tx.objectStore(STORE);
+        store.createIndex('by_ignored', 'ignored');
+        // IDB indexes require numeric keys; migrate any boolean ignored:true → 1
+        let cursor = await store.openCursor();
+        while (cursor) {
+          if (cursor.value.ignored === true) cursor.update({ ...cursor.value, ignored: 1 });
+          cursor = await cursor.continue();
+        }
       }
     },
   });
@@ -71,14 +81,17 @@ export async function deleteRecord(fileid) {
 
 export async function ignorePhoto(fileid) {
   const d = await db();
-  const existing = await d.get(STORE, fileid);
-  if (existing) await d.put(STORE, { ...existing, ignored: true });
-  await d.delete(ORPHAN_STORE, fileid);
+  const tx = d.transaction([STORE, ORPHAN_STORE], 'readwrite');
+  const existing = await tx.objectStore(STORE).get(fileid);
+  if (existing) tx.objectStore(STORE).put({ ...existing, ignored: 1 });
+  tx.objectStore(ORPHAN_STORE).delete(fileid);
+  await tx.done;
 }
 
 export async function countIgnored() {
-  const all = await (await db()).getAll(STORE);
-  return all.filter(r => r.ignored).length;
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  return tx.store.index('by_ignored').count(IDBKeyRange.only(1));
 }
 
 export async function deleteOrphan(fileid) {
@@ -111,7 +124,10 @@ export async function importDb(backup) {
   tx.objectStore(STORE).clear();
   tx.objectStore(ORPHAN_STORE).clear();
   const photos = backup.photos ?? [];
-  for (const r of photos) tx.objectStore(STORE).put(r);
+  for (const r of photos) {
+    const rec = r.ignored === true ? { ...r, ignored: 1 } : r;
+    tx.objectStore(STORE).put(rec);
+  }
   // Reconstruct orphan store from non-GPS photos (v1 backups had a separate orphans array)
   const orphanSource = backup.version >= 2
     ? photos.filter(r => r.lat == null && !r.ignored)
