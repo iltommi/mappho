@@ -136,11 +136,20 @@ fixDateBtn.addEventListener('click', () => {
   fixDateHandler(photo);
 });
 
-ignoreBtn.addEventListener('click', () => {
+ignoreBtn.addEventListener('click', async () => {
   const photo = photos[current];
   if (!photo || !ignoreHandler) return;
-  close();
-  ignoreHandler(photo);
+
+  ignoreBtn.disabled = true;
+  photos.splice(current, 1);
+  if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
+
+  if (!photos.length) { close(); ignoreHandler(photo); return; }
+  if (current >= photos.length) current = photos.length - 1;
+  ignoreBtn.disabled = false;
+  await go(current);
+
+  ignoreHandler(photo).catch(e => console.error('ignore error:', e));
 });
 
 exifBtn.addEventListener('click', () => {

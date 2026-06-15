@@ -177,7 +177,7 @@ async function openOrphanSlideshow() {
     return;
   }
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); openOrphanSlideshow(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow(fetcher, total);
 }
 
@@ -192,7 +192,7 @@ async function openNodatetimeSlideshow() {
     return;
   }
   setFixDateHandler(photo => startFixDate(photo, openNodatetimeSlideshow));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); openNodatetimeSlideshow(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
 }
 
