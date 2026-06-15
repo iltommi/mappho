@@ -57,3 +57,33 @@ cd android && ./gradlew assembleRelease
 ```
 
 Signing requires four env vars (or GitHub secrets for CI): `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+
+### Setting up signing secrets (one-time)
+
+**1. Generate the keystore**
+```bash
+keytool -genkeypair -v \
+  -keystore sharpho.keystore \
+  -alias sharpho \
+  -keyalg RSA -keysize 2048 \
+  -validity 10000
+```
+Keep `sharpho.keystore` safe — losing it means you can't publish updates to the same app identity.
+
+**2. Base64-encode the keystore**
+```bash
+base64 -i sharpho.keystore | pbcopy   # macOS — copies to clipboard
+```
+
+**3. Add the four GitHub secrets**
+
+Go to **repo → Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | base64 string from step 2 |
+| `KEYSTORE_PASSWORD` | password chosen during keytool prompt |
+| `KEY_ALIAS` | `sharpho` (or whatever alias you used) |
+| `KEY_PASSWORD` | key password (often the same as keystore password) |
+
+The CI workflow decodes `KEYSTORE_BASE64` back to a file and passes the other three to Gradle for signing.
