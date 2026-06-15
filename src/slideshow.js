@@ -1,10 +1,11 @@
-import { fetchThumbSrc, getFileDimensions, deleteFile } from './pcloud.js';
+import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeMarker } from './map.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
 import { openVideoPlayer } from './videoplayer.js';
+import { log } from './log.js';
 
 const VIDEO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3">' +
@@ -130,16 +131,23 @@ shareBtn.addEventListener('click', async () => {
   shareBtn.disabled = true;
   try {
     const src = await fetchThumbSrc(photo.fileid, '2048x2048');
-    const blob = await fetch(src).then(r => r.blob());
+    if (!src) { log('share', 'thumb fetch returned null'); return; }
+    // fetch() doesn't support data: URLs on Android WebView — decode base64 directly
+    const b64 = src.slice(src.indexOf(',') + 1);
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'image/jpeg' });
     const shareName = photo.name.replace(/\.heic$/i, '.jpg');
     const file = new File([blob], shareName, { type: 'image/jpeg' });
+    log('share', `canShare=${navigator.canShare?.({ files: [file] })}, size=${blob.size}, name=${shareName}`);
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file] });
     } else if (navigator.share) {
       await navigator.share({ title: photo.name });
+    } else {
+      log('share', 'navigator.share not available');
     }
   } catch (e) {
-    if (e.name !== 'AbortError') console.error('Share error:', e);
+    if (e.name !== 'AbortError') log('share error', e.message ?? String(e));
   } finally {
     shareBtn.disabled = false;
   }
@@ -420,17 +428,28 @@ function updateCaption() {
   const { name, ts, fileid } = photos[current];
   updateCounter();
   const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
-  captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
+
+  const buildCaption = (folder, dimStr) => {
+    const prefix = folder ? `${folder} / ` : '';
+    const base   = dateStr ? `${prefix}${name} · ${dateStr}` : `${prefix}${name}`;
+    return dimStr ? `${base} · ${dimStr}` : base;
+  };
+
+  captionEl.textContent = buildCaption('', '');
   if (geotagHandler) geotagBtn.style.display = '';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
   if (!isVideo(name)) {
+    let dimStr = '', folderName = '';
+    const refreshCaption = () => {
+      if (photos[current]?.fileid === fileid) captionEl.textContent = buildCaption(folderName, dimStr);
+    };
     getFileDimensions(fileid).then(dim => {
-      if (dim && photos[current]?.fileid === fileid) {
-        const base = dateStr ? `${name} · ${dateStr}` : name;
-        captionEl.textContent = `${base} · ${dim.w}×${dim.h}`;
-      }
+      if (dim) { dimStr = `${dim.w}×${dim.h}`; refreshCaption(); }
+    }).catch(() => {});
+    getFileFolderName(fileid).then(folder => {
+      if (folder) { folderName = folder; refreshCaption(); }
     }).catch(() => {});
   }
 }
