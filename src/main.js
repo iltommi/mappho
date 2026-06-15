@@ -176,6 +176,10 @@ async function openOrphanSlideshow() {
     showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
     return;
   }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    openOrphanSlideshow();
+  }));
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow(fetcher, total);
@@ -191,6 +195,10 @@ async function openNodatetimeSlideshow() {
       : 'No photos without location in cache.');
     return;
   }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    openNodatetimeSlideshow();
+  }));
   setFixDateHandler(photo => startFixDate(photo, openNodatetimeSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
