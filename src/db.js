@@ -114,7 +114,7 @@ export async function importDb(backup) {
   for (const r of photos) tx.objectStore(STORE).put(r);
   // Reconstruct orphan store from non-GPS photos (v1 backups had a separate orphans array)
   const orphanSource = backup.version >= 2
-    ? photos.filter(r => r.lat == null)
+    ? photos.filter(r => r.lat == null && !r.ignored)
     : (backup.orphans ?? []);
   for (const r of orphanSource) tx.objectStore(ORPHAN_STORE).put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0 });
   await tx.done;
