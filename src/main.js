@@ -9,7 +9,7 @@ import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } 
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setAfterDeleteCallback } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
 import './style.css';
@@ -177,6 +177,53 @@ async function openOrphanSlideshow() {
   }
   openLazySlideshow(fetcher, total);
 }
+
+// ── Fix date panel ────────────────────────────────────────────────────────────
+
+const fixDateBar      = document.getElementById('fix-date-bar');
+const fixDateInput    = document.getElementById('fix-date-input');
+const fixDateTimeInput = document.getElementById('fix-date-time-input');
+const fixDateSaveBtn  = document.getElementById('fix-date-save');
+const fixDateCancelBtn = document.getElementById('fix-date-cancel');
+
+let fixDatePhoto = null;
+let fixDateOnDone = null;
+
+function startFixDate(photo, onDone) {
+  fixDatePhoto  = photo;
+  fixDateOnDone = onDone;
+  const existing = (photo.ts && photo.ts > 0) ? new Date(photo.ts) : new Date();
+  fixDateInput.value = existing.toISOString().split('T')[0];
+  fixDateTimeInput.value = existing.toTimeString().slice(0, 5);
+  fixDateBar.style.display = 'flex';
+}
+
+fixDateSaveBtn.addEventListener('click', async () => {
+  if (!fixDatePhoto || !fixDateInput.value) return;
+  fixDateSaveBtn.disabled = true;
+  try {
+    const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
+    const { fileid, name } = fixDatePhoto;
+    const cached = await getCached(fileid);
+    if (cached) await putCached({ ...cached, ts });
+    await putOrphan({ fileid, name, ts });
+    await reloadTopbarCounts();
+    fixDateBar.style.display = 'none';
+    fixDateOnDone?.();
+  } catch (e) {
+    log('Fix date error', e.message);
+  } finally {
+    fixDateSaveBtn.disabled = false;
+    fixDatePhoto = null;
+    fixDateOnDone = null;
+  }
+});
+
+fixDateCancelBtn.addEventListener('click', () => {
+  fixDateBar.style.display = 'none';
+  fixDatePhoto  = null;
+  fixDateOnDone = null;
+});
 
 document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
@@ -706,6 +753,8 @@ async function main() {
     }
     openOrphanSlideshow();
   }));
+
+  setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
 
   const token = getToken();
   setupAuthBtn(!!token);

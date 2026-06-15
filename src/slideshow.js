@@ -27,15 +27,18 @@ const captionEl = document.getElementById('ss-caption');
 const prevBtn   = document.getElementById('ss-prev');
 const nextBtn   = document.getElementById('ss-next');
 const closeBtn  = document.getElementById('ss-close');
-const geotagBtn = document.getElementById('ss-geotag-btn');
-const exifBtn   = document.getElementById('ss-exif-btn');
-const shareBtn  = document.getElementById('ss-share-btn');
-const deleteBtn = document.getElementById('ss-delete-btn');
-const wrap      = document.getElementById('ss-img-wrap');
+const geotagBtn   = document.getElementById('ss-geotag-btn');
+const fixDateBtn  = document.getElementById('ss-fixdate-btn');
+const exifBtn     = document.getElementById('ss-exif-btn');
+const shareBtn    = document.getElementById('ss-share-btn');
+const deleteBtn   = document.getElementById('ss-delete-btn');
+const wrap        = document.getElementById('ss-img-wrap');
 
 let geotagHandler    = null;
+let fixDateHandler   = null;
 let afterDeleteCb    = null;
-export function setGeotagHandler(fn)    { geotagHandler = fn; }
+export function setGeotagHandler(fn)       { geotagHandler = fn; }
+export function setFixDateHandler(fn)      { fixDateHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
 let photos  = [];
@@ -101,7 +104,8 @@ function centerTrack(animate) {
 
 function close() {
   el.classList.remove('open');
-  geotagBtn.style.display = 'none';
+  geotagBtn.style.display  = 'none';
+  fixDateBtn.style.display = 'none';
   photos = [];
   imgCache.clear();
   resetLazy();
@@ -117,6 +121,13 @@ geotagBtn.addEventListener('click', () => {
   if (!photo || !geotagHandler) return;
   close();
   geotagHandler(photo);
+});
+
+fixDateBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo || !fixDateHandler) return;
+  close();
+  fixDateHandler(photo);
 });
 
 exifBtn.addEventListener('click', () => {
@@ -436,6 +447,7 @@ function updateCaption() {
 
   captionEl.textContent = buildCaption('', '');
   if (geotagHandler) geotagBtn.style.display = '';
+  fixDateBtn.style.display = (fixDateHandler && !ts) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
@@ -502,7 +514,8 @@ export function openSlideshow(photoList, startIndex = 0) {
   lazyDone = true;
   photos   = photoList;
   imgCache.clear();
-  geotagBtn.style.display = 'none';
+  geotagBtn.style.display  = 'none';
+  fixDateBtn.style.display = 'none';
   el.classList.add('open');
   go(startIndex);
 }

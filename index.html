@@ -95,6 +95,7 @@
       <p id="ss-caption"></p>
       <div id="ss-footer-btns">
         <button id="ss-geotag-btn" style="display:none">📍 Set location</button>
+        <button id="ss-fixdate-btn" style="display:none">📅 Fix date</button>
         <button id="ss-exif-btn">ℹ EXIF</button>
         <button id="ss-share-btn">📤 Share</button>
         <button id="ss-delete-btn">🗑 Delete</button>
@@ -148,6 +149,17 @@
     <div id="pin-drop-actions">
       <button id="pin-drop-save" disabled>💾 Save</button>
       <button id="pin-drop-cancel">✕ Cancel</button>
+    </div>
+  </div>
+  <div id="fix-date-bar" style="display:none">
+    <span id="fix-date-hint">Set date for this photo</span>
+    <div id="fix-date-inputs">
+      <input type="date" id="fix-date-input" />
+      <input type="time" id="fix-date-time-input" value="12:00" />
+    </div>
+    <div id="fix-date-actions">
+      <button id="fix-date-save">💾 Save</button>
+      <button id="fix-date-cancel">✕ Cancel</button>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>
