@@ -1022,94 +1022,43 @@ body.filter-open #map { top: 120px; }
 #fix-date-cancel { background: #334155; color: #e2e8f0; }
 #fix-date-cancel:hover { background: #475569; }
 
-/* Geotag button in slideshow */
+/* Slideshow footer action buttons — icon-only */
 #ss-footer-btns {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: center;
   margin-top: 8px;
 }
 
-#ss-geotag-btn {
-  padding: 7px 16px;
+#ss-footer-btns button {
+  width: 48px;
+  height: 48px;
+  padding: 0;
   border: none;
-  border-radius: 8px;
-  background: #0369a1;
-  color: #fff;
-  font-size: .85rem;
-  font-weight: 600;
+  border-radius: 10px;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: 1.4rem;
+  line-height: 1;
   cursor: pointer;
-  transition: background .15s;
+  transition: background .15s, color .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-#ss-geotag-btn:hover { background: #0284c7; }
+#ss-footer-btns button:hover  { background: #475569; }
+#ss-footer-btns button:disabled { opacity: .5; cursor: default; }
 
-#ss-fixdate-btn {
-  padding: 7px 16px;
-  border: none;
-  border-radius: 8px;
-  background: #6d28d9;
-  color: #fff;
-  font-size: .85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s;
-}
+#ss-geotag-btn  { background: #0369a1; }
+#ss-geotag-btn:hover  { background: #0284c7; }
+
+#ss-fixdate-btn { background: #6d28d9; }
 #ss-fixdate-btn:hover { background: #7c3aed; }
 
-#ss-exif-btn {
-  padding: 7px 14px;
-  border: none;
-  border-radius: 8px;
-  background: #334155;
-  color: #e2e8f0;
-  font-size: .85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s;
-}
-#ss-exif-btn:hover { background: #475569; }
+#ss-ignore-btn  { color: #fcd34d; }
 
-#ss-share-btn {
-  padding: 7px 14px;
-  border: none;
-  border-radius: 8px;
-  background: #334155;
-  color: #e2e8f0;
-  font-size: .85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s;
-}
-#ss-share-btn:hover { background: #475569; }
-#ss-share-btn:disabled { opacity: .5; cursor: default; }
-
-#ss-ignore-btn {
-  padding: 7px 14px;
-  border: none;
-  border-radius: 8px;
-  background: #334155;
-  color: #fcd34d;
-  font-size: .85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-#ss-ignore-btn:hover { background: #475569; }
-
-#ss-delete-btn {
-  padding: 7px 14px;
-  border: none;
-  border-radius: 8px;
-  background: #334155;
-  color: #fca5a5;
-  font-size: .85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-#ss-delete-btn:hover { background: #475569; }
+#ss-delete-btn  { color: #fca5a5; }
 #ss-delete-btn.confirm { background: #b91c1c; color: #fff; }
-#ss-delete-btn:disabled { opacity: .5; cursor: default; }
 
 /* Popup */
 .photo-popup {
