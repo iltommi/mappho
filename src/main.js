@@ -114,32 +114,33 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     log('Restore', 'downloading from pCloud…');
     const backup = await downloadBackup();
     if (!backup?.photos) throw new Error('Invalid backup file');
-    showBriefStatus(`Importing ${backup.photos.length} records…`, 120000);
-    await importDb(backup);
+    showBriefStatus(`Importing ${backup.photos.length} records…`);
+    await importDb(backup);  // writes both STORE and ORPHAN_STORE in one transaction
+    log('Restore', `DB import done (${backup.photos.length} records)`);
     clearMarkers();
-    const cached = await getAllCached();
-    showBriefStatus(`Loading ${cached.length} photos…`, 120000);
+    showBriefStatus(`Loading ${backup.photos.length} photos into map…`);
     progressFill.classList.remove('indeterminate');
     setProgress(0);
-    const orphanWrites = [];
+    const cached = await getAllCached();
+    log('Restore', `getAllCached returned ${cached.length} records`);
     let geo = 0, dated = 0, unknown = 0;
     for (let i = 0; i < cached.length; i++) {
       const p = cached[i];
       if (p.lat != null) { addMarker(p); geo++; }
-      else { orphanWrites.push(putOrphan(p)); if (p.ts != null) dated++; else unknown++; }
-      if (i % 500 === 499) {
+      else if (p.ts != null) dated++;
+      else unknown++;
+      if (i % 200 === 199) {
         setProgress((i + 1) / cached.length * 100);
         await new Promise(r => setTimeout(r, 0));
       }
     }
     setProgress(100);
-    await Promise.all(orphanWrites);
     topbarGeotagged = geo;
     topbarDated     = dated;
     topbarUnknown   = unknown;
     topbarTotal     = cached.length;
     updateTopbar();
-    log('Restore', `${geo} geotagged out of ${cached.length}`);
+    log('Restore', `done — ${geo} geotagged, ${dated} dated, ${unknown} unknown`);
     showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
     setTimeout(() => setProgress(0), 1000);
   } catch (e) {
