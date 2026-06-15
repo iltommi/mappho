@@ -629,12 +629,12 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
 }
 
 function updateRetryBtn() {
-  const btn = document.getElementById('retry-btn');
+  const btn = document.getElementById('retry-menu-btn');
   if (!btn) return;
   if (retryQueue.length === 0) {
     btn.style.display = 'none';
   } else {
-    btn.textContent = `⚠ ${retryQueue.length} failed`;
+    btn.textContent = `⚠ ${retryQueue.length} files failed — Retry`;
     btn.style.display = '';
   }
 }
@@ -650,11 +650,17 @@ function showRetryDialog(files) {
         <button id="retry-yes">Retry</button>
         <button id="retry-copy">Copy list</button>
         <button id="retry-no">Dismiss</button>
+        <button id="retry-discard">Cancel &amp; Discard</button>
       </div>
     </div>`;
   document.body.appendChild(dialog);
 
   document.getElementById('retry-no').addEventListener('click', () => dialog.remove());
+  document.getElementById('retry-discard').addEventListener('click', () => {
+    dialog.remove();
+    retryQueue = [];
+    updateRetryBtn();
+  });
   document.getElementById('retry-copy').addEventListener('click', async () => {
     const text = files.map(f => f.name).join('\n');
     await navigator.clipboard.writeText(text);
@@ -684,7 +690,7 @@ async function main() {
   handleCallback();
   initMap();
   setAfterDeleteCallback(() => reloadTopbarCounts());
-  document.getElementById('retry-btn').addEventListener('click', () => {
+  document.getElementById('retry-menu-btn').addEventListener('click', () => {
     if (retryQueue.length > 0) showRetryDialog(retryQueue);
   });
 

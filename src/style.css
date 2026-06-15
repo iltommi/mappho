@@ -209,6 +209,7 @@ html, body {
 .menu-item:last-child { border-bottom: none; }
 .menu-item:hover:not(:disabled) { background: #1e3a5f; }
 .menu-item:disabled { opacity: .4; cursor: default; }
+#retry-menu-btn { color: #fbbf24; }
 
 #map {
   position: fixed;
@@ -246,21 +247,6 @@ html, body {
   font-size: .65rem;
   cursor: pointer;
   line-height: 16px;
-}
-
-#retry-btn {
-  position: fixed;
-  bottom: 30px;
-  right: 6px;
-  z-index: 1002;
-  padding: 3px 8px;
-  background: #431407;
-  color: #fbbf24;
-  border: 1px solid #f59e0b;
-  border-radius: 4px;
-  font-size: .65rem;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 #progress-bar {
@@ -885,10 +871,11 @@ body.filter-open #map { top: 120px; }
 }
 #retry-actions {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: center;
 }
-#retry-yes, #retry-copy, #retry-no {
+#retry-yes, #retry-copy, #retry-no, #retry-discard {
   padding: 8px 22px;
   border: none;
   border-radius: 8px;
@@ -902,6 +889,8 @@ body.filter-open #map { top: 120px; }
 #retry-copy:hover { background: #1e3a5f; }
 #retry-no  { background: #334155; color: #e2e8f0; }
 #retry-no:hover  { background: #475569; }
+#retry-discard { background: #431407; color: #fbbf24; }
+#retry-discard:hover { background: #7c2d12; }
 
 /* Pin-drop bar */
 #pin-drop-bar {
