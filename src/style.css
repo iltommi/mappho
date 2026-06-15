@@ -580,6 +580,24 @@ body.filter-open #map { top: 120px; }
 
 #ss-img { cursor: zoom-in; }
 
+#ss-play-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(0,0,0,.55);
+  color: #fff;
+  font-size: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding-left: 4px; /* optical centering of ▶ */
+}
+
 #ss-loading {
   color: #94a3b8;
   font-size: .9rem;
