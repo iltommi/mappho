@@ -22,10 +22,13 @@ html, body {
 
 #topbar-title {
   flex: 1;
-  font-size: .82rem;
+  font-size: .72rem;
   font-weight: 600;
   color: #94a3b8;
   letter-spacing: .03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #folder-row {
@@ -211,7 +214,7 @@ html, body {
 }
 
 #scan-status {
-  display: none;
+  display: block;
   position: fixed;
   bottom: 4px;
   left: 0; right: 0;
@@ -223,8 +226,9 @@ html, body {
   text-align: center;
   line-height: 22px;
   letter-spacing: .02em;
+  cursor: pointer;
+  user-select: none;
 }
-#scan-status.visible { display: block; }
 
 #stop-scan-btn {
   position: fixed;
@@ -668,6 +672,20 @@ body.filter-open #map { top: 120px; }
   object-fit: contain;
   touch-action: none;
   user-select: none;
+}
+
+#lightbox-dims {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .72rem;
+  color: rgba(255,255,255,.75);
+  background: rgba(0,0,0,.45);
+  padding: 2px 10px;
+  border-radius: 10px;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Heatmap legend */

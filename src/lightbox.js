@@ -1,9 +1,10 @@
 import Panzoom from '@panzoom/panzoom';
-import { fetchThumbSrc } from './pcloud.js';
+import { fetchThumbSrc, getFileDimensions } from './pcloud.js';
 import { showExif } from './exif.js';
 
 const el       = document.getElementById('lightbox');
 const img      = document.getElementById('lightbox-img');
+const dimsEl   = document.getElementById('lightbox-dims');
 const closeBtn = document.getElementById('lightbox-close');
 const exifBtn  = document.getElementById('lightbox-exif-btn');
 
@@ -31,6 +32,7 @@ function close() {
   el.classList.remove('open', 'loading');
   img.onload = null;
   img.src = '';
+  dimsEl.textContent = '';
   currentFileid = null;
   currentName   = null;
   destroyPanzoom();
@@ -48,6 +50,7 @@ export function openLightbox(fileid, name) {
   img.alt = name;
   img.onload = null;
   img.src = '';
+  dimsEl.textContent = '';
   destroyPanzoom();
 
   fetchThumbSrc(fileid, '2048x2048').then(src => {
@@ -59,4 +62,10 @@ export function openLightbox(fileid, name) {
   }).catch(() => {
     el.classList.remove('loading');
   });
+
+  getFileDimensions(fileid).then(dim => {
+    if (dim && currentFileid === fileid) {
+      dimsEl.textContent = `${dim.w} × ${dim.h}`;
+    }
+  }).catch(() => {});
 }

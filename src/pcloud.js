@@ -119,6 +119,20 @@ export async function getFileStat(fileid) {
   return data.metadata;
 }
 
+const _dimCache = new Map();
+export async function getFileDimensions(fileid) {
+  if (_dimCache.has(fileid)) return _dimCache.get(fileid);
+  try {
+    const meta = await getFileStat(fileid);
+    const dim = (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null;
+    _dimCache.set(fileid, dim);
+    return dim;
+  } catch {
+    _dimCache.set(fileid, null);
+    return null;
+  }
+}
+
 export async function uploadFile(folderid, filename, arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
   let bin = '';

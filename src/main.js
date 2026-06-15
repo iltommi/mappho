@@ -11,7 +11,7 @@ import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, putOrphan, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -26,34 +26,42 @@ dcRadios.forEach(r => {
 const scanStatusEl = document.getElementById('scan-status');
 
 let sessionGeotagged = 0;
-let briefTimer = null;
 let scanCancelled = false;
 let topbarGeotagged = 0;
-let topbarTotal = 0;
+let topbarDated   = 0;
+let topbarUnknown = 0;
+let topbarTotal   = 0;
 
 const topbarTitle = document.getElementById('topbar-title');
 function updateTopbar() {
-  const tagged = topbarGeotagged + sessionGeotagged;
-  topbarTitle.textContent = tagged > 0 && topbarTotal > 0 ? `${tagged} / ${topbarTotal}` : '';
+  const located = topbarGeotagged + sessionGeotagged;
+  if (topbarTotal > 0) {
+    topbarTitle.textContent = `${topbarTotal} · 📍${located} · 📅${topbarDated} · ❓${topbarUnknown}`;
+  } else {
+    topbarTitle.textContent = '';
+  }
 }
 
 function setScanStatus(scanned, geotagged, total = null) {
   const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   const progress = total ? ` ${scanned} / ${total}` : ` ${scanned}`;
   scanStatusEl.textContent = `Scanning…${progress} (${geotagged + sessionGeotagged} geotagged${extra})`;
-  scanStatusEl.classList.add('visible');
-  topbarGeotagged = geotagged;
-  if (total) topbarTotal = total;
+}
+function clearScanStatus() { /* status bar stays; last message persists */ }
+
+async function reloadTopbarCounts() {
+  const total   = await countCached();
+  const orphans = await countOrphans();
+  const noDate  = await countOrphansInRange(0, 0);
+  topbarTotal     = total;
+  topbarGeotagged = total - orphans;
+  topbarDated     = orphans - noDate;
+  topbarUnknown   = noDate;
   updateTopbar();
 }
-function clearScanStatus() {
-  scanStatusEl.classList.remove('visible');
-}
-function showBriefStatus(msg, ms = 3000) {
-  clearTimeout(briefTimer);
-  scanStatusEl.textContent = msg;
-  scanStatusEl.classList.add('visible');
-  briefTimer = setTimeout(() => scanStatusEl.classList.remove('visible'), ms);
+
+function showBriefStatus(msg) {
+  setStatus(msg);
 }
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -114,11 +122,11 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     progressFill.classList.remove('indeterminate');
     setProgress(0);
     const orphanWrites = [];
-    let geo = 0;
+    let geo = 0, dated = 0, unknown = 0;
     for (let i = 0; i < cached.length; i++) {
       const p = cached[i];
       if (p.lat != null) { addMarker(p); geo++; }
-      else orphanWrites.push(putOrphan(p));
+      else { orphanWrites.push(putOrphan(p)); if (p.ts != null) dated++; else unknown++; }
       if (i % 500 === 499) {
         setProgress((i + 1) / cached.length * 100);
         await new Promise(r => setTimeout(r, 0));
@@ -127,7 +135,9 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     setProgress(100);
     await Promise.all(orphanWrites);
     topbarGeotagged = geo;
-    topbarTotal = cached.length;
+    topbarDated     = dated;
+    topbarUnknown   = unknown;
+    topbarTotal     = cached.length;
     updateTopbar();
     log('Restore', `${geo} geotagged out of ${cached.length}`);
     showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
@@ -171,10 +181,6 @@ document.getElementById('filter-menu-btn').addEventListener('click', () => {
   toggleFilter();
 });
 
-document.getElementById('log-menu-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
-  toggleLog();
-});
 
 document.getElementById('check-update-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
@@ -328,7 +334,9 @@ eraseCacheBtn.addEventListener('click', async () => {
   heatmapBtn.classList.remove('active');
   closeFilter();
   topbarGeotagged = 0;
-  topbarTotal = 0;
+  topbarDated     = 0;
+  topbarUnknown   = 0;
+  topbarTotal     = 0;
   sessionGeotagged = 0;
   updateTopbar();
   log('Cache erased');
@@ -354,8 +362,11 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
 });
 
 function setStatus(msg) {
+  scanStatusEl.textContent = msg;
   log('status', msg);
 }
+
+scanStatusEl.addEventListener('click', () => toggleLog());
 
 function setProgress(pct) {
   progressFill.style.width = `${Math.min(100, pct)}%`;
@@ -423,14 +434,16 @@ async function startScan() {
   // Load cached markers first — no network needed, works immediately after wake.
   showBriefStatus('Loading cache…', 30000);
   const cached = await getAllCached();
-  let cachedGeo = 0;
+  let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0;
   const toMigrate = [];
   for (const p of cached) {
     if (p.lat != null) { addMarker(p); cachedGeo++; }
-    else toMigrate.push(p);
+    else { toMigrate.push(p); if (p.ts != null) cachedDated++; else cachedUnknown++; }
   }
   topbarGeotagged = cachedGeo;
-  topbarTotal = cached.length;
+  topbarDated     = cachedDated;
+  topbarUnknown   = cachedUnknown;
+  topbarTotal     = cached.length;
   updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
@@ -518,12 +531,11 @@ async function scan() {
   log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
 
   // Phase 1: BFS all folders to discover the full file list
-  scanStatusEl.textContent = 'Discovering files…';
-  scanStatusEl.classList.add('visible');
+  setStatus('Discovering files…');
   const allFiles = [];
   for await (const file of listImages(folderId)) {
     allFiles.push(file);
-    scanStatusEl.textContent = `Discovering… ${allFiles.length} files found`;
+    setStatus(`Discovering… ${allFiles.length} files found`);
   }
   const total = allFiles.length;
   log('Discovery done', `${total} JPEG files`);
@@ -536,6 +548,7 @@ async function scan() {
   log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
   clearScanStatus();
+  await reloadTopbarCounts();
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   if (scanCancelled) {
     setStatus(`Stopped — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.completed} scanned${manualNote} (${total - stats.completed} remaining).`);
@@ -613,6 +626,7 @@ function showRetryDialog(failedFiles, stats) {
     await processFiles(failedFiles, total, stats, pool, inFlight, retryFailed);
     await Promise.all(pool);
     clearScanStatus();
+    await reloadTopbarCounts();
     setProgress(100);
     log('Retry done', `${retryFailed.length} still failing after retry`);
     if (retryFailed.length > 0) showRetryDialog(retryFailed, stats);
