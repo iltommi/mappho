@@ -975,6 +975,35 @@ body.filter-open #map { top: 120px; }
 }
 #ss-exif-btn:hover { background: #475569; }
 
+#ss-share-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #334155;
+  color: #e2e8f0;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+#ss-share-btn:hover { background: #475569; }
+#ss-share-btn:disabled { opacity: .5; cursor: default; }
+
+#ss-delete-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #334155;
+  color: #fca5a5;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+#ss-delete-btn:hover { background: #475569; }
+#ss-delete-btn.confirm { background: #b91c1c; color: #fff; }
+#ss-delete-btn:disabled { opacity: .5; cursor: default; }
+
 /* Popup */
 .photo-popup {
   text-align: center;

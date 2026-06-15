@@ -216,6 +216,23 @@ export function filterMarkers(fromTs, toTs) {
   }
 }
 
+export function removeMarker(fileid) {
+  for (const [marker, data] of markerData) {
+    if (data.fileid !== fileid) continue;
+    cluster.removeLayer(marker);
+    markerData.delete(marker);
+    const idx = markerIndex.findIndex(m => m.marker === marker);
+    if (idx !== -1) markerIndex.splice(idx, 1);
+    addedIds.delete(fileid);
+    if (heatmapActive && heatLayer) {
+      const { lat, lng } = marker.getLatLng();
+      const hi = heatPoints.findIndex(([a, b]) => a === lat && b === lng);
+      if (hi !== -1) { heatPoints.splice(hi, 1); heatLayer.setLatLngs(heatPoints); }
+    }
+    return;
+  }
+}
+
 export function clearMarkers() {
   cluster.clearLayers();
   addedIds.clear();

@@ -1,4 +1,6 @@
-import { fetchThumbSrc, getFileDimensions } from './pcloud.js';
+import { fetchThumbSrc, getFileDimensions, deleteFile } from './pcloud.js';
+import { deleteRecord, deleteOrphan } from './db.js';
+import { removeMarker } from './map.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
@@ -24,10 +26,14 @@ const nextBtn   = document.getElementById('ss-next');
 const closeBtn  = document.getElementById('ss-close');
 const geotagBtn = document.getElementById('ss-geotag-btn');
 const exifBtn   = document.getElementById('ss-exif-btn');
+const shareBtn  = document.getElementById('ss-share-btn');
+const deleteBtn = document.getElementById('ss-delete-btn');
 const wrap      = document.getElementById('ss-img-wrap');
 
-let geotagHandler = null;
-export function setGeotagHandler(fn) { geotagHandler = fn; }
+let geotagHandler    = null;
+let afterDeleteCb    = null;
+export function setGeotagHandler(fn)    { geotagHandler = fn; }
+export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
 let photos  = [];
 let current = 0;
@@ -98,6 +104,7 @@ function close() {
   resetLazy();
   resetImgZoom(false);
   centerTrack(false);
+  resetDeleteBtn();
 }
 
 export function closeSlideshow() { close(); }
@@ -114,6 +121,78 @@ exifBtn.addEventListener('click', () => {
   if (photo) showExif(photo.fileid, photo.name);
 });
 closeBtn.addEventListener('click', close);
+
+// ── Share ─────────────────────────────────────────────────────────────────────
+
+shareBtn.addEventListener('click', async () => {
+  const photo = photos[current];
+  if (!photo || isVideo(photo.name)) return;
+  shareBtn.disabled = true;
+  try {
+    const src = await fetchThumbSrc(photo.fileid, '2048x2048');
+    const blob = await fetch(src).then(r => r.blob());
+    const shareName = photo.name.replace(/\.heic$/i, '.jpg');
+    const file = new File([blob], shareName, { type: 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+    } else if (navigator.share) {
+      await navigator.share({ title: photo.name });
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error('Share error:', e);
+  } finally {
+    shareBtn.disabled = false;
+  }
+});
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+
+let _deleteConfirmTimer = null;
+let _deleteConfirmPending = false;
+
+function resetDeleteBtn() {
+  clearTimeout(_deleteConfirmTimer);
+  _deleteConfirmPending = false;
+  deleteBtn.textContent = '🗑 Delete';
+  deleteBtn.classList.remove('confirm');
+  deleteBtn.disabled = false;
+}
+
+deleteBtn.addEventListener('click', async () => {
+  if (!_deleteConfirmPending) {
+    _deleteConfirmPending = true;
+    deleteBtn.textContent = 'Confirm delete?';
+    deleteBtn.classList.add('confirm');
+    _deleteConfirmTimer = setTimeout(resetDeleteBtn, 3000);
+    return;
+  }
+  clearTimeout(_deleteConfirmTimer);
+
+  const photo = photos[current];
+  if (!photo) { resetDeleteBtn(); return; }
+
+  deleteBtn.disabled = true;
+  deleteBtn.textContent = 'Deleting…';
+  try {
+    await deleteFile(photo.fileid);
+    await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid)]);
+    removeMarker(photo.fileid);
+    imgCache.delete(photo.fileid);
+
+    photos.splice(current, 1);
+    if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
+
+    afterDeleteCb?.();
+
+    if (!photos.length) { close(); return; }
+    if (current >= photos.length) current = photos.length - 1;
+    resetDeleteBtn();
+    await go(current);
+  } catch (e) {
+    resetDeleteBtn();
+    console.error('Delete error:', e);
+  }
+});
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 
@@ -343,7 +422,8 @@ function updateCaption() {
   const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
   captionEl.textContent = dateStr ? `${name} · ${dateStr}` : name;
   if (geotagHandler) geotagBtn.style.display = '';
-  exifBtn.style.display = isVideo(name) ? 'none' : '';
+  exifBtn.style.display  = isVideo(name) ? 'none' : '';
+  shareBtn.style.display = isVideo(name) ? 'none' : '';
 
   if (!isVideo(name)) {
     getFileDimensions(fileid).then(dim => {
