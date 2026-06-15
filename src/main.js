@@ -11,7 +11,7 @@ import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -133,9 +133,10 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     setProgress(0);
     const cached = await getAllCached();
     log('Restore', `getAllCached returned ${cached.length} records`);
-    let geo = 0, dated = 0, unknown = 0;
+    let geo = 0, dated = 0, unknown = 0, ignored = 0;
     for (let i = 0; i < cached.length; i++) {
       const p = cached[i];
+      if (p.ignored) { ignored++; continue; }
       if (p.lat != null) { addMarker(p); geo++; }
       else if (p.ts != null) dated++;
       else unknown++;
@@ -148,7 +149,7 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     topbarGeotagged = geo;
     topbarDated     = dated;
     topbarUnknown   = unknown;
-    topbarTotal     = cached.length;
+    topbarTotal     = cached.length - ignored;
     updateTopbar();
     log('Restore', `done — ${geo} geotagged, ${dated} dated, ${unknown} unknown`);
     showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
@@ -434,7 +435,7 @@ eraseCacheBtn.addEventListener('click', async () => {
 
 clearCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  await Promise.all([clearAll(), clearOrphans()]);
+  await Promise.all([clearNonIgnored(), clearOrphans()]);
   log('Cache cleared');
   setStatus('Cache cleared — scanning…');
   clearCacheBtn.disabled = true;

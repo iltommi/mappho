@@ -23,7 +23,7 @@ async function db() {
         // IDB indexes require numeric keys; migrate any boolean ignored:true → 1
         let cursor = await store.openCursor();
         while (cursor) {
-          if (cursor.value.ignored === true) cursor.update({ ...cursor.value, ignored: 1 });
+          if (cursor.value.ignored === true) await cursor.update({ ...cursor.value, ignored: 1 });
           cursor = await cursor.continue();
         }
       }
@@ -50,6 +50,15 @@ export async function countCached() {
 
 export async function clearAll() {
   return (await db()).clear(STORE);
+}
+
+export async function clearNonIgnored() {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readwrite');
+  const saved = await tx.store.index('by_ignored').getAll(IDBKeyRange.only(1));
+  await tx.store.clear();
+  for (const r of saved) tx.store.put(r);
+  await tx.done;
 }
 
 // Orphans: photos without GPS, indexed by ts for sorted pagination.
@@ -115,7 +124,7 @@ export async function findClosestGeotagged(ts) {
 export async function exportDb() {
   const d = await db();
   const photos = await d.getAll(STORE);
-  return { version: 2, photos };
+  return { version: 3, photos };
 }
 
 export async function importDb(backup) {
