@@ -6,6 +6,8 @@ import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
 import { openVideoPlayer } from './videoplayer.js';
 import { log } from './log.js';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 const VIDEO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3">' +
@@ -129,22 +131,19 @@ shareBtn.addEventListener('click', async () => {
   const photo = photos[current];
   if (!photo || isVideo(photo.name)) return;
   shareBtn.disabled = true;
+  const shareName = photo.name.replace(/\.heic$/i, '.jpg');
   try {
     const src = await fetchThumbSrc(photo.fileid, '2048x2048');
     if (!src) { log('share', 'thumb fetch returned null'); return; }
-    // fetch() doesn't support data: URLs on Android WebView — decode base64 directly
     const b64 = src.slice(src.indexOf(',') + 1);
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    const blob = new Blob([bytes], { type: 'image/jpeg' });
-    const shareName = photo.name.replace(/\.heic$/i, '.jpg');
-    const file = new File([blob], shareName, { type: 'image/jpeg' });
-    log('share', `canShare=${navigator.canShare?.({ files: [file] })}, size=${blob.size}, name=${shareName}`);
-    if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file] });
-    } else if (navigator.share) {
-      await navigator.share({ title: photo.name });
-    } else {
-      log('share', 'navigator.share not available');
+    const written = await Filesystem.writeFile({
+      path: shareName, data: b64, directory: Directory.Cache,
+    });
+    log('share', `temp file: ${written.uri}`);
+    try {
+      await Share.share({ files: [written.uri], dialogTitle: 'Share photo' });
+    } finally {
+      Filesystem.deleteFile({ path: shareName, directory: Directory.Cache }).catch(() => {});
     }
   } catch (e) {
     if (e.name !== 'AbortError') log('share error', e.message ?? String(e));
