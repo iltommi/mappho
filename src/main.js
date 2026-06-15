@@ -672,9 +672,14 @@ function showRetryDialog(files) {
     const total = files.length;
     const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
     const pool = new Set(), inFlight = new Map(), stillFailed = [];
+    scanCancelled = false;
+    stopScanBtn.style.display = '';
+    stopScanBtn.disabled = false;
+    stopScanBtn.textContent = '✕ Stop';
     setProgress(0);
     await processFiles(files, total, stats, pool, inFlight, stillFailed);
     await Promise.all(pool);
+    stopScanBtn.style.display = 'none';
     clearScanStatus();
     await reloadTopbarCounts();
     retryQueue = stillFailed;
