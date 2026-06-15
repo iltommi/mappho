@@ -9,7 +9,7 @@ import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } 
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
-import { openLazySlideshow, setGeotagHandler } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { getCached, putCached, getAllCached, clearAll, putOrphan, bulkPutOrphans, countOrphans, countCached, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb } from './db.js';
 import './style.css';
@@ -666,6 +666,8 @@ function showRetryDialog(failedFiles, stats) {
 async function main() {
   handleCallback();
   initMap();
+  setAfterDeleteCallback(() => reloadTopbarCounts());
+
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) {
       sessionGeotagged++;
