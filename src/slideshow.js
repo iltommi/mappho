@@ -447,7 +447,7 @@ function updateCaption() {
 
   captionEl.textContent = buildCaption('', '');
   if (geotagHandler) geotagBtn.style.display = '';
-  fixDateBtn.style.display = (fixDateHandler && !ts) ? '' : 'none';
+  fixDateBtn.style.display = fixDateHandler ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
