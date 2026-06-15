@@ -31,16 +31,25 @@ let topbarGeotagged = 0;
 let topbarDated   = 0;
 let topbarUnknown = 0;
 let topbarTotal   = 0;
+let topbarStatIdx = 0;
 
 const topbarTitle = document.getElementById('topbar-title');
 function updateTopbar() {
+  if (!topbarTotal) { topbarTitle.textContent = ''; return; }
   const located = topbarGeotagged + sessionGeotagged;
-  if (topbarTotal > 0) {
-    topbarTitle.textContent = `${topbarTotal} · 📍${located} · 📅${topbarDated} · ❓${topbarUnknown}`;
-  } else {
-    topbarTitle.textContent = '';
-  }
+  const labels = [
+    `${topbarTotal} total`,
+    `📍 ${located} located`,
+    `📅 ${topbarDated} dated`,
+    `❓ ${topbarUnknown} unknown`,
+  ];
+  topbarTitle.textContent = labels[topbarStatIdx];
 }
+
+topbarTitle.addEventListener('click', () => {
+  topbarStatIdx = (topbarStatIdx + 1) % 4;
+  updateTopbar();
+});
 
 function setScanStatus(scanned, geotagged, total = null) {
   const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
