@@ -544,6 +544,7 @@ async function go(index) {
 
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
+  geotagHandler  = null;
   fixDateHandler = null;
   ignoreHandler  = null;
   resetLazy();
