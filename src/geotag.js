@@ -1,7 +1,7 @@
 import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectExif } from './exif.js';
-import { findClosestGeotagged, deleteRecord, deleteOrphan, putCached } from './db.js';
+import { deleteRecord, deleteOrphan, putCached } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
-import { enterPinDropMode, exitPinDropMode, addMarker } from './map.js';
+import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
 import { log } from './log.js';
 
 const bar      = document.getElementById('pin-drop-bar');
@@ -33,7 +33,7 @@ export async function startGeotagging(photo, callback) {
   let hint       = 'Tap map to place pin';
 
   if (ts) {
-    const closest = await findClosestGeotagged(ts);
+    const closest = findClosestMarker(ts);
     if (closest) {
       initialPin = { lat: closest.lat, lng: closest.lng };
       pendingLatLng = initialPin;
