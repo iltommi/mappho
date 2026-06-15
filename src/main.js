@@ -175,7 +175,22 @@ async function openOrphanSlideshow() {
     showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
     return;
   }
+  setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
   openLazySlideshow(fetcher, total);
+}
+
+async function openNodatetimeSlideshow() {
+  const allOrphans = await countOrphans();
+  const total = await countOrphansInRange(0, 0);
+  log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
+  if (!total) {
+    showBriefStatus(allOrphans > 0
+      ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
+      : 'No photos without location in cache.');
+    return;
+  }
+  setFixDateHandler(photo => startFixDate(photo, openNodatetimeSlideshow));
+  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
 }
 
 // ── Fix date panel ────────────────────────────────────────────────────────────
@@ -233,18 +248,8 @@ document.getElementById('noloc-menu-btn').addEventListener('click', async () => 
 
 document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  try {
-    const allOrphans = await countOrphans();
-    const total = await countOrphansInRange(0, 0);
-    log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
-    if (!total) {
-      showBriefStatus(allOrphans > 0
-        ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
-        : 'No photos without location in cache.');
-      return;
-    }
-    openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
-  } catch (e) { log('No date/location error', e.message); showBriefStatus(`Error: ${e.message}`); }
+  try { await openNodatetimeSlideshow(); }
+  catch (e) { log('No date/location error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
@@ -753,8 +758,6 @@ async function main() {
     }
     openOrphanSlideshow();
   }));
-
-  setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
 
   const token = getToken();
   setupAuthBtn(!!token);
