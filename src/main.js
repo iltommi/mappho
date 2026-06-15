@@ -52,10 +52,9 @@ topbarTitle.addEventListener('click', () => {
   updateTopbar();
 });
 
-function setScanStatus(scanned, geotagged, total = null) {
-  const extra = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
-  const progress = total ? ` ${scanned} / ${total}` : ` ${scanned}`;
-  scanStatusEl.textContent = `Scanning…${progress} (${geotagged + sessionGeotagged} geotagged${extra})`;
+function setScanStatus(scanned, geotagged, dated, total = null) {
+  const progress = total ? `${scanned}/${total}` : `${scanned}`;
+  scanStatusEl.textContent = `${progress}. ${geotagged} geo. ${dated} date`;
 }
 function clearScanStatus() { /* status bar stays; last message persists */ }
 
@@ -548,13 +547,13 @@ async function processFile(file, stats) {
   const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null };
   await putCached(record);
   if (hasGps) { stats.geotagged++; addMarker(record); }
-  else await putOrphan(record);
+  else { if (record.ts != null) stats.dated++; await putOrphan(record); }
   return true;
 }
 
 async function scan() {
   const CONCURRENCY = 6;
-  const stats = { scanned: 0, geotagged: 0, completed: 0 };
+  const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
   const pool = new Set();
   const inFlight = new Map();
 
@@ -608,7 +607,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   for (const file of files) {
     if (scanCancelled) break;
     stats.scanned++;
-    setScanStatus(stats.scanned, stats.geotagged, total);
+    setScanStatus(stats.scanned, stats.geotagged, stats.dated, total);
 
     const p = processFile(file, stats).then(ok => {
       if (!ok) failedFiles.push(file);
@@ -617,7 +616,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
       inFlight.delete(p);
       stats.completed++;
       setProgress((stats.completed / total) * 100);
-      setScanStatus(stats.scanned, stats.geotagged, total);
+      setScanStatus(stats.scanned, stats.geotagged, stats.dated, total);
     });
     pool.add(p);
     inFlight.set(p, file.name);
@@ -671,7 +670,7 @@ function showRetryDialog(files) {
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
     const total = files.length;
-    const stats = { scanned: 0, geotagged: 0, completed: 0 };
+    const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
     const pool = new Set(), inFlight = new Map(), stillFailed = [];
     setProgress(0);
     await processFiles(files, total, stats, pool, inFlight, stillFailed);
