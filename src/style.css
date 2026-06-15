@@ -1065,6 +1065,19 @@ body.filter-open #map { top: 120px; }
 #ss-share-btn:hover { background: #475569; }
 #ss-share-btn:disabled { opacity: .5; cursor: default; }
 
+#ss-ignore-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #334155;
+  color: #fcd34d;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+#ss-ignore-btn:hover { background: #475569; }
+
 #ss-delete-btn {
   padding: 7px 14px;
   border: none;
