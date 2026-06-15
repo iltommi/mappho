@@ -188,13 +188,15 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   try {
     const resp = await CapacitorHttp.request({
       method: 'GET',
-      url: 'https://api.github.com/repos/iltommi/sharpho/releases/latest',
+      url: 'https://api.github.com/repos/iltommi/sharpho/releases?per_page=1',
       headers: { Accept: 'application/vnd.github+json' },
     });
-    const release = resp.data;
-    if (!resp.status || resp.status < 200 || resp.status >= 300 || !release.published_at) {
-      throw new Error(release.message ?? `HTTP ${resp.status}`);
+    const releases = resp.data;
+    if (!resp.status || resp.status < 200 || resp.status >= 300 || !Array.isArray(releases) || !releases.length) {
+      throw new Error((releases?.message) ?? `HTTP ${resp.status}`);
     }
+    const release = releases[0];
+    if (!release.published_at) throw new Error('No published release found');
     // Compare the SHA embedded in the release notes with the one baked into this build.
     const releaseSha = (release.body ?? '').match(/Built from ([0-9a-f]{40})/i)?.[1];
     const upToDate = releaseSha
