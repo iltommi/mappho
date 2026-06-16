@@ -83,12 +83,17 @@ bulkGeotagBtn.addEventListener('click', () => {
   });
 });
 
-async function loadThumb(tile) {
+const THUMB_RETRY_DELAYS = [500, 1500, 4000]; // ms — fetchThumbSrc returns null (not a throw) on transient failures
+
+async function loadThumb(tile, attempt = 0) {
   const { fileid } = tile._item;
   try {
     const src = await fetchThumbSrc(fileid, THUMB_SIZE);
-    if (src) { tile._img.src = src; tile._img.classList.add('loaded'); }
-  } catch { /* tile just stays blank — acceptable for a thumbnail grid */ }
+    if (src) { tile._img.src = src; tile._img.classList.add('loaded'); return; }
+  } catch { /* falls through to retry below */ }
+  if (attempt < THUMB_RETRY_DELAYS.length) {
+    setTimeout(() => loadThumb(tile, attempt + 1), THUMB_RETRY_DELAYS[attempt]);
+  }
 }
 
 function toggleTileSelected(tile, index) {
