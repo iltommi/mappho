@@ -8,8 +8,9 @@ const SHARPHO_INDEX_STORE = 'sharpho_index';
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
-// listings (e.g. the grid view).
-const UNDATED_TS = Number.MAX_SAFE_INTEGER;
+// listings (e.g. the grid view). Exported so callers can recognize/query
+// "no real date" orphans (e.g. the by_ts index has no concept of null).
+export const UNDATED_TS = Number.MAX_SAFE_INTEGER;
 
 let _db;
 async function db() {
@@ -240,7 +241,7 @@ export async function getOrphanDateRange() {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');
   const index = tx.store.index('by_ts');
-  const dated = IDBKeyRange.lowerBound(1); // exclude ts=0 (no-date sentinel)
+  const dated = IDBKeyRange.bound(1, UNDATED_TS - 1); // exclude the no-date sentinel at the top end too
   const minCursor = await index.openCursor(dated, 'next');
   const maxCursor = await index.openCursor(dated, 'prev');
   if (!minCursor || !maxCursor) return null;

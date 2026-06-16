@@ -13,7 +13,7 @@ import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandle
 import { startGeotagging } from './geotag.js';
 import { openGrid } from './grid.js';
 import { organize, findSharphoRootIfExists, syncSharphoOnEdit } from './organize.js';
-import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan } from './db.js';
+import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -64,7 +64,7 @@ async function reloadTopbarCounts() {
   const total   = await countCached();
   const ignored = await countIgnored();
   const orphans = await countOrphans();
-  const noDate  = await countOrphansInRange(0, 0);
+  const noDate  = await countOrphansInRange(UNDATED_TS, UNDATED_TS);
   topbarTotal     = total - ignored;
   topbarGeotagged = total - ignored - orphans;
   topbarDated     = orphans - noDate;
@@ -208,7 +208,7 @@ async function openOrphanGrid() {
 
 async function openNodatetimeGrid() {
   const allOrphans = await countOrphans();
-  const total = await countOrphansInRange(0, 0);
+  const total = await countOrphansInRange(UNDATED_TS, UNDATED_TS);
   log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
   if (!total) {
     showBriefStatus(allOrphans > 0
@@ -221,7 +221,7 @@ async function openNodatetimeGrid() {
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
-  openGrid((offset, limit) => getOrphansPage(offset, limit, 0, 0), total, { reopen: openNodatetimeGrid });
+  openGrid((offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS), total, { reopen: openNodatetimeGrid });
 }
 
 // ── Fix date panel ────────────────────────────────────────────────────────────
