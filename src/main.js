@@ -4,13 +4,14 @@ import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, save
 const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
-import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
+import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
+import { openGrid } from './grid.js';
 import { organize, findSharphoRootIfExists, syncSharphoOnEdit } from './organize.js';
 import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan } from './db.js';
 import './style.css';
@@ -163,16 +164,20 @@ document.getElementById('import-btn').addEventListener('click', async () => {
   }
 });
 
-async function openOrphanSlideshow() {
+async function getOrphanListing() {
   const range = getActiveFilterRange();
-  let total, fetcher;
   if (range) {
-    total = await countOrphansInRange(range.from, range.to);
-    fetcher = (offset, limit) => getOrphansPage(offset, limit, range.from, range.to);
-  } else {
-    total = await countOrphans();
-    fetcher = (offset, limit) => getOrphansPage(offset, limit);
+    return {
+      total: await countOrphansInRange(range.from, range.to),
+      fetcher: (offset, limit) => getOrphansPage(offset, limit, range.from, range.to),
+      range,
+    };
   }
+  return { total: await countOrphans(), fetcher: (offset, limit) => getOrphansPage(offset, limit), range: null };
+}
+
+async function openOrphanSlideshow() {
+  const { total, fetcher, range } = await getOrphanListing();
   log('No location', `total orphans=${await countOrphans()}, in range=${total}`);
   if (!total) {
     showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
@@ -185,6 +190,20 @@ async function openOrphanSlideshow() {
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow(fetcher, total);
+}
+
+async function openOrphanGrid() {
+  const { total, fetcher, range } = await getOrphanListing();
+  if (!total) {
+    showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
+    return;
+  }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+  }));
+  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  openGrid(fetcher, total);
 }
 
 async function openNodatetimeSlideshow() {
@@ -303,6 +322,12 @@ document.getElementById('noloc-menu-btn').addEventListener('click', async () => 
   overflowMenu.classList.remove('open');
   try { await openOrphanSlideshow(); }
   catch (e) { log('No location error', e.message); showBriefStatus(`Error: ${e.message}`); }
+});
+
+document.getElementById('noloc-grid-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  try { await openOrphanGrid(); }
+  catch (e) { log('No location grid error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
 document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
@@ -513,6 +538,10 @@ function setStatus(msg) {
 }
 
 scanStatusEl.addEventListener('click', () => toggleLog());
+
+setRangeInfoHandler(({ total, withLocation }) => {
+  setStatus(`${total} photo${total === 1 ? '' : 's'} in range · ${withLocation} with location`);
+});
 
 function setProgress(pct) {
   progressFill.style.width = `${Math.min(100, pct)}%`;
