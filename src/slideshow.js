@@ -565,20 +565,29 @@ export function openSlideshow(photoList, startIndex = 0) {
   go(startIndex);
 }
 
-export async function openLazySlideshow(fetchPage, total) {
+// `seedItems`, if given, is a prefix of the list already fetched elsewhere
+// (e.g. by the grid view) — avoids re-fetching page 0 and lets the slideshow
+// open already-scrolled-to a tile the user tapped.
+export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seedItems = null } = {}) {
   imgCache.clear();
   photos = [];
   resetLazy();
   lazyFetch = fetchPage;
   lazyTotal = total ?? null;
 
-  const firstPage = await fetchPage(0, PAGE_SIZE);
-  if (!firstPage.length) return;
-
-  lazyOffset = firstPage.length;
-  if (firstPage.length < PAGE_SIZE) lazyDone = true;
-  photos = firstPage;
+  if (seedItems) {
+    photos = seedItems.slice();
+    lazyOffset = photos.length;
+    lazyDone = total != null && photos.length >= total;
+  } else {
+    const firstPage = await fetchPage(0, PAGE_SIZE);
+    if (!firstPage.length) return;
+    lazyOffset = firstPage.length;
+    if (firstPage.length < PAGE_SIZE) lazyDone = true;
+    photos = firstPage;
+  }
+  if (!photos.length) return;
   geotagBtn.style.display = geotagHandler ? '' : 'none';
   el.classList.add('open');
-  go(0);
+  go(startIndex);
 }
