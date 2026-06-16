@@ -552,6 +552,19 @@ body.filter-open #map { top: 120px; }
   font-size: .78rem;
   color: #94a3b8;
 }
+#grid-select-btn {
+  border: none;
+  border-radius: 8px;
+  background: rgba(255,255,255,.08);
+  color: #e2e8f0;
+  font-size: .78rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+#grid-select-btn.active {
+  background: #0ea5e9;
+  color: #fff;
+}
 
 #grid-scroll {
   flex: 1;
@@ -580,6 +593,36 @@ body.filter-open #map { top: 120px; }
   transition: opacity .15s ease-out;
 }
 .grid-tile img.loaded { opacity: 1; }
+.grid-tile.selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(14,165,233,.35);
+  border: 2px solid #0ea5e9;
+}
+.grid-tile-check {
+  position: absolute;
+  top: 4px; left: 4px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(0,0,0,.35);
+  z-index: 1;
+}
+.grid-tile.selected .grid-tile-check {
+  background: #0ea5e9;
+  border-color: #0ea5e9;
+}
+.grid-tile.selected .grid-tile-check::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  color: #fff;
+}
 .grid-play-badge {
   position: absolute;
   bottom: 4px; right: 4px;
@@ -589,6 +632,42 @@ body.filter-open #map { top: 120px; }
 }
 #grid-sentinel {
   height: 1px;
+}
+
+#grid-bulk-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #16213e;
+  border-top: 1px solid #334155;
+}
+#grid-bulk-count {
+  font-size: .82rem;
+  color: #94a3b8;
+}
+#grid-bulk-actions {
+  display: flex;
+  gap: 10px;
+}
+#grid-bulk-geotag, #grid-bulk-cancel {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#grid-bulk-geotag {
+  background: #16a34a;
+  color: #fff;
+}
+#grid-bulk-geotag:disabled { opacity: .45; cursor: default; }
+#grid-bulk-cancel {
+  background: #334155;
+  color: #e2e8f0;
 }
 
 /* Slideshow */
