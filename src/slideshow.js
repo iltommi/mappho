@@ -198,7 +198,8 @@ let _deleteConfirmPending = false;
 function resetDeleteBtn() {
   clearTimeout(_deleteConfirmTimer);
   _deleteConfirmPending = false;
-  deleteBtn.textContent = '🗑 Delete';
+  deleteBtn.textContent = '🗑';
+  deleteBtn.title = 'Delete';
   deleteBtn.classList.remove('confirm');
   deleteBtn.disabled = false;
 }
@@ -206,7 +207,8 @@ function resetDeleteBtn() {
 deleteBtn.addEventListener('click', async () => {
   if (!_deleteConfirmPending) {
     _deleteConfirmPending = true;
-    deleteBtn.textContent = 'Confirm delete?';
+    deleteBtn.textContent = '⚠️';
+    deleteBtn.title = 'Confirm delete?';
     deleteBtn.classList.add('confirm');
     _deleteConfirmTimer = setTimeout(resetDeleteBtn, 3000);
     return;
@@ -217,7 +219,8 @@ deleteBtn.addEventListener('click', async () => {
   if (!photo) { resetDeleteBtn(); return; }
 
   deleteBtn.disabled = true;
-  deleteBtn.textContent = 'Deleting…';
+  deleteBtn.textContent = '⏳';
+  deleteBtn.title = 'Deleting…';
   try {
     await deleteFile(photo.fileid);
     await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid)]);
@@ -459,25 +462,26 @@ function loadSidePanes() {
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
 
+let currentDimStr = '';
+
 function updateCounter() {
   const total = lazyTotal != null
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
-  counterEl.textContent = `${current + 1} / ${total}`;
+  const { ts } = photos[current];
+  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
+  const parts = [`${current + 1} / ${total}`, currentDimStr, dateStr].filter(Boolean);
+  counterEl.textContent = parts.join(' · ');
 }
 
 function updateCaption() {
-  const { name, ts, fileid } = photos[current];
+  const { name, fileid } = photos[current];
+  currentDimStr = '';
   updateCounter();
-  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
 
-  const buildCaption = (folder, dimStr) => {
-    const prefix = folder ? `${folder} / ` : '';
-    const base   = dateStr ? `${prefix}${name} · ${dateStr}` : `${prefix}${name}`;
-    return dimStr ? `${base} · ${dimStr}` : base;
-  };
+  const buildCaption = folder => folder ? `${folder} / ${name}` : name;
 
-  captionEl.textContent = buildCaption('', '');
+  captionEl.textContent = buildCaption('');
   if (geotagHandler) geotagBtn.style.display = '';
   fixDateBtn.style.display  = fixDateHandler ? '' : 'none';
   ignoreBtn.style.display   = ignoreHandler  ? '' : 'none';
@@ -486,15 +490,17 @@ function updateCaption() {
   shareBtn.style.display = isVideo(name) ? 'none' : '';
 
   if (!isVideo(name)) {
-    let dimStr = '', folderName = '';
-    const refreshCaption = () => {
-      if (photos[current]?.fileid === fileid) captionEl.textContent = buildCaption(folderName, dimStr);
+    let folderName = '';
+    const refresh = () => {
+      if (photos[current]?.fileid !== fileid) return;
+      updateCounter();
+      captionEl.textContent = buildCaption(folderName);
     };
     getFileDimensions(fileid).then(dim => {
-      if (dim) { dimStr = `${dim.w}×${dim.h}`; refreshCaption(); }
+      if (dim) { currentDimStr = `${dim.w}×${dim.h}`; refresh(); }
     }).catch(() => {});
     getFileFolderName(fileid).then(folder => {
-      if (folder) { folderName = folder; refreshCaption(); }
+      if (folder) { folderName = folder; refresh(); }
     }).catch(() => {});
   }
 }
