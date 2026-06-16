@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'sharpho';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const SHARPHO_INDEX_STORE = 'sharpho_index';
@@ -30,6 +30,9 @@ async function db() {
       }
       if (oldVersion < 4) {
         db.createObjectStore(SHARPHO_INDEX_STORE, { keyPath: 'hash' });
+      }
+      if (oldVersion < 5) {
+        tx.objectStore(STORE).createIndex('by_ts', 'ts');
       }
     },
   });
@@ -168,6 +171,19 @@ export async function countOrphansInRange(fromTs, toTs) {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');
   return tx.store.index('by_ts').count(IDBKeyRange.bound(fromTs, toTs));
+}
+
+// Counts geotagged (non-ignored) photos in STORE with ts in [fromTs, toTs].
+export async function countGeotaggedInRange(fromTs, toTs) {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.index('by_ts').openCursor(IDBKeyRange.bound(fromTs, toTs));
+  let count = 0;
+  while (cursor) {
+    if (cursor.value.lat != null && cursor.value.ignored !== 1) count++;
+    cursor = await cursor.continue();
+  }
+  return count;
 }
 
 // SharPho hash index: hash -> { hash, fileid, folderid, name }.
