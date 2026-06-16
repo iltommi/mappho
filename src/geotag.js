@@ -10,7 +10,9 @@ const hintEl   = document.getElementById('pin-drop-hint');
 const saveBtn  = document.getElementById('pin-drop-save');
 const cancelBtn = document.getElementById('pin-drop-cancel');
 
+let mode          = null; // 'single' | 'bulk'
 let pendingPhoto  = null;
+let pendingPhotos = null;
 let pendingLatLng = null;
 let onDone        = null;
 
@@ -23,7 +25,9 @@ function fmtDelta(ms) {
 }
 
 export async function startGeotagging(photo, callback) {
+  mode          = 'single';
   pendingPhoto  = photo;
+  pendingPhotos = null;
   pendingLatLng = null;
   onDone        = callback;
 
@@ -58,84 +62,129 @@ export async function startGeotagging(photo, callback) {
   });
 }
 
+// Places one pin and applies it to every photo in `photos` on save.
+// `callback` receives { success, count, failed }.
+export async function startBulkGeotagging(photos, callback) {
+  mode          = 'bulk';
+  pendingPhoto  = null;
+  pendingPhotos = photos;
+  pendingLatLng = null;
+  onDone        = callback;
+
+  hintEl.textContent  = `Tap map to place pin for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
+  saveBtn.disabled    = true;
+  saveBtn.textContent = '💾 Save';
+  bar.style.display   = 'flex';
+
+  enterPinDropMode({
+    initialPin: null,
+    onPlace: ({ lat, lng }) => {
+      pendingLatLng    = { lat, lng };
+      saveBtn.disabled = false;
+    },
+  });
+}
+
+// Writes `lat, lng` into one photo (EXIF on pCloud for JPEG/HEIC, cache-only
+// for MP4), syncs its SharPho copy if any, and updates the local cache/map.
+async function applyGeotagToPhoto(photo, lat, lng) {
+  const { fileid, name, ts } = photo;
+  const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
+  const isHeic = /\.heic$/i.test(name);
+  const isMP4  = /\.mp4$/i.test(name);
+
+  if (isMP4) {
+    // MP4 files can be hundreds of MB — save GPS to local cache only.
+    log('Geotag', `MP4: saving GPS to cache only`);
+    await deleteRecord(fileid);
+    await deleteOrphan(fileid);
+    await putCached({ fileid, name, lat, lng, ts: realTs });
+    addMarker({ fileid, name, lat, lng, ts: realTs });
+    return;
+  }
+
+  if (isHeic) {
+    log('Geotag', `HEIC → JPEG: fetching metadata…`);
+    const meta = await extractHeicMeta(fileid);
+
+    log('Geotag', `Downloading ${name}…`);
+    const heicBuf = await downloadFullFile(fileid);
+
+    log('Geotag', 'Converting to JPEG…');
+    const jpegBuf = await heicToJpeg(heicBuf);
+
+    log('Geotag', `Injecting EXIF (${lat.toFixed(5)}, ${lng.toFixed(5)})…`);
+    const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model });
+
+    const jpegName = name.replace(/\.heic$/i, '.jpg');
+    const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
+
+    log('Geotag', `Uploading ${jpegName}…`);
+    const newFileid = await uploadFile(parentfolderid, jpegName, jpegWithExif);
+
+    log('Geotag', `Removing original HEIC…`);
+    await deleteFile(fileid);
+
+    const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
+    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+
+    await deleteRecord(fileid);
+    await deleteOrphan(fileid);
+    await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
+    addMarker({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
+    log('Geotag', `Done — HEIC replaced by ${jpegName} (fileid ${newFileid})`);
+    return;
+  }
+
+  const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+
+  log('Geotag', `Downloading ${name}…`);
+  const buffer = await downloadFullFile(fileid);
+
+  log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
+  const modified = injectGPS(buffer, lat, lng);
+
+  log('Geotag', 'Uploading to pCloud…');
+  const newFileid = await overwriteFile(fileid, modified);
+
+  const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
+  await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+
+  await deleteRecord(fileid);
+  await deleteOrphan(fileid);
+  await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
+  addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
+  log('Geotag', `Saved — new fileid ${newFileid}`);
+}
+
 saveBtn.addEventListener('click', async () => {
-  if (!pendingPhoto || !pendingLatLng) return;
+  if (!pendingLatLng) return;
+  const { lat, lng } = pendingLatLng;
+
+  if (mode === 'bulk') {
+    const list = pendingPhotos;
+    saveBtn.disabled = true;
+    let ok = 0, failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      saveBtn.textContent = `⏳ ${i + 1}/${list.length}…`;
+      try {
+        await applyGeotagToPhoto(list[i], lat, lng);
+        ok++;
+      } catch (e) {
+        failed++;
+        log('Bulk geotag error', `${list[i].name}: ${e.message}`);
+      }
+    }
+    finish();
+    onDone?.({ success: ok > 0, count: ok, failed });
+    return;
+  }
+
+  if (!pendingPhoto) return;
   saveBtn.disabled    = true;
   saveBtn.textContent = '⏳ Saving…';
-
-  const { fileid, name, ts } = pendingPhoto;
-  const { lat, lng }         = pendingLatLng;
-
   try {
-    const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
-    const isHeic = /\.heic$/i.test(name);
-    const isMP4  = /\.mp4$/i.test(name);
-
-    if (isMP4) {
-      // MP4 files can be hundreds of MB — save GPS to local cache only.
-      log('Geotag', `MP4: saving GPS to cache only`);
-      await deleteRecord(fileid);
-      await deleteOrphan(fileid);
-      await putCached({ fileid, name, lat, lng, ts: realTs });
-      addMarker({ fileid, name, lat, lng, ts: realTs });
-    } else if (isHeic) {
-      log('Geotag', `HEIC → JPEG: fetching metadata…`);
-      saveBtn.textContent = '⏳ Fetching…';
-      const meta = await extractHeicMeta(fileid);
-
-      log('Geotag', `Downloading ${name}…`);
-      saveBtn.textContent = '⏳ Downloading…';
-      const heicBuf = await downloadFullFile(fileid);
-
-      log('Geotag', 'Converting to JPEG…');
-      saveBtn.textContent = '⏳ Converting…';
-      const jpegBuf = await heicToJpeg(heicBuf);
-
-      log('Geotag', `Injecting EXIF (${lat.toFixed(5)}, ${lng.toFixed(5)})…`);
-      saveBtn.textContent = '⏳ Injecting EXIF…';
-      const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model });
-
-      const jpegName = name.replace(/\.heic$/i, '.jpg');
-      const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
-
-      log('Geotag', `Uploading ${jpegName}…`);
-      saveBtn.textContent = '⏳ Uploading…';
-      const newFileid = await uploadFile(parentfolderid, jpegName, jpegWithExif);
-
-      log('Geotag', `Removing original HEIC…`);
-      saveBtn.textContent = '⏳ Removing HEIC…';
-      await deleteFile(fileid);
-
-      const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
-      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
-
-      await deleteRecord(fileid);
-      await deleteOrphan(fileid);
-      await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
-      addMarker({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
-      log('Geotag', `Done — HEIC replaced by ${jpegName} (fileid ${newFileid})`);
-    } else {
-      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
-
-      log('Geotag', `Downloading ${name}…`);
-      const buffer = await downloadFullFile(fileid);
-
-      log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
-      const modified = injectGPS(buffer, lat, lng);
-
-      log('Geotag', 'Uploading to pCloud…');
-      const newFileid = await overwriteFile(fileid, modified);
-
-      const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
-      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
-
-      await deleteRecord(fileid);
-      await deleteOrphan(fileid);
-      await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
-      addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
-      log('Geotag', `Saved — new fileid ${newFileid}`);
-    }
-
+    await applyGeotagToPhoto(pendingPhoto, lat, lng);
     finish();
     onDone?.({ success: true });
   } catch (e) {
@@ -147,13 +196,16 @@ saveBtn.addEventListener('click', async () => {
 });
 
 cancelBtn.addEventListener('click', () => {
+  const wasBulk = mode === 'bulk';
   finish();
-  onDone?.({ success: false });
+  onDone?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
 });
 
 function finish() {
   exitPinDropMode();
   bar.style.display = 'none';
+  mode          = null;
   pendingPhoto  = null;
+  pendingPhotos = null;
   pendingLatLng = null;
 }

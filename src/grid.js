@@ -1,13 +1,20 @@
 import { fetchThumbSrc } from './pcloud.js';
 import { isVideo } from './mp4.js';
 import { openLazySlideshow } from './slideshow.js';
+import { startBulkGeotagging } from './geotag.js';
+import { log } from './log.js';
 
-const el       = document.getElementById('grid-view');
-const closeBtn = document.getElementById('grid-close');
-const countEl  = document.getElementById('grid-count');
-const track    = document.getElementById('grid-track');
-const sentinel = document.getElementById('grid-sentinel');
-const scrollEl = document.getElementById('grid-scroll');
+const el         = document.getElementById('grid-view');
+const closeBtn   = document.getElementById('grid-close');
+const countEl    = document.getElementById('grid-count');
+const selectBtn  = document.getElementById('grid-select-btn');
+const track      = document.getElementById('grid-track');
+const sentinel   = document.getElementById('grid-sentinel');
+const scrollEl   = document.getElementById('grid-scroll');
+const bulkBar    = document.getElementById('grid-bulk-bar');
+const bulkCountEl  = document.getElementById('grid-bulk-count');
+const bulkGeotagBtn = document.getElementById('grid-bulk-geotag');
+const bulkCancelBtn = document.getElementById('grid-bulk-cancel');
 
 const PAGE_SIZE  = 60;
 const THUMB_SIZE = '256x256';
@@ -18,19 +25,62 @@ let total       = null;
 let offset      = 0;
 let done        = false;
 let loadingPage = false;
+let reopenFn    = null;
 
 let pageObserver  = null;
 let thumbObserver = null;
+
+let selectMode = false;
+const selected = new Set(); // indices into `items`
 
 function close() {
   el.classList.remove('open');
   track.innerHTML = '';
   items       = [];
   fetchPageFn = null;
+  reopenFn    = null;
   pageObserver?.disconnect();
   thumbObserver?.disconnect();
+  exitSelectMode();
 }
 closeBtn.addEventListener('click', close);
+
+function tileAt(index) {
+  return track.children[index] ?? null;
+}
+
+function updateBulkBar() {
+  bulkCountEl.textContent = `${selected.size} selected`;
+  bulkGeotagBtn.disabled  = selected.size === 0;
+}
+
+function setSelectMode(on) {
+  selectMode = on;
+  selectBtn.classList.toggle('active', on);
+  selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
+  bulkBar.style.display = on ? 'flex' : 'none';
+  if (!on) {
+    for (const idx of selected) tileAt(idx)?.classList.remove('selected');
+    selected.clear();
+  }
+  updateBulkBar();
+}
+
+function exitSelectMode() { setSelectMode(false); }
+
+selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
+bulkCancelBtn.addEventListener('click', () => exitSelectMode());
+
+bulkGeotagBtn.addEventListener('click', () => {
+  if (!selected.size) return;
+  const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const reopen = reopenFn;
+  close();
+  startBulkGeotagging(photos, ({ success, count, failed }) => {
+    if (success) log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
+    reopen?.();
+  });
+});
 
 async function loadThumb(tile) {
   const { fileid } = tile._item;
@@ -40,9 +90,18 @@ async function loadThumb(tile) {
   } catch { /* tile just stays blank — acceptable for a thumbnail grid */ }
 }
 
+function toggleTileSelected(tile, index) {
+  if (selected.has(index)) { selected.delete(index); tile.classList.remove('selected'); }
+  else                     { selected.add(index);    tile.classList.add('selected'); }
+  updateBulkBar();
+}
+
 function makeTile(item, index) {
   const tile = document.createElement('div');
   tile.className = 'grid-tile';
+  const check = document.createElement('span');
+  check.className = 'grid-tile-check';
+  tile.appendChild(check);
   const img = document.createElement('img');
   tile.appendChild(img);
   if (isVideo(item.name)) {
@@ -54,6 +113,7 @@ function makeTile(item, index) {
   tile._item = item;
   tile._img  = img;
   tile.addEventListener('click', () => {
+    if (selectMode) { toggleTileSelected(tile, index); return; }
     const fetcher = fetchPageFn, seed = items, idx = index, t = total;
     close();
     openLazySlideshow(fetcher, t, { startIndex: idx, seedItems: seed });
@@ -80,14 +140,19 @@ async function loadNextPage() {
   }
 }
 
-export async function openGrid(fetchPage, totalCount) {
+// `reopen`, if given, is called after a bulk action completes (success or
+// cancel) to refresh and reopen the grid with fresh data — the underlying
+// list (e.g. "no location") shrinks once photos get geotagged.
+export async function openGrid(fetchPage, totalCount, { reopen = null } = {}) {
   fetchPageFn = fetchPage;
   total       = totalCount ?? null;
+  reopenFn    = reopen;
   items       = [];
   offset      = 0;
   done        = false;
   track.innerHTML = '';
   countEl.textContent = '';
+  setSelectMode(false);
 
   thumbObserver = new IntersectionObserver(entries => {
     for (const e of entries) {

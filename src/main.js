@@ -203,7 +203,7 @@ async function openOrphanGrid() {
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total);
+  openGrid(fetcher, total, { reopen: openOrphanGrid });
 }
 
 async function openNodatetimeSlideshow() {
