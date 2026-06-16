@@ -291,6 +291,12 @@ wrap.addEventListener('touchstart', e => {
     // Pinch start — cancel any in-progress swipe or pan
     dragging = false;
     panning  = false;
+
+    // The image hasn't loaded yet (still showing the loading spinner) — its
+    // rect is zero-sized, which would make the pinch math center on (0,0)
+    // instead of the actual pinch point. Just ignore the gesture until it's there.
+    if (curImg.style.display === 'none') return;
+
     pinching = true;
     trackEl.style.transition = 'none';
     curImg.style.transition  = 'none';
