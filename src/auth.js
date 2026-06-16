@@ -27,6 +27,11 @@ export function getApiHost() {
   return localStorage.getItem(HOST_KEY) ?? EU_HOST;
 }
 
+// EU pCloud datacenter → DD/MM/YYYY (en-GB); US datacenter → MM/DD/YYYY (en-US).
+export function getDateLocale() {
+  return getApiHost() === US_HOST ? 'en-US' : 'en-GB';
+}
+
 export function setApiHost(host) {
   localStorage.setItem(HOST_KEY, host);
 }
