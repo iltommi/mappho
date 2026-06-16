@@ -53,7 +53,11 @@ function scheduleRangeInfo() {
 function apply() {
   fromVal.textContent = fmt(fromTs);
   toVal.textContent   = fmt(toTs);
-  filterMarkers(fromTs, toTs);
+  // When a slider is at its extreme, use ±Infinity so photos with dates
+  // outside the (clamped) scale are still included, not silently hidden.
+  const lo = parseInt(fromSlider.value) === 0    ? -Infinity : fromTs;
+  const hi = parseInt(toSlider.value)   === 1000 ?  Infinity : toTs;
+  filterMarkers(lo, hi);
   scheduleRangeInfo();
 }
 
@@ -149,8 +153,12 @@ async function init() {
     return;
   }
   noDatesEl.style.display = 'none';
-  minTs = range.min;
-  maxTs = range.max;
+  // Clamp scale to a sane range: no earlier than 1970, no later than
+  // 2 years from now. One photo with a corrupt far-future EXIF date
+  // shouldn't stretch the entire slider to year 23344.
+  const saneMax = Date.now() + 2 * 365 * 24 * 3600 * 1000;
+  minTs = Math.max(range.min, 0);
+  maxTs = Math.min(range.max, saneMax);
   fromTs = minTs;
   toTs   = maxTs;
   fromSlider.value = '0';
