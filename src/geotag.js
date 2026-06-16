@@ -2,6 +2,7 @@ import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectEx
 import { deleteRecord, deleteOrphan, putCached } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
+import { syncSharphoOnEdit } from './organize.js';
 import { log } from './log.js';
 
 const bar      = document.getElementById('pin-drop-bar');
@@ -95,7 +96,7 @@ saveBtn.addEventListener('click', async () => {
       const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model });
 
       const jpegName = name.replace(/\.heic$/i, '.jpg');
-      const { parentfolderid } = await getFileStat(fileid);
+      const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
 
       log('Geotag', `Uploading ${jpegName}…`);
       saveBtn.textContent = '⏳ Uploading…';
@@ -105,12 +106,17 @@ saveBtn.addEventListener('click', async () => {
       saveBtn.textContent = '⏳ Removing HEIC…';
       await deleteFile(fileid);
 
+      const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
+      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+
       await deleteRecord(fileid);
       await deleteOrphan(fileid);
-      await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
+      await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
       addMarker({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
       log('Geotag', `Done — HEIC replaced by ${jpegName} (fileid ${newFileid})`);
     } else {
+      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+
       log('Geotag', `Downloading ${name}…`);
       const buffer = await downloadFullFile(fileid);
 
@@ -120,9 +126,12 @@ saveBtn.addEventListener('click', async () => {
       log('Geotag', 'Uploading to pCloud…');
       const newFileid = await overwriteFile(fileid, modified);
 
+      const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
+      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+
       await deleteRecord(fileid);
       await deleteOrphan(fileid);
-      await putCached({ fileid: newFileid, name, lat, lng, ts: realTs });
+      await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
       addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
       log('Geotag', `Saved — new fileid ${newFileid}`);
     }
