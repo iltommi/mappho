@@ -6,8 +6,7 @@ import 'leaflet.markercluster';
 import 'leaflet.heat';
 import { fetchThumbSrc } from './pcloud.js';
 import { log } from './log.js';
-import { openLightbox } from './lightbox.js';
-import { setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
+import { openSlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid } from './grid.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
@@ -166,7 +165,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
           marker.getPopup()?.update();
         };
         img.style.cursor = 'zoom-in';
-        img.addEventListener('click', () => openLightbox(fileid, name));
+        img.addEventListener('click', () => openSlideshow([markerData.get(marker)], 0));
         div.insertBefore(img, caption);
       }
       marker.getPopup()?.update();
