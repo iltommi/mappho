@@ -1,5 +1,5 @@
 import { listImages, listFolders, createFolderIfNotExists, copyFile, renameFile, deleteFile } from './pcloud.js';
-import { getAllCached, getOrphansPage, countOrphans, clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry } from './db.js';
+import { getAllCached, getOrphansPage, countOrphans, clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, UNDATED_TS } from './db.js';
 import { log } from './log.js';
 
 const ROOT_NAME = 'SharPho';
@@ -10,7 +10,10 @@ export function normHash(h) {
   return h != null ? String(h) : null;
 }
 
+const UNKNOWN_DATE_FOLDER = 'Unknown date';
+
 let _rootFolderId  = null;
+let _unknownFolderId = null;
 const _yearFolders  = new Map(); // 'YYYY' -> folderid
 const _monthFolders  = new Map(); // 'YYYY-MM' -> folderid
 const _nameCounters  = new Map(); // 'YYYY-MM-DD_HH-MM-SS' -> next N to try
@@ -33,6 +36,15 @@ export async function getSharphoMonthFolder(rootFolderId, ts) {
     _monthFolders.set(key, monthId);
   }
   return monthId;
+}
+
+// Resolves (creating if needed) SharPho/Unknown date — for geotagged photos
+// with no usable timestamp, which otherwise have nowhere to bucket by date.
+async function getSharphoUnknownFolder(rootFolderId) {
+  if (_unknownFolderId == null) {
+    _unknownFolderId = await createFolderIfNotExists(rootFolderId, UNKNOWN_DATE_FOLDER);
+  }
+  return _unknownFolderId;
 }
 
 export async function getSharphoRoot() {
@@ -82,6 +94,19 @@ function nextName(ts, ext, takenNames) {
   return name;
 }
 
+// For geotagged-but-undated photos: no timestamp to build a name from, so
+// keep the original filename (deduped against what's already in SharPho).
+function nextNameForUnknown(originalName, ext, takenNames) {
+  const base = originalName.replace(/\.[^.]+$/, '') || 'photo';
+  let name = `${base}${ext}`;
+  let n = 1;
+  while (takenNames.has(name)) {
+    name = `${base}_${n}${ext}`;
+    n++;
+  }
+  return name;
+}
+
 // Rebuilds the local hash-index cache from a fresh listing of SharPho/ —
 // SharPho's own contents are the ground truth, not our bookkeeping.
 export async function buildHashIndex(rootFolderId, onProgress) {
@@ -101,9 +126,13 @@ export async function buildHashIndex(rootFolderId, onProgress) {
   return { count, takenNames };
 }
 
+// Photos qualify if they have GPS and/or a real date. STORE holds every
+// scanned photo (geotagged or not) so it's restricted to the GPS ones here;
+// ORPHAN_STORE holds only non-GPS photos, so a real date is required there —
+// this keeps the two loops disjoint (no photo can satisfy both).
 async function* allDatedCandidates() {
   for (const p of await getAllCached()) {
-    if (p.ignored || p.lat == null || p.ts == null) continue;
+    if (p.ignored || p.lat == null) continue;
     yield p;
   }
   const total = await countOrphans();
@@ -111,7 +140,7 @@ async function* allDatedCandidates() {
   for (let offset = 0; offset < total; offset += pageSize) {
     const page = await getOrphansPage(offset, pageSize);
     for (const p of page) {
-      if (p.ts) yield p;
+      if (p.ts != null && p.ts !== UNDATED_TS) yield p;
     }
   }
 }
@@ -140,11 +169,16 @@ export async function organize({ onProgress, isCancelled } = {}) {
     if (existing) { skipped++; continue; }
 
     try {
-      const monthFolderId = await getSharphoMonthFolder(rootFolderId, p.ts);
-      const name = nextName(p.ts, extOf(p.name), takenNames);
-      const newFileid = await copyFile(p.fileid, monthFolderId, name);
+      const hasDate = p.ts != null && p.ts > 0;
+      const folderId = hasDate
+        ? await getSharphoMonthFolder(rootFolderId, p.ts)
+        : await getSharphoUnknownFolder(rootFolderId);
+      const name = hasDate
+        ? nextName(p.ts, extOf(p.name), takenNames)
+        : nextNameForUnknown(p.name, extOf(p.name), takenNames);
+      const newFileid = await copyFile(p.fileid, folderId, name);
       takenNames.add(name);
-      await putSharphoIndexEntry({ hash, fileid: newFileid, folderid: monthFolderId, name });
+      await putSharphoIndexEntry({ hash, fileid: newFileid, folderid: folderId, name });
       copied++;
     } catch (e) {
       log('Organize error', `${p.name}: ${e.message}`);
@@ -172,7 +206,9 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
 
   try {
     const rootFolderId = await getSharphoRoot();
-    const monthFolderId = await getSharphoMonthFolder(rootFolderId, ts);
+    const monthFolderId = (ts != null && ts > 0)
+      ? await getSharphoMonthFolder(rootFolderId, ts)
+      : await getSharphoUnknownFolder(rootFolderId);
 
     if (monthFolderId === existing.folderid && newHash === oldHash) {
       return; // nothing actually changed — same content, same bucket
