@@ -671,19 +671,35 @@ body.filter-open #map { top: 120px; }
   display: flex;
   gap: 10px;
 }
-#grid-bulk-geotag, #grid-bulk-cancel {
-  padding: 8px 18px;
+#grid-bulk-geotag, #grid-bulk-share, #grid-bulk-delete, #grid-bulk-cancel {
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border: none;
-  border-radius: 8px;
-  font-size: .9rem;
-  font-weight: 600;
+  border-radius: 10px;
+  font-size: 1.3rem;
+  line-height: 1;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 #grid-bulk-geotag {
   background: #16a34a;
   color: #fff;
 }
-#grid-bulk-geotag:disabled { opacity: .45; cursor: default; }
+#grid-bulk-share {
+  background: #2563eb;
+  color: #fff;
+}
+#grid-bulk-geotag:disabled, #grid-bulk-share:disabled, #grid-bulk-delete:disabled { opacity: .45; cursor: default; }
+#grid-bulk-delete {
+  background: #dc2626;
+  color: #fff;
+}
+#grid-bulk-delete.confirm {
+  background: #f59e0b;
+}
 #grid-bulk-cancel {
   background: #334155;
   color: #e2e8f0;

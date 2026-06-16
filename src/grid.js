@@ -1,8 +1,12 @@
-import { fetchThumbSrc } from './pcloud.js';
+import { fetchThumbSrc, deleteFile } from './pcloud.js';
 import { isVideo } from './mp4.js';
 import { openLazySlideshow, setCloseHandler } from './slideshow.js';
 import { startBulkGeotagging } from './geotag.js';
+import { deleteRecord, deleteOrphan } from './db.js';
+import { removeMarker } from './map.js';
 import { log } from './log.js';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 
 const el         = document.getElementById('grid-view');
 const closeBtn   = document.getElementById('grid-close');
@@ -14,6 +18,8 @@ const scrollEl   = document.getElementById('grid-scroll');
 const bulkBar    = document.getElementById('grid-bulk-bar');
 const bulkCountEl  = document.getElementById('grid-bulk-count');
 const bulkGeotagBtn = document.getElementById('grid-bulk-geotag');
+const bulkShareBtn  = document.getElementById('grid-bulk-share');
+const bulkDeleteBtn = document.getElementById('grid-bulk-delete');
 const bulkCancelBtn = document.getElementById('grid-bulk-cancel');
 
 const PAGE_SIZE  = 60;
@@ -52,6 +58,8 @@ function tileAt(index) {
 function updateBulkBar() {
   bulkCountEl.textContent = `${selected.size} selected`;
   bulkGeotagBtn.disabled  = selected.size === 0;
+  bulkShareBtn.disabled   = selected.size === 0;
+  bulkDeleteBtn.disabled  = selected.size === 0;
 }
 
 function setSelectMode(on) {
@@ -63,6 +71,7 @@ function setSelectMode(on) {
   if (!on) {
     for (const idx of selected) tileAt(idx)?.classList.remove('selected');
     selected.clear();
+    resetBulkDeleteBtn();
   }
   updateBulkBar();
 }
@@ -81,6 +90,92 @@ bulkGeotagBtn.addEventListener('click', () => {
     if (success) log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
     reopen?.();
   });
+});
+
+bulkShareBtn.addEventListener('click', async () => {
+  if (!selected.size) return;
+  const all = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const photos = all.filter(p => !isVideo(p.name));
+  if (!photos.length) { log('Bulk share', 'no shareable (non-video) photos selected'); return; }
+
+  bulkShareBtn.disabled = true;
+  bulkShareBtn.textContent = '⏳';
+  const writtenPaths = [];
+  const uris = [];
+  try {
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      bulkShareBtn.title = `Preparing ${i + 1}/${photos.length}…`;
+      const src = await fetchThumbSrc(photo.fileid, '2048x2048');
+      if (!src) { log('Bulk share', `${photo.name}: thumb fetch returned null`); continue; }
+      const b64 = src.slice(src.indexOf(',') + 1);
+      // Prefix with fileid — selected photos can share the same filename across folders.
+      const path = `${photo.fileid}_${photo.name.replace(/\.heic$/i, '.jpg')}`;
+      const written = await Filesystem.writeFile({ path, data: b64, directory: Directory.Cache });
+      writtenPaths.push(path);
+      uris.push(written.uri);
+    }
+    if (uris.length) {
+      await Share.share({ files: uris, dialogTitle: `Share ${uris.length} photos` });
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Bulk share error', e.message ?? String(e));
+  } finally {
+    for (const path of writtenPaths) Filesystem.deleteFile({ path, directory: Directory.Cache }).catch(() => {});
+    bulkShareBtn.disabled    = false;
+    bulkShareBtn.textContent = '📤';
+    bulkShareBtn.title       = 'Share';
+  }
+});
+
+let bulkDeleteConfirmTimer   = null;
+let bulkDeleteConfirmPending = false;
+
+function resetBulkDeleteBtn() {
+  clearTimeout(bulkDeleteConfirmTimer);
+  bulkDeleteConfirmPending = false;
+  bulkDeleteBtn.textContent = '🗑';
+  bulkDeleteBtn.title = 'Delete';
+  bulkDeleteBtn.classList.remove('confirm');
+}
+
+bulkDeleteBtn.addEventListener('click', async () => {
+  if (!selected.size) return;
+
+  if (!bulkDeleteConfirmPending) {
+    bulkDeleteConfirmPending = true;
+    bulkDeleteBtn.textContent = '⚠️';
+    bulkDeleteBtn.title = `Confirm delete (${selected.size})?`;
+    bulkDeleteBtn.classList.add('confirm');
+    bulkDeleteConfirmTimer = setTimeout(resetBulkDeleteBtn, 3000);
+    return;
+  }
+  clearTimeout(bulkDeleteConfirmTimer);
+
+  const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const reopen = reopenFn;
+  bulkDeleteBtn.disabled = true;
+  bulkDeleteBtn.textContent = '⏳';
+
+  let ok = 0, failed = 0;
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    bulkDeleteBtn.title = `Deleting ${i + 1}/${photos.length}…`;
+    try {
+      await deleteFile(photo.fileid);
+      await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid)]);
+      removeMarker(photo.fileid);
+      ok++;
+    } catch (e) {
+      failed++;
+      log('Bulk delete error', `${photo.name}: ${e.message}`);
+    }
+  }
+
+  resetBulkDeleteBtn();
+  close();
+  log('Bulk delete', `deleted ${ok}${failed ? `, ${failed} failed` : ''}`);
+  reopen?.();
 });
 
 const THUMB_RETRY_DELAYS = [500, 1500, 4000]; // ms — fetchThumbSrc returns null (not a throw) on transient failures
