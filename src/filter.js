@@ -80,7 +80,7 @@ fromVal.addEventListener('click', () => {
   fromPicker.min = toInputValue(minTs);
   fromPicker.max = toInputValue(tsAt(toSlider.value));
   fromPicker.value = toInputValue(tsAt(fromSlider.value));
-  fromPicker.showPicker?.() ?? fromPicker.click();
+  if (fromPicker.showPicker) fromPicker.showPicker(); else fromPicker.click();
 });
 
 toVal.addEventListener('click', () => {
@@ -88,7 +88,7 @@ toVal.addEventListener('click', () => {
   toPicker.min = toInputValue(tsAt(fromSlider.value));
   toPicker.max = toInputValue(maxTs);
   toPicker.value = toInputValue(tsAt(toSlider.value));
-  toPicker.showPicker?.() ?? toPicker.click();
+  if (toPicker.showPicker) toPicker.showPicker(); else toPicker.click();
 });
 
 async function init() {
