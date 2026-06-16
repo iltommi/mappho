@@ -66,11 +66,13 @@ let fromPicker, toPicker;
 function ensurePickers() {
   if (fromPicker) return;
   fromPicker = makeDatePicker(ts => {
-    fromSlider.value = sliderAt(Math.min(ts, tsAt(toSlider.value)));
+    if (ts > tsAt(toSlider.value)) toSlider.value = sliderAt(ts);
+    fromSlider.value = sliderAt(ts);
     apply();
   });
   toPicker = makeDatePicker(ts => {
-    toSlider.value = sliderAt(Math.max(ts, tsAt(fromSlider.value)));
+    if (ts < tsAt(fromSlider.value)) fromSlider.value = sliderAt(ts);
+    toSlider.value = sliderAt(ts);
     apply();
   });
 }
