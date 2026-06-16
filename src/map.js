@@ -86,18 +86,8 @@ export function exitPinDropMode() {
 function buildLegendControl() {
   const ctrl = L.control({ position: 'bottomright' });
   ctrl.onAdd = () => {
-    const stops = Object.entries(HEAT_GRADIENT)
-      .sort(([a], [b]) => +a - +b)
-      .map(([k, v]) => `${v} ${(+k * 100).toFixed(0)}%`)
-      .join(', ');
     const div = L.DomUtil.create('div', 'heat-legend');
-    div.innerHTML =
-      '<div class="heat-bar-col">' +
-        '<span class="heat-lbl">high</span>' +
-        `<div class="heat-bar" style="background:linear-gradient(to top,${stops})"></div>` +
-        '<span class="heat-lbl">low</span>' +
-      '</div>' +
-      '<span class="heat-count">—</span>';
+    div.innerHTML = '<span class="heat-count">—</span>';
     legendCountEl = div.querySelector('.heat-count');
     return div;
   };
