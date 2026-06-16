@@ -62,15 +62,29 @@ function makeDatePicker(onPick) {
   return input;
 }
 
+// Widens [minTs, maxTs] to include ts if it falls outside the current scale,
+// preserving both sliders' absolute timestamp positions across the rescale.
+function expandRangeIfNeeded(ts) {
+  if (ts >= minTs && ts <= maxTs) return;
+  const curFrom = tsAt(fromSlider.value);
+  const curTo   = tsAt(toSlider.value);
+  minTs = Math.min(minTs, ts);
+  maxTs = Math.max(maxTs, ts);
+  fromSlider.value = sliderAt(curFrom);
+  toSlider.value   = sliderAt(curTo);
+}
+
 let fromPicker, toPicker;
 function ensurePickers() {
   if (fromPicker) return;
   fromPicker = makeDatePicker(ts => {
+    expandRangeIfNeeded(ts);
     if (ts > tsAt(toSlider.value)) toSlider.value = sliderAt(ts);
     fromSlider.value = sliderAt(ts);
     apply();
   });
   toPicker = makeDatePicker(ts => {
+    expandRangeIfNeeded(ts);
     if (ts < tsAt(fromSlider.value)) fromSlider.value = sliderAt(ts);
     toSlider.value = sliderAt(ts);
     apply();
@@ -79,16 +93,16 @@ function ensurePickers() {
 
 fromVal.addEventListener('click', () => {
   ensurePickers();
-  fromPicker.min = toInputValue(minTs);
-  fromPicker.max = toInputValue(maxTs);
+  fromPicker.removeAttribute('min');
+  fromPicker.removeAttribute('max');
   fromPicker.value = toInputValue(tsAt(fromSlider.value));
   if (fromPicker.showPicker) fromPicker.showPicker(); else fromPicker.click();
 });
 
 toVal.addEventListener('click', () => {
   ensurePickers();
-  toPicker.min = toInputValue(minTs);
-  toPicker.max = toInputValue(maxTs);
+  toPicker.removeAttribute('min');
+  toPicker.removeAttribute('max');
   toPicker.value = toInputValue(tsAt(toSlider.value));
   if (toPicker.showPicker) toPicker.showPicker(); else toPicker.click();
 });
