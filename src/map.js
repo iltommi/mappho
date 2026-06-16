@@ -7,7 +7,8 @@ import 'leaflet.heat';
 import { fetchThumbSrc } from './pcloud.js';
 import { log } from './log.js';
 import { openLightbox } from './lightbox.js';
-import { openSlideshow } from './slideshow.js';
+import { setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
+import { openGrid } from './grid.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -119,7 +120,10 @@ export function initMap() {
     log('clusterclick', `${children.length} child markers, markerData size=${markerData.size}`);
     const photos = children.map(m => markerData.get(m)).filter(Boolean);
     log('clusterclick', `${photos.length} photos resolved`);
-    openSlideshow(photos);
+    setGeotagHandler(null);
+    setFixDateHandler(null);
+    setIgnoreHandler(null);
+    openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
   });
   map.addLayer(cluster);
 }
