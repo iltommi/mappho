@@ -618,7 +618,6 @@ async function processFile(file, stats) {
 }
 
 async function scan() {
-  const CONCURRENCY = 6;
   const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
   const pool = new Set();
   const inFlight = new Map();
@@ -662,8 +661,18 @@ async function scan() {
   }
 }
 
+// Adaptive concurrency: start at MAX_CONCURRENCY and react to the failure rate
+// over a rolling window — halve on a high failure rate (likely bandwidth
+// contention or congestion), creep back up by one on a clean window.
+const MIN_CONCURRENCY = 2;
+const MAX_CONCURRENCY = 6;
+const CONCURRENCY_WINDOW = 10;
+const HIGH_FAILURE_RATE = 0.4;
+const LOW_FAILURE_RATE  = 0.1;
+
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
-  const CONCURRENCY = 6;
+  let concurrency = MAX_CONCURRENCY;
+  const recentOutcomes = [];
 
   const diagTimer = setInterval(() => {
     if (inFlight.size > 0)
@@ -677,6 +686,19 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
 
     const p = processFile(file, stats).then(ok => {
       if (!ok) failedFiles.push(file);
+
+      recentOutcomes.push(ok);
+      if (recentOutcomes.length >= CONCURRENCY_WINDOW) {
+        const failureRate = recentOutcomes.filter(o => !o).length / recentOutcomes.length;
+        if (failureRate > HIGH_FAILURE_RATE && concurrency > MIN_CONCURRENCY) {
+          concurrency = Math.max(MIN_CONCURRENCY, Math.floor(concurrency / 2));
+          log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — lowering to ${concurrency}`);
+        } else if (failureRate < LOW_FAILURE_RATE && concurrency < MAX_CONCURRENCY) {
+          concurrency++;
+          log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — raising to ${concurrency}`);
+        }
+        recentOutcomes.length = 0;
+      }
     }).finally(() => {
       pool.delete(p);
       inFlight.delete(p);
@@ -687,7 +709,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
     pool.add(p);
     inFlight.set(p, file.name);
 
-    if (pool.size >= CONCURRENCY) await Promise.race(pool);
+    if (pool.size >= concurrency) await Promise.race(pool);
   }
 
   clearInterval(diagTimer);
