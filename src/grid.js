@@ -1,6 +1,6 @@
 import { fetchThumbSrc } from './pcloud.js';
 import { isVideo } from './mp4.js';
-import { openLazySlideshow } from './slideshow.js';
+import { openLazySlideshow, setCloseHandler } from './slideshow.js';
 import { startBulkGeotagging } from './geotag.js';
 import { log } from './log.js';
 
@@ -115,7 +115,11 @@ function makeTile(item, index) {
   tile.addEventListener('click', () => {
     if (selectMode) { toggleTileSelected(tile, index); return; }
     const fetcher = fetchPageFn, seed = items, idx = index, t = total;
-    close();
+    // Grid view (z-index 3500) stays open underneath the slideshow (4000).
+    // On a plain dismissal the slideshow just hides, revealing the grid as-is.
+    // On a handoff to geotag/fix-date the map needs to be fully visible, so
+    // tear the grid down for real in that case.
+    setCloseHandler(({ handoff }) => { if (handoff) close(); });
     openLazySlideshow(fetcher, t, { startIndex: idx, seedItems: seed });
   });
   thumbObserver.observe(tile);

@@ -107,7 +107,16 @@ function centerTrack(animate) {
 
 // ── Close ─────────────────────────────────────────────────────────────────────
 
-function close() {
+let closeHandler = null;
+
+// Called whenever the slideshow closes. `handoff` is true when closing to
+// hand control to another full-screen flow (geotag/fix-date pin drop) that
+// needs the map fully visible underneath; false for a plain dismissal
+// (X button, Escape, empty list) where an opener like the grid view can
+// just stay as it was.
+export function setCloseHandler(fn) { closeHandler = fn; }
+
+function close({ handoff = false } = {}) {
   el.classList.remove('open');
   playBadge.style.display  = 'none';
   geotagBtn.style.display  = 'none';
@@ -119,6 +128,9 @@ function close() {
   resetImgZoom(false);
   centerTrack(false);
   resetDeleteBtn();
+  const cb = closeHandler;
+  closeHandler = null;
+  cb?.({ handoff });
 }
 
 export function closeSlideshow() { close(); }
@@ -126,14 +138,14 @@ export function closeSlideshow() { close(); }
 geotagBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !geotagHandler) return;
-  close();
+  close({ handoff: true });
   geotagHandler(photo);
 });
 
 fixDateBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !fixDateHandler) return;
-  close();
+  close({ handoff: true });
   fixDateHandler(photo);
 });
 
