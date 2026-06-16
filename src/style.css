@@ -235,7 +235,7 @@ html, body {
 
 #stop-scan-btn {
   position: fixed;
-  bottom: 3px;
+  bottom: 6px;
   right: 6px;
   z-index: 1002;
   height: 18px;
