@@ -1,10 +1,15 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'sharpho';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const SHARPHO_INDEX_STORE = 'sharpho_index';
+
+// Sentinel used in place of ts=0 for orphans with no known date, so they sort
+// to the end of the by_ts index instead of poisoning the front of date-sorted
+// listings (e.g. the grid view).
+const UNDATED_TS = Number.MAX_SAFE_INTEGER;
 
 let _db;
 async function db() {
@@ -33,6 +38,14 @@ async function db() {
       }
       if (oldVersion < 5) {
         tx.objectStore(STORE).createIndex('by_ts', 'ts');
+      }
+      if (oldVersion < 6) {
+        const store = tx.objectStore(ORPHAN_STORE);
+        let cursor = await store.openCursor();
+        while (cursor) {
+          if (!cursor.value.ts) await cursor.update({ ...cursor.value, ts: UNDATED_TS });
+          cursor = await cursor.continue();
+        }
       }
     },
   });
@@ -69,17 +82,17 @@ export async function clearNonIgnored() {
 }
 
 // Orphans: photos without GPS, indexed by ts for sorted pagination.
-// ts is stored as ts ?? 0 so null dates become 0 (1970) and remain indexable.
+// ts is stored as ts ?? UNDATED_TS so null dates sort to the end and remain indexable.
 
 export async function putOrphan({ fileid, name, ts, hash }) {
-  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? 0, hash: hash ?? null });
+  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? UNDATED_TS, hash: hash ?? null });
 }
 
 export async function bulkPutOrphans(records) {
   if (!records.length) return;
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readwrite');
-  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0, hash: r.hash ?? null });
+  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? UNDATED_TS, hash: r.hash ?? null });
   await tx.done;
 }
 
@@ -148,7 +161,7 @@ export async function importDb(backup) {
   const orphanSource = backup.version >= 2
     ? photos.filter(r => r.lat == null && !r.ignored)
     : (backup.orphans ?? []);
-  for (const r of orphanSource) tx.objectStore(ORPHAN_STORE).put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0 });
+  for (const r of orphanSource) tx.objectStore(ORPHAN_STORE).put({ fileid: r.fileid, name: r.name, ts: r.ts ?? UNDATED_TS });
   await tx.done;
 }
 
