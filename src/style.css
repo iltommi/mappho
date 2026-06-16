@@ -484,7 +484,7 @@ html, body {
   gap: 4px;
 }
 #filter-panel.open { display: flex; }
-body.filter-open #map { top: 120px; }
+body.filter-open #map { top: 88px; }
 
 .filter-row {
   display: flex;
@@ -498,13 +498,13 @@ body.filter-open #map { top: 120px; }
   flex-shrink: 0;
 }
 .filter-val {
-  font-size: .75rem;
+  font-size: .82rem;
   color: #7dd3fc;
-  width: 100px;
-  flex-shrink: 0;
-  text-align: right;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #1e3a5f;
   cursor: pointer;
-  text-decoration: underline dotted;
+  user-select: none;
 }
 .filter-dt-input {
   position: absolute;
@@ -517,12 +517,6 @@ body.filter-open #map { top: 120px; }
   color: #94a3b8;
   text-align: center;
   padding: 4px 0;
-}
-#filter-from, #filter-to {
-  flex: 1;
-  accent-color: #0ea5e9;
-  height: 4px;
-  cursor: pointer;
 }
 
 /* Grid view */
