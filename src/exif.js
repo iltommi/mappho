@@ -29,8 +29,8 @@ export async function extractEXIF(buffer, fileid = null, name = '') {
 
     try {
       const tags = await exifr.parse(parseTarget, { exif: true, tiff: false, gps: false,
-        pick: ['DateTimeOriginal', 'DateTime', 'DateTimeDigitized'] });
-      const d = tags?.DateTimeOriginal ?? tags?.DateTime ?? tags?.DateTimeDigitized;
+        pick: ['CreateDate', 'DateTimeOriginal', 'DateTime', 'DateTimeDigitized'] });
+      const d = tags?.CreateDate ?? tags?.DateTimeOriginal ?? tags?.DateTime ?? tags?.DateTimeDigitized;
       if (d instanceof Date && !isNaN(d)) result.ts = d.getTime();
     } catch { /* no date */ }
   }
