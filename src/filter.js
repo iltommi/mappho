@@ -80,14 +80,14 @@ function ensurePickers() {
 fromVal.addEventListener('click', () => {
   ensurePickers();
   fromPicker.min = toInputValue(minTs);
-  fromPicker.max = toInputValue(tsAt(toSlider.value));
+  fromPicker.max = toInputValue(maxTs);
   fromPicker.value = toInputValue(tsAt(fromSlider.value));
   if (fromPicker.showPicker) fromPicker.showPicker(); else fromPicker.click();
 });
 
 toVal.addEventListener('click', () => {
   ensurePickers();
-  toPicker.min = toInputValue(tsAt(fromSlider.value));
+  toPicker.min = toInputValue(minTs);
   toPicker.max = toInputValue(maxTs);
   toPicker.value = toInputValue(tsAt(toSlider.value));
   if (toPicker.showPicker) toPicker.showPicker(); else toPicker.click();
