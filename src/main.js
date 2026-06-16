@@ -56,9 +56,9 @@ topbarTitle.addEventListener('click', () => {
 
 function setScanStatus(scanned, geotagged, dated, total = null) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
-  scanStatusEl.textContent = `${progress}. ${geotagged} geo. ${dated} date`;
+  setStatus(`${progress}. ${geotagged} geo. ${dated} date`);
 }
-function clearScanStatus() { /* status bar stays; last message persists */ }
+function clearScanStatus() { /* status bar stays; last message persists, then auto-hides */ }
 
 async function reloadTopbarCounts() {
   const total   = await countCached();
@@ -72,8 +72,8 @@ async function reloadTopbarCounts() {
   updateTopbar();
 }
 
-function showBriefStatus(msg) {
-  setStatus(msg);
+function showBriefStatus(msg, timeoutMs = 4000) {
+  setStatus(msg, timeoutMs);
 }
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -525,9 +525,18 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
   await startScan();
 });
 
-function setStatus(msg) {
+let statusHideTimer = null;
+
+// Shows `msg` in the status bar, then auto-hides it after `timeoutMs` unless
+// another status call (e.g. the next scan-progress tick) replaces it first.
+function setStatus(msg, timeoutMs = 6000) {
+  clearTimeout(statusHideTimer);
   scanStatusEl.textContent = msg;
+  scanStatusEl.classList.remove('hidden');
   log('status', msg);
+  if (timeoutMs > 0) {
+    statusHideTimer = setTimeout(() => scanStatusEl.classList.add('hidden'), timeoutMs);
+  }
 }
 
 scanStatusEl.addEventListener('click', () => toggleLog());
