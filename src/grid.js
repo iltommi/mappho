@@ -59,6 +59,7 @@ function setSelectMode(on) {
   selectBtn.classList.toggle('active', on);
   selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
   bulkBar.style.display = on ? 'flex' : 'none';
+  el.classList.toggle('select-mode', on);
   if (!on) {
     for (const idx of selected) tileAt(idx)?.classList.remove('selected');
     selected.clear();

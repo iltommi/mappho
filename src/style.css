@@ -580,13 +580,20 @@ body.filter-open #map { top: 120px; }
 #grid-track {
   display: grid;
   /* auto-fit (not auto-fill) collapses empty tracks, so a handful of photos
-     get bigger tiles instead of staying squeezed to the minimum size. */
-  grid-template-columns: repeat(auto-fit, minmax(90px, 200px));
+     get bigger tiles instead of staying squeezed to the minimum size. The max
+     must stay a flexible 1fr (not a fixed px) — a definite max makes browsers
+     compute the column *count* from the max instead of the min, collapsing a
+     full grid of photos down to just 1-2 huge columns. Per-tile growth is
+     capped separately below via max-width. */
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  justify-content: center;
   gap: 2px;
   padding: 2px;
 }
 .grid-tile {
   position: relative;
+  width: 100%;
+  max-width: 200px;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: #1e293b;
@@ -609,6 +616,7 @@ body.filter-open #map { top: 120px; }
   border: 2px solid #0ea5e9;
 }
 .grid-tile-check {
+  display: none;
   position: absolute;
   top: 4px; left: 4px;
   width: 20px; height: 20px;
@@ -616,6 +624,9 @@ body.filter-open #map { top: 120px; }
   border: 2px solid #fff;
   background: rgba(0,0,0,.35);
   z-index: 1;
+}
+#grid-view.select-mode .grid-tile-check {
+  display: block;
 }
 .grid-tile.selected .grid-tile-check {
   background: #0ea5e9;
