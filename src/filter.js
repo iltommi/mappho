@@ -1,5 +1,5 @@
 import { filterMarkers, getDateRange } from './map.js';
-import { getOrphanDateRange } from './db.js';
+import { getOrphanDateRange, countOrphansInRange, countGeotaggedInRange } from './db.js';
 import { getDateLocale } from './auth.js';
 
 const panel   = document.getElementById('filter-panel');
@@ -33,10 +33,28 @@ function toInputValue(ts) {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+let rangeInfoHandler = null;
+export function setRangeInfoHandler(fn) { rangeInfoHandler = fn; }
+
+let rangeInfoTimer = null;
+function scheduleRangeInfo() {
+  if (!rangeInfoHandler) return;
+  clearTimeout(rangeInfoTimer);
+  const from = fromTs, to = toTs;
+  rangeInfoTimer = setTimeout(async () => {
+    const [withLocation, noLocation] = await Promise.all([
+      countGeotaggedInRange(from, to),
+      countOrphansInRange(from, to),
+    ]);
+    rangeInfoHandler({ total: withLocation + noLocation, withLocation });
+  }, 150);
+}
+
 function apply() {
   fromVal.textContent = fmt(fromTs);
   toVal.textContent   = fmt(toTs);
   filterMarkers(fromTs, toTs);
+  scheduleRangeInfo();
 }
 
 fromSlider.addEventListener('input', () => {
