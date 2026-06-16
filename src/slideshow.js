@@ -1,5 +1,6 @@
 import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
+import { getDateLocale } from './auth.js';
 import { removeMarker } from './map.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
@@ -469,7 +470,7 @@ function updateCounter() {
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts } = photos[current];
-  const dateStr = ts ? new Date(ts).toLocaleDateString() : '';
+  const dateStr = ts ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
   const parts = [`${current + 1} / ${total}`, currentDimStr, dateStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
 }

@@ -1,5 +1,6 @@
 import { filterMarkers, getDateRange } from './map.js';
 import { getOrphanDateRange } from './db.js';
+import { getDateLocale } from './auth.js';
 
 const panel   = document.getElementById('filter-panel');
 const fromSlider = document.getElementById('filter-from');
@@ -10,7 +11,7 @@ const toVal      = document.getElementById('filter-to-val');
 let minTs = 0, maxTs = 0;
 
 function fmt(ts) {
-  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function tsAt(sliderValue) {
