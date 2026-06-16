@@ -9,6 +9,10 @@ const fromVal    = document.getElementById('filter-from-val');
 const toVal      = document.getElementById('filter-to-val');
 
 let minTs = 0, maxTs = 0;
+// The slider's 0-1000 scale is too coarse to represent an exact picked date
+// over a multi-year range (each tick can span days) — these hold the real,
+// unquantized range, and the slider position is just a derived UI affordance.
+let fromTs = 0, toTs = 0;
 
 function fmt(ts) {
   return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
@@ -30,22 +34,22 @@ function toInputValue(ts) {
 }
 
 function apply() {
-  const from = tsAt(fromSlider.value);
-  const to   = tsAt(toSlider.value);
-  fromVal.textContent = fmt(from);
-  toVal.textContent   = fmt(to);
-  filterMarkers(from, to);
+  fromVal.textContent = fmt(fromTs);
+  toVal.textContent   = fmt(toTs);
+  filterMarkers(fromTs, toTs);
 }
 
 fromSlider.addEventListener('input', () => {
   if (parseInt(fromSlider.value) > parseInt(toSlider.value))
     fromSlider.value = toSlider.value;
+  fromTs = tsAt(fromSlider.value);
   apply();
 });
 
 toSlider.addEventListener('input', () => {
   if (parseInt(toSlider.value) < parseInt(fromSlider.value))
     toSlider.value = fromSlider.value;
+  toTs = tsAt(toSlider.value);
   apply();
 });
 
@@ -63,15 +67,13 @@ function makeDatePicker(onPick) {
 }
 
 // Widens [minTs, maxTs] to include ts if it falls outside the current scale,
-// preserving both sliders' absolute timestamp positions across the rescale.
+// rescaling both sliders' positions to match the still-exact fromTs/toTs.
 function expandRangeIfNeeded(ts) {
   if (ts >= minTs && ts <= maxTs) return;
-  const curFrom = tsAt(fromSlider.value);
-  const curTo   = tsAt(toSlider.value);
   minTs = Math.min(minTs, ts);
   maxTs = Math.max(maxTs, ts);
-  fromSlider.value = sliderAt(curFrom);
-  toSlider.value   = sliderAt(curTo);
+  fromSlider.value = sliderAt(fromTs);
+  toSlider.value   = sliderAt(toTs);
 }
 
 let fromPicker, toPicker;
@@ -79,14 +81,18 @@ function ensurePickers() {
   if (fromPicker) return;
   fromPicker = makeDatePicker(ts => {
     expandRangeIfNeeded(ts);
-    if (ts > tsAt(toSlider.value)) toSlider.value = sliderAt(ts);
-    fromSlider.value = sliderAt(ts);
+    fromTs = ts;
+    if (ts > toTs) toTs = ts;
+    fromSlider.value = sliderAt(fromTs);
+    toSlider.value   = sliderAt(toTs);
     apply();
   });
   toPicker = makeDatePicker(ts => {
     expandRangeIfNeeded(ts);
-    if (ts < tsAt(fromSlider.value)) fromSlider.value = sliderAt(ts);
-    toSlider.value = sliderAt(ts);
+    toTs = ts;
+    if (ts < fromTs) fromTs = ts;
+    fromSlider.value = sliderAt(fromTs);
+    toSlider.value   = sliderAt(toTs);
     apply();
   });
 }
@@ -95,7 +101,7 @@ fromVal.addEventListener('click', () => {
   ensurePickers();
   fromPicker.removeAttribute('min');
   fromPicker.removeAttribute('max');
-  fromPicker.value = toInputValue(tsAt(fromSlider.value));
+  fromPicker.value = toInputValue(fromTs);
   if (fromPicker.showPicker) fromPicker.showPicker(); else fromPicker.click();
 });
 
@@ -103,7 +109,7 @@ toVal.addEventListener('click', () => {
   ensurePickers();
   toPicker.removeAttribute('min');
   toPicker.removeAttribute('max');
-  toPicker.value = toInputValue(tsAt(toSlider.value));
+  toPicker.value = toInputValue(toTs);
   if (toPicker.showPicker) toPicker.showPicker(); else toPicker.click();
 });
 
@@ -127,6 +133,8 @@ async function init() {
   noDatesEl.style.display = 'none';
   minTs = range.min;
   maxTs = range.max;
+  fromTs = minTs;
+  toTs   = maxTs;
   fromSlider.value = '0';
   toSlider.value   = '1000';
   apply();
@@ -149,5 +157,5 @@ export function closeFilter() {
 // Returns { from, to } in ms if the filter panel is open and has a valid range, else null.
 export function getActiveFilterRange() {
   if (!panel.classList.contains('open') || minTs === maxTs) return null;
-  return { from: tsAt(fromSlider.value), to: tsAt(toSlider.value) };
+  return { from: fromTs, to: toTs };
 }
