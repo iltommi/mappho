@@ -1,9 +1,10 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'sharpho';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
+const SHARPHO_INDEX_STORE = 'sharpho_index';
 
 let _db;
 async function db() {
@@ -26,6 +27,9 @@ async function db() {
           if (cursor.value.ignored === true) await cursor.update({ ...cursor.value, ignored: 1 });
           cursor = await cursor.continue();
         }
+      }
+      if (oldVersion < 4) {
+        db.createObjectStore(SHARPHO_INDEX_STORE, { keyPath: 'hash' });
       }
     },
   });
@@ -64,15 +68,15 @@ export async function clearNonIgnored() {
 // Orphans: photos without GPS, indexed by ts for sorted pagination.
 // ts is stored as ts ?? 0 so null dates become 0 (1970) and remain indexable.
 
-export async function putOrphan({ fileid, name, ts }) {
-  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? 0 });
+export async function putOrphan({ fileid, name, ts, hash }) {
+  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? 0, hash: hash ?? null });
 }
 
 export async function bulkPutOrphans(records) {
   if (!records.length) return;
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readwrite');
-  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0 });
+  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? 0, hash: r.hash ?? null });
   await tx.done;
 }
 
@@ -164,6 +168,42 @@ export async function countOrphansInRange(fromTs, toTs) {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');
   return tx.store.index('by_ts').count(IDBKeyRange.bound(fromTs, toTs));
+}
+
+// SharPho hash index: hash -> { hash, fileid, folderid, name }.
+// Rebuilt from a fresh listfolder of SharPho/ at the start of every organize pass
+// (SharPho's own contents are the ground truth), but cached here so edit-time
+// sync hooks (geotag/fix-date) can look up "is this hash already organized?"
+// without a full re-listing.
+
+export async function clearSharphoIndex() {
+  return (await db()).clear(SHARPHO_INDEX_STORE);
+}
+
+export async function putSharphoIndexEntry(entry) {
+  return (await db()).put(SHARPHO_INDEX_STORE, entry);
+}
+
+export async function bulkPutSharphoIndex(entries) {
+  if (!entries.length) return;
+  const d = await db();
+  const tx = d.transaction(SHARPHO_INDEX_STORE, 'readwrite');
+  for (const e of entries) tx.store.put(e);
+  await tx.done;
+}
+
+export async function getSharphoIndexEntry(hash) {
+  if (!hash) return null;
+  return (await db()).get(SHARPHO_INDEX_STORE, hash);
+}
+
+export async function deleteSharphoIndexEntry(hash) {
+  if (!hash) return;
+  return (await db()).delete(SHARPHO_INDEX_STORE, hash);
+}
+
+export async function countSharphoIndex() {
+  return (await db()).count(SHARPHO_INDEX_STORE);
 }
 
 // Returns { min, max } ms timestamps across all dated orphans, or null if none.

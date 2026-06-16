@@ -35,10 +35,11 @@ export async function listFolders(folderid = 0) {
   return (data.metadata.contents ?? []).filter(i => i.isfolder);
 }
 
-export async function* listImages(folderid = 0) {
+export async function* listImages(folderid = 0, excludeFolderId = null) {
   const queue = [folderid];
   while (queue.length > 0) {
     const fid = queue.shift();
+    if (excludeFolderId != null && fid === excludeFolderId) continue;
     let data;
     try {
       data = await api('listfolder', { folderid: fid });
@@ -49,12 +50,24 @@ export async function* listImages(folderid = 0) {
     log(`traversing folder`, `${data.metadata.name} (id=${fid})`);
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
-        queue.push(item.folderid);
+        if (excludeFolderId == null || item.folderid !== excludeFolderId) queue.push(item.folderid);
       } else if (/\.(jpe?g|heic|mp4)$/i.test(item.name)) {
         yield item;
       }
     }
   }
+}
+
+// Idempotently create a folder under `folderid`, returns the (new or existing) folderid.
+export async function createFolderIfNotExists(folderid, name) {
+  const data = await api('createfolderifnotexists', { folderid, name });
+  return data.metadata.folderid;
+}
+
+// Server-side copy — no bandwidth cost regardless of file size. Returns the new fileid.
+export async function copyFile(fileid, tofolderid, toname) {
+  const data = await api('copyfile', { fileid, tofolderid, toname });
+  return data.metadata.fileid;
 }
 
 async function getCdnUrl(fileid) {
@@ -198,6 +211,15 @@ export async function uploadFile(folderid, filename, arrayBuffer) {
 
 export async function deleteFile(fileid) {
   await api('deletefile', { fileid });
+}
+
+// Rename and/or move a file server-side. Returns the (unchanged) fileid.
+export async function renameFile(fileid, { toname, tofolderid } = {}) {
+  const params = { fileid };
+  if (toname != null)     params.toname = toname;
+  if (tofolderid != null) params.tofolderid = tofolderid;
+  await api('renamefile', params);
+  return fileid;
 }
 
 export async function overwriteFile(fileid, arrayBuffer) {

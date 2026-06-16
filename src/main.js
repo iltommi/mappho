@@ -5,13 +5,14 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange } from './filter.js';
-import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup } from './pcloud.js';
-import { extractEXIF, parseDateFromFilename } from './exif.js';
+import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto } from './db.js';
+import { organize, findSharphoRootIfExists, syncSharphoOnEdit } from './organize.js';
+import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -227,13 +228,58 @@ function startFixDate(photo, onDone) {
 
 fixDateSaveBtn.addEventListener('click', async () => {
   if (!fixDatePhoto || !fixDateInput.value) return;
+  const origText = fixDateSaveBtn.textContent;
   fixDateSaveBtn.disabled = true;
   try {
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     const { fileid, name } = fixDatePhoto;
+    const isHeic = /\.heic$/i.test(name);
+    const isMP4  = /\.mp4$/i.test(name);
+
+    let newFileid = fileid;
+    let newName   = name;
+    let newHash   = null;
+
+    if (isMP4) {
+      log('Fix date', 'MP4: saving date to cache only');
+      const { hash } = await getFileStat(fileid).catch(() => ({}));
+      newHash = hash ?? null;
+      await syncSharphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
+    } else if (isHeic) {
+      fixDateSaveBtn.textContent = '⏳ Fetching…';
+      const meta = await extractHeicMeta(fileid);
+      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+      fixDateSaveBtn.textContent = '⏳ Downloading…';
+      const heicBuf = await downloadFullFile(fileid);
+      fixDateSaveBtn.textContent = '⏳ Converting…';
+      const jpegBuf = await heicToJpeg(heicBuf);
+      fixDateSaveBtn.textContent = '⏳ Injecting EXIF…';
+      const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model });
+      newName = name.replace(/\.heic$/i, '.jpg');
+      const { parentfolderid } = await getFileStat(fileid);
+      fixDateSaveBtn.textContent = '⏳ Uploading…';
+      newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
+      log('Fix date', 'Removing original HEIC…');
+      await deleteFile(fileid);
+      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+    } else {
+      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+      fixDateSaveBtn.textContent = '⏳ Downloading…';
+      const buffer = await downloadFullFile(fileid);
+      const modified = injectExif(buffer, { ts });
+      fixDateSaveBtn.textContent = '⏳ Uploading…';
+      newFileid = await overwriteFile(fileid, modified);
+      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+    }
+
     const cached = await getCached(fileid);
-    if (cached) await putCached({ ...cached, ts });
-    await putOrphan({ fileid, name, ts });
+    await deleteRecord(fileid);
+    await deleteOrphan(fileid);
+    if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
+    else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
+
     await reloadTopbarCounts();
     fixDateBar.style.display = 'none';
     fixDateOnDone?.();
@@ -241,6 +287,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
     log('Fix date error', e.message);
   } finally {
     fixDateSaveBtn.disabled = false;
+    fixDateSaveBtn.textContent = origText;
     fixDatePhoto = null;
     fixDateOnDone = null;
   }
@@ -443,6 +490,15 @@ clearCacheBtn.addEventListener('click', async () => {
   clearCacheBtn.disabled = false;
 });
 
+const organizeBtn = document.getElementById('organize-btn');
+organizeBtn.addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  if (organizeBtn.disabled) return;
+  organizeBtn.disabled = true;
+  try { await runOrganize(); }
+  finally { organizeBtn.disabled = false; }
+});
+
 document.getElementById('use-token-btn').addEventListener('click', async () => {
   const token = document.getElementById('token-input').value.trim();
   if (!token) { loginError.textContent = 'Please paste your auth token.'; return; }
@@ -557,6 +613,38 @@ async function startScan() {
   startScanInProgress = false;
 }
 
+async function runOrganize() {
+  scanCancelled = false;
+  stopScanBtn.style.display = '';
+  stopScanBtn.disabled = false;
+  stopScanBtn.textContent = '✕ Stop';
+  setProgress(0);
+  try {
+    setStatus('Organize: indexing SharPho…');
+    const { copied, skipped, failed } = await organize({
+      isCancelled: () => scanCancelled,
+      onProgress: p => {
+        if (p.phase === 'indexing') {
+          setStatus(`Organize: indexing SharPho… ${p.done} found`);
+        } else if (p.phase === 'copying') {
+          setStatus(`Organize: ${p.done}/${p.total} · ${p.copied} copied · ${p.skipped} already organized`);
+          setProgress((p.done / p.total) * 100);
+        }
+      },
+    });
+    setProgress(100);
+    const failedNote = failed > 0 ? ` (${failed} failed)` : '';
+    setStatus(scanCancelled
+      ? `Organize stopped — ${copied} copied, ${skipped} already organized${failedNote}.`
+      : `Organize done — ${copied} copied, ${skipped} already organized${failedNote}.`);
+  } catch (e) {
+    setStatus(`Organize error: ${e.message}`);
+    console.error(e);
+  } finally {
+    stopScanBtn.style.display = 'none';
+  }
+}
+
 async function runScan() {
   scanCancelled = false;
   stopScanBtn.style.display = '';
@@ -610,7 +698,7 @@ async function processFile(file, stats) {
     return false;
   }
   const hasGps = exif.lat != null && !isNaN(exif.lat) && exif.lng != null && !isNaN(exif.lng);
-  const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null };
+  const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null, hash: file.hash != null ? String(file.hash) : null };
   await putCached(record);
   if (hasGps) { stats.geotagged++; addMarker(record); }
   else { if (record.ts != null) stats.dated++; await putOrphan(record); }
@@ -627,8 +715,9 @@ async function scan() {
 
   // Phase 1: BFS all folders to discover the full file list
   setStatus('Discovering files…');
+  const sharphoFolderId = await findSharphoRootIfExists();
   const allFiles = [];
-  for await (const file of listImages(folderId)) {
+  for await (const file of listImages(folderId, sharphoFolderId)) {
     allFiles.push(file);
     setStatus(`Discovering… ${allFiles.length} files found`);
   }
