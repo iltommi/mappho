@@ -206,7 +206,7 @@ async function openOrphanGrid() {
   openGrid(fetcher, total, { reopen: openOrphanGrid });
 }
 
-async function openNodatetimeSlideshow() {
+async function openNodatetimeGrid() {
   const allOrphans = await countOrphans();
   const total = await countOrphansInRange(0, 0);
   log('No date/location', `all orphans=${allOrphans}, undated=${total}`);
@@ -218,11 +218,10 @@ async function openNodatetimeSlideshow() {
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
-    openNodatetimeSlideshow();
   }));
-  setFixDateHandler(photo => startFixDate(photo, openNodatetimeSlideshow));
+  setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
-  openLazySlideshow((offset, limit) => getOrphansPage(offset, limit, 0, 0), total);
+  openGrid((offset, limit) => getOrphansPage(offset, limit, 0, 0), total, { reopen: openNodatetimeGrid });
 }
 
 // ── Fix date panel ────────────────────────────────────────────────────────────
@@ -320,19 +319,13 @@ fixDateCancelBtn.addEventListener('click', () => {
 
 document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  try { await openOrphanSlideshow(); }
-  catch (e) { log('No location error', e.message); showBriefStatus(`Error: ${e.message}`); }
-});
-
-document.getElementById('noloc-grid-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
   try { await openOrphanGrid(); }
-  catch (e) { log('No location grid error', e.message); showBriefStatus(`Error: ${e.message}`); }
+  catch (e) { log('No location error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
 document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
-  try { await openNodatetimeSlideshow(); }
+  try { await openNodatetimeGrid(); }
   catch (e) { log('No date/location error', e.message); showBriefStatus(`Error: ${e.message}`); }
 });
 
