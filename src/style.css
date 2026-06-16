@@ -231,6 +231,12 @@ html, body {
   letter-spacing: .02em;
   cursor: pointer;
   user-select: none;
+  opacity: 1;
+  transition: opacity .3s ease-out;
+}
+#scan-status.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 #stop-scan-btn {
