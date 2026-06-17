@@ -251,8 +251,6 @@ export async function overwriteFile(fileid, arrayBuffer) {
   return newFileid;
 }
 
-const BACKUP_FILENAME = 'sharpho.json';
-
 export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFileid = null) {
   if (existingFileid) {
     try { await api('deletefile', { fileid: existingFileid }); } catch {}
@@ -283,44 +281,6 @@ export async function downloadJsonFile(fileid) {
   return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
 }
 
-export async function uploadBackup(jsonStr) {
-  try {
-    const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
-    await api('deletefile', { fileid: stat.metadata.fileid });
-  } catch { /* file doesn't exist yet */ }
-
-  const boundary = 'SharPhoBoundary' + crypto.randomUUID().replace(/-/g, '');
-  const crlf = '\r\n';
-  const body =
-    '--' + boundary + crlf +
-    `Content-Disposition: form-data; name="file"; filename="${BACKUP_FILENAME}"` + crlf +
-    'Content-Type: application/json' + crlf +
-    crlf +
-    jsonStr + crlf +
-    '--' + boundary + '--';
-
-  const resp = await CapacitorHttp.request({
-    method: 'POST',
-    url: buildUrl('uploadfile', { folderid: 0, nopartial: 1 }).toString(),
-    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-    data: body,
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
-  });
-  if (resp.data?.result !== 0) throw new Error(`pCloud ${resp.data?.result}: ${resp.data?.error}`);
-}
-
-export async function downloadBackup() {
-  const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });
-  const link = await api('getfilelink', { fileid: stat.metadata.fileid });
-  const host = link.hosts?.[0];
-  if (!host) throw new Error('pCloud getfilelink returned no CDN host');
-  const cdnUrl = `https://${host}${link.path}`;
-  const resp = await CapacitorHttp.request({
-    method: 'GET', url: cdnUrl,
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
-  });
-  return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
-}
 
 export async function fetchThumbSrc(fileid, size = '512x512') {
   if (!/^\d+$/.test(String(fileid))) return null;

@@ -150,29 +150,6 @@ export async function findClosestGeotagged(ts) {
   return best ? { ...best, delta: bestDiff } : null;
 }
 
-export async function exportDb() {
-  const d = await db();
-  const photos = await d.getAll(STORE);
-  return { version: 3, photos };
-}
-
-export async function importDb(backup) {
-  const d = await db();
-  const tx = d.transaction([STORE, ORPHAN_STORE], 'readwrite');
-  tx.objectStore(STORE).clear();
-  tx.objectStore(ORPHAN_STORE).clear();
-  const photos = backup.photos ?? [];
-  for (const r of photos) {
-    const rec = r.ignored === true ? { ...r, ignored: 1 } : r;
-    tx.objectStore(STORE).put(rec);
-  }
-  // Reconstruct orphan store from non-GPS photos (v1 backups had a separate orphans array)
-  const orphanSource = backup.version >= 2
-    ? photos.filter(r => r.lat == null && !r.ignored)
-    : (backup.orphans ?? []);
-  for (const r of orphanSource) tx.objectStore(ORPHAN_STORE).put({ fileid: r.fileid, name: r.name, ts: r.ts ?? UNDATED_TS });
-  await tx.done;
-}
 
 export async function getOrphansPage(offset, limit, fromTs = null, toTs = null) {
   const d = await db();
