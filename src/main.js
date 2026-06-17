@@ -517,11 +517,15 @@ function openFolderPicker() {
 }
 
 function closeFolderPicker() {
-  // Commit working set to localStorage.
+  const oldIds = new Set(getSelectedFolders().map(f => f.id));
   const folders = [...fpSelected.values()];
-  saveSelectedFolders(folders.length ? folders : [{ id: 0, name: 'All photos' }]);
+  const newFolders = folders.length ? folders : [{ id: 0, name: 'All photos' }];
+  saveSelectedFolders(newFolders);
   updateFolderBtn();
   folderPicker.style.display = 'none';
+  const newIds = new Set(newFolders.map(f => f.id));
+  const changed = oldIds.size !== newIds.size || [...oldIds].some(id => !newIds.has(id));
+  if (changed) runScan();
 }
 
 fpBack.addEventListener('click', () => {
