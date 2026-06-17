@@ -525,6 +525,7 @@ eraseCacheBtn.addEventListener('click', async () => {
 clearCacheBtn.addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
   await Promise.all([clearNonIgnored(), clearOrphans()]);
+  clearMarkers();
   log('Cache cleared');
   setStatus('Cache cleared — scanning…');
   clearCacheBtn.disabled = true;
