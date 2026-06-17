@@ -55,9 +55,10 @@ topbarTitle.addEventListener('click', () => {
   updateTopbar();
 });
 
-function setScanStatus(scanned, geotagged, dated, total = null) {
+function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
-  setStatus(`${progress}. ${geotagged} geo. ${dated} date`);
+  const dupNote  = cached > 0 ? ` ${cached} dup.` : '';
+  setStatus(`${progress}. ${geotagged} geo. ${dated} date.${dupNote}`);
 }
 function clearScanStatus() { /* status bar stays; last message persists, then auto-hides */ }
 
@@ -765,6 +766,7 @@ async function processFile(file, stats) {
   const hit = await getCached(file.fileid);
   if (hit) {
     if (hit.ignored) return true;
+    stats.cached++;
     log(`${file.name} [cached]`, hit.lat != null ? `GPS: ${hit.lat.toFixed(4)}, ${hit.lng.toFixed(4)}` : 'no GPS');
     if (hit.lat != null) { stats.geotagged++; addMarker(hit); }
     return true;
@@ -798,7 +800,7 @@ async function processFile(file, stats) {
 }
 
 async function scan() {
-  const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
+  const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
   const pool = new Set();
   const inFlight = new Map();
 
@@ -868,7 +870,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   for (const file of files) {
     if (scanCancelled) break;
     stats.scanned++;
-    setScanStatus(stats.scanned, stats.geotagged, stats.dated, total);
+    setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
 
     const p = processFile(file, stats).then(ok => {
       if (!ok) failedFiles.push(file);
@@ -944,7 +946,7 @@ function showRetryDialog(files) {
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
     const total = files.length;
-    const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0 };
+    const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
     const pool = new Set(), inFlight = new Map(), stillFailed = [];
     scanCancelled = false;
     stopScanBtn.style.display = '';
