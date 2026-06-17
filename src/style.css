@@ -84,6 +84,11 @@ html, body {
   cursor: pointer;
   border-radius: 6px;
 }
+#fp-close {
+  color: #7dd3fc;
+  font-size: .85rem;
+  font-weight: 600;
+}
 #fp-back:disabled { opacity: .3; }
 #fp-breadcrumb {
   flex: 1;
@@ -92,6 +97,12 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+#fp-count {
+  font-size: .75rem;
+  color: #7dd3fc;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 #fp-list {
   flex: 1;
