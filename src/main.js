@@ -302,17 +302,6 @@ fixDateCancelBtn.addEventListener('click', () => {
   fixDateOnDone = null;
 });
 
-document.getElementById('noloc-menu-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  try { await openOrphanGrid(); }
-  catch (e) { log('No location error', e.message); showBriefStatus(`Error: ${e.message}`); }
-});
-
-document.getElementById('nodatetime-menu-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  try { await openNodatetimeGrid(); }
-  catch (e) { log('No date/location error', e.message); showBriefStatus(`Error: ${e.message}`); }
-});
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
   overflowMenu.classList.remove('open');
@@ -580,18 +569,44 @@ function openInfoPopup() {
   overflowMenu.classList.remove('open');
   const located = topbarGeotagged + sessionGeotagged;
   const rows = [
-    { icon: '📷', label: 'Total',    value: topbarTotal },
-    { icon: '📍', label: 'Located',  value: located },
-    { icon: '📅', label: 'Dated',    value: topbarDated },
-    { icon: '❓', label: 'Unknown',  value: topbarUnknown },
+    { icon: '📷', label: 'Total',   value: topbarTotal,   action: null },
+    { icon: '📍', label: 'Located', value: located,       action: null },
+    { icon: '📅', label: 'Dated',   value: topbarDated,   action: 'dated' },
+    { icon: '❓', label: 'Unknown', value: topbarUnknown, action: 'unknown' },
   ];
   infoRowsEl.innerHTML = rows.map(r =>
-    `<div class="info-row">
-      <span class="info-row-label">${r.icon} ${r.label}</span>
-      <span class="info-row-value">${r.value}</span>
-    </div>`
+    r.action
+      ? `<div class="info-row info-row-btn" data-action="${r.action}">
+           <span class="info-row-label">${r.icon} ${r.label}</span>
+           <span class="info-row-value">${r.value}</span>
+         </div>`
+      : `<div class="info-row">
+           <span class="info-row-label">${r.icon} ${r.label}</span>
+           <span class="info-row-value">${r.value}</span>
+         </div>`
   ).join('');
+  infoRowsEl.querySelectorAll('.info-row-btn').forEach(el => {
+    el.addEventListener('click', () => {
+      infoPopup.style.display = 'none';
+      if (el.dataset.action === 'dated') {
+        openDatedOrphanGrid().catch(e => { log('Dated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      } else if (el.dataset.action === 'unknown') {
+        openNodatetimeGrid().catch(e => { log('Unknown grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      }
+    });
+  });
   infoPopup.style.display = 'flex';
+}
+
+async function openDatedOrphanGrid() {
+  const total = await countOrphansInRange(1, UNDATED_TS - 1);
+  if (!total) { showBriefStatus('No dated photos without location.'); return; }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+  }));
+  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  openGrid((offset, limit) => getOrphansPage(offset, limit, 1, UNDATED_TS - 1), total, { reopen: openDatedOrphanGrid });
 }
 
 infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
