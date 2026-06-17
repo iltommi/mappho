@@ -91,7 +91,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const { fileid, name, ts } = photo;
   const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
   const isHeic = /\.heic$/i.test(name);
-  const isMP4  = /\.mp4$/i.test(name);
+  const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(name);
 
   if (isMP4) {
     // MP4 files can be hundreds of MB — save GPS to local cache only.

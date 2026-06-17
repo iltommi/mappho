@@ -252,7 +252,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     const { fileid, name } = fixDatePhoto;
     const isHeic = /\.heic$/i.test(name);
-    const isMP4  = /\.mp4$/i.test(name);
+    const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(name);
 
     let newFileid = fileid;
     let newName   = name;
@@ -769,7 +769,7 @@ async function processFile(file, stats) {
   let exif;
   try {
     const isHeic = /\.heic$/i.test(file.name);
-    const isMP4  = /\.mp4$/i.test(file.name);
+    const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(file.name);
     if (isMP4) {
       const buf = await fetchFileHead(file.fileid);
       if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
