@@ -226,6 +226,16 @@ export function removeMarker(fileid) {
   }
 }
 
+export function updateMarkerName(fileid, newName) {
+  for (const [marker, data] of markerData) {
+    if (data.fileid !== fileid) continue;
+    data.name = newName;
+    const caption = marker.getPopup()?.getContent()?.querySelector?.('p:last-child');
+    if (caption) caption.textContent = newName;
+    return;
+  }
+}
+
 export function clearMarkers() {
   cluster.clearLayers();
   addedIds.clear();
