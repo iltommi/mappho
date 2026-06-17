@@ -720,11 +720,13 @@ async function runOrganize() {
       },
     });
     setProgress(100);
+    setTimeout(() => setProgress(0), 1000);
     const failedNote = failed > 0 ? ` (${failed} failed)` : '';
     setStatus(scanCancelled
       ? `Organize stopped — ${copied} copied, ${skipped} already organized${failedNote}.`
       : `Organize done — ${copied} copied, ${skipped} already organized${failedNote}.`);
   } catch (e) {
+    setProgress(0);
     setStatus(`Organize error: ${e.message}`);
     console.error(e);
   } finally {
@@ -830,6 +832,7 @@ async function scan() {
   } else {
     setStatus(`Done — ${stats.geotagged + sessionGeotagged} geotagged out of ${total}${manualNote}.`);
     setProgress(100);
+    setTimeout(() => setProgress(0), 1000);
   }
 
   if (failedFiles.length > 0) {
@@ -951,7 +954,8 @@ function showRetryDialog(files) {
     await reloadTopbarCounts();
     retryQueue = stillFailed;
     updateRetryBtn();
-    setProgress(stillFailed.length === 0 ? 100 : 0);
+    if (stillFailed.length === 0) { setProgress(100); setTimeout(() => setProgress(0), 1000); }
+    else setProgress(0);
     log('Retry done', `${stillFailed.length} still failing after retry`);
     if (stillFailed.length > 0) showRetryDialog(stillFailed);
   });
