@@ -134,7 +134,26 @@ export async function getFileStat(fileid) {
 
 const _dimCache = new Map();
 const _fileParentCache = new Map();
-const _folderNameCache = new Map();
+const _folderNameCache   = new Map(); // folderid → name
+const _folderParentCache = new Map(); // folderid → parentfolderid
+
+async function _statFolder(folderid) {
+  if (_folderNameCache.has(folderid)) {
+    return { name: _folderNameCache.get(folderid), parentfolderid: _folderParentCache.get(folderid) ?? 0 };
+  }
+  try {
+    const data = await api('stat', { folderid });
+    const name = data.metadata?.name ?? '';
+    const parent = data.metadata?.parentfolderid ?? 0;
+    _folderNameCache.set(folderid, name);
+    _folderParentCache.set(folderid, parent);
+    return { name, parentfolderid: parent };
+  } catch {
+    _folderNameCache.set(folderid, '');
+    _folderParentCache.set(folderid, 0);
+    return { name: '', parentfolderid: 0 };
+  }
+}
 
 export async function getFileDimensions(fileid) {
   if (_dimCache.has(fileid)) return _dimCache.get(fileid);
@@ -150,6 +169,9 @@ export async function getFileDimensions(fileid) {
   }
 }
 
+// Returns a partial folder path for display. For photos organised into
+// Photos/YYYY/MM it returns "YYYY/MM" (the Photos root is stripped). For
+// everything else it returns the immediate parent folder name.
 export async function getFileFolderName(fileid) {
   if (!_fileParentCache.has(fileid)) {
     try {
@@ -166,16 +188,16 @@ export async function getFileFolderName(fileid) {
   const parentfolderid = _fileParentCache.get(fileid);
   if (!parentfolderid) return '';
 
-  if (_folderNameCache.has(parentfolderid)) return _folderNameCache.get(parentfolderid);
-  try {
-    const data = await api('stat', { folderid: parentfolderid });
-    const name = data.metadata?.name ?? '';
-    _folderNameCache.set(parentfolderid, name);
-    return name;
-  } catch {
-    _folderNameCache.set(parentfolderid, '');
-    return '';
-  }
+  const level1 = await _statFolder(parentfolderid);           // MM (or immediate folder)
+  if (!level1.name || !level1.parentfolderid) return level1.name;
+
+  const level2 = await _statFolder(level1.parentfolderid);    // YYYY
+  if (!level2.name || !level2.parentfolderid) return level1.name;
+
+  const level3 = await _statFolder(level2.parentfolderid);    // Photos (or higher)
+  if (level3.name === 'Photos') return `${level2.name}/${level1.name}`;
+
+  return level1.name;
 }
 
 export async function uploadFile(folderid, filename, arrayBuffer) {
