@@ -73,7 +73,7 @@ const eraseCacheBtn = document.getElementById('erase-cache-btn');
 stopScanBtn.addEventListener('click', () => {
   scanCancelled = true;
   stopScanBtn.disabled = true;
-  stopScanBtn.textContent = 'Stopping…';
+  stopScanBtn.textContent = '…';
 });
 const menuFab = document.getElementById('menu-fab');
 const overflowMenu = document.getElementById('overflow-menu');
@@ -714,7 +714,7 @@ async function runScan() {
   scanCancelled = false;
   stopScanBtn.style.display = '';
   stopScanBtn.disabled = false;
-  stopScanBtn.textContent = '✕ Stop';
+  stopScanBtn.textContent = '■';
   setProgress(0);
   try {
     await scan();
@@ -826,8 +826,8 @@ async function scan() {
   try {
     const root = await getSharphoRoot();
     resetOrganizeState();
-    setStatus('Loading Photos index…');
-    await loadOrganizeIndex(root, n => setStatus(`Loading Photos index… ${n} entries`));
+    setStatus('Loading Photos index…', 0);
+    await loadOrganizeIndex(root, n => setStatus(`Loading Photos index… ${n} entries`, 0));
     _organizeRoot = root;
     log('Organize', `index ready — ${total} files to process`);
   } catch (e) {
@@ -970,11 +970,14 @@ function showRetryDialog(files) {
     scanCancelled = false;
     stopScanBtn.style.display = '';
     stopScanBtn.disabled = false;
-    stopScanBtn.textContent = '✕ Stop';
+    stopScanBtn.textContent = '■';
     setProgress(0);
-    await processFiles(files, total, stats, pool, inFlight, stillFailed);
-    await Promise.all(pool);
-    stopScanBtn.style.display = 'none';
+    try {
+      await processFiles(files, total, stats, pool, inFlight, stillFailed);
+      await Promise.all(pool);
+    } finally {
+      stopScanBtn.style.display = 'none';
+    }
     clearScanStatus();
     await reloadTopbarCounts();
     retryQueue = stillFailed;

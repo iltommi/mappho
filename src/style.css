@@ -234,19 +234,27 @@ html, body {
 
 #stop-scan-btn {
   position: fixed;
-  bottom: 6px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1002;
-  height: 18px;
-  padding: 0 6px;
-  background: #1e3a5f;
-  color: #f87171;
-  border: 1px solid #f87171;
-  border-radius: 3px;
-  font-size: .65rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  font-size: 1.1rem;
   cursor: pointer;
-  line-height: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+#stop-scan-btn:disabled {
+  background: #7f1d1d;
+  cursor: default;
 }
 
 #progress-bar {
