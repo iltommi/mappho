@@ -169,9 +169,9 @@ export async function getFileDimensions(fileid) {
   }
 }
 
-// Returns a partial folder path for display. For photos organised into
-// Photos/YYYY/MM it returns "YYYY/MM" (the Photos root is stripped). For
-// everything else it returns the immediate parent folder name.
+// Returns the parent folder name for display. Photos inside Photos/YYYY/MM
+// return '' — the filename already encodes the date. Everything else returns
+// the immediate parent folder name.
 export async function getFileFolderName(fileid) {
   if (!_fileParentCache.has(fileid)) {
     try {
@@ -195,7 +195,7 @@ export async function getFileFolderName(fileid) {
   if (!level2.name || !level2.parentfolderid) return level1.name;
 
   const level3 = await _statFolder(level2.parentfolderid);    // Photos (or higher)
-  if (level3.name === 'Photos') return `${level2.name}/${level1.name}`;
+  if (level3.name === 'Photos') return '';
 
   return level1.name;
 }
