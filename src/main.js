@@ -395,41 +395,78 @@ localInput.addEventListener('change', async () => {
 });
 let pendingTfaToken = null;
 
-const FOLDER_KEY = 'pcloud_folder';
+const FOLDERS_KEY = 'pcloud_folders';
 
-function getSelectedFolder() {
-  return JSON.parse(localStorage.getItem(FOLDER_KEY) ?? '{"id":0}');
+function getSelectedFolders() {
+  // Migrate old single-folder key if present.
+  const old = localStorage.getItem('pcloud_folder');
+  if (old) {
+    const parsed = JSON.parse(old);
+    localStorage.setItem(FOLDERS_KEY, JSON.stringify([parsed]));
+    localStorage.removeItem('pcloud_folder');
+  }
+  const raw = localStorage.getItem(FOLDERS_KEY);
+  const arr = raw ? JSON.parse(raw) : [];
+  return arr.length ? arr : [{ id: 0, name: 'All photos' }];
 }
+
+function saveSelectedFolders(folders) {
+  localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+}
+
+// In-picker working set — what the user has (un)checked this session.
+// Committed to localStorage when the picker closes.
+let fpSelected = new Map(); // id -> { id, name }
 
 const folderPicker  = document.getElementById('folder-picker');
 const fpBack        = document.getElementById('fp-back');
 const fpClose       = document.getElementById('fp-close');
 const fpBreadcrumb  = document.getElementById('fp-breadcrumb');
+const fpCount       = document.getElementById('fp-count');
 const fpList        = document.getElementById('fp-list');
 
 // Stack of { id, name } — root entry is always { id: 0, name: 'All photos' }
 let fpStack = [];
 
+function fpUpdateCount() {
+  const n = fpSelected.size;
+  fpCount.textContent = n ? `${n} selected` : '';
+}
+
+function updateFolderBtn() {
+  const folders = getSelectedFolders();
+  if (folders.length === 1 && folders[0].id === 0) {
+    folderBtn.textContent = 'All photos';
+  } else if (folders.length === 1) {
+    folderBtn.textContent = folders[0].name;
+  } else {
+    folderBtn.textContent = `${folders.length} folders`;
+  }
+}
+
 async function fpRender() {
   const current = fpStack[fpStack.length - 1];
   fpBreadcrumb.textContent = current.name;
   fpBack.disabled = fpStack.length <= 1;
+  fpUpdateCount();
   fpList.innerHTML = '';
 
-  // "Select this folder" row
-  const selectRow = document.createElement('button');
-  selectRow.className = 'fp-item fp-select';
-  selectRow.textContent = `▶ Scan "${current.name}"`;
-  selectRow.addEventListener('click', () => {
-    if (clearCacheBtn.disabled) return; // scan already running
-    localStorage.setItem(FOLDER_KEY, JSON.stringify({ id: String(current.id), name: current.name }));
-    folderBtn.textContent = current.name;
-    folderPicker.style.display = 'none';
-    overflowMenu.classList.remove('open');
-    clearCacheBtn.disabled = true;
-    runScan().finally(() => { clearCacheBtn.disabled = false; });
+  // Toggle-include row for the current folder
+  const toggleRow = document.createElement('button');
+  toggleRow.className = 'fp-item fp-select';
+  const isSelected = fpSelected.has(String(current.id));
+  toggleRow.textContent = isSelected ? `☑ "${current.name}" included` : `☐ Include "${current.name}"`;
+  toggleRow.addEventListener('click', () => {
+    const key = String(current.id);
+    if (fpSelected.has(key)) {
+      fpSelected.delete(key);
+    } else {
+      fpSelected.set(key, { id: current.id, name: current.name });
+    }
+    toggleRow.textContent = fpSelected.has(key) ? `☑ "${current.name}" included` : `☐ Include "${current.name}"`;
+    fpUpdateCount();
   });
-  fpList.appendChild(selectRow);
+  fpList.appendChild(toggleRow);
 
   // Loading indicator
   const loadingRow = document.createElement('div');
@@ -449,7 +486,8 @@ async function fpRender() {
   for (const f of subfolders) {
     const row = document.createElement('button');
     row.className = 'fp-item';
-    row.innerHTML = `<span>📁 ${f.name}</span><span class="fp-item-arrow">›</span>`;
+    const checked = fpSelected.has(String(f.folderid));
+    row.innerHTML = `<span>${checked ? '☑' : '📁'} ${f.name}</span><span class="fp-item-arrow">›</span>`;
     row.addEventListener('click', () => {
       fpStack.push({ id: f.folderid, name: f.name });
       fpRender();
@@ -466,20 +504,34 @@ async function fpRender() {
 }
 
 function openFolderPicker() {
+  // Load current saved selection into the working set.
+  fpSelected = new Map();
+  const saved = getSelectedFolders();
+  // Don't pre-populate the "All photos" default — it's the fallback, not an explicit selection.
+  for (const f of saved) {
+    if (f.id !== 0) fpSelected.set(String(f.id), f);
+  }
   fpStack = [{ id: 0, name: 'All photos' }];
   folderPicker.style.display = 'flex';
   fpRender();
 }
 
+function closeFolderPicker() {
+  // Commit working set to localStorage.
+  const folders = [...fpSelected.values()];
+  saveSelectedFolders(folders.length ? folders : [{ id: 0, name: 'All photos' }]);
+  updateFolderBtn();
+  folderPicker.style.display = 'none';
+}
+
 fpBack.addEventListener('click', () => {
   if (fpStack.length > 1) { fpStack.pop(); fpRender(); }
 });
-fpClose.addEventListener('click', () => { folderPicker.style.display = 'none'; });
+fpClose.addEventListener('click', closeFolderPicker);
 folderBtn.addEventListener('click', () => { overflowMenu.classList.remove('open'); openFolderPicker(); });
 
-async function populateFolderPicker() {
-  const saved = getSelectedFolder();
-  folderBtn.textContent = saved.name ?? 'All photos';
+function populateFolderPicker() {
+  updateFolderBtn();
 }
 
 eraseCacheBtn.addEventListener('click', async () => {
@@ -651,12 +703,12 @@ async function runOrganize() {
   stopScanBtn.textContent = '✕ Stop';
   setProgress(0);
   try {
-    setStatus('Organize: indexing SharPho…');
+    setStatus('Organize: indexing Photos…');
     const { copied, skipped, failed } = await organize({
       isCancelled: () => scanCancelled,
       onProgress: p => {
         if (p.phase === 'indexing') {
-          setStatus(`Organize: indexing SharPho… ${p.done} found`);
+          setStatus(`Organize: indexing Photos… ${p.done} found`);
         } else if (p.phase === 'copying') {
           setStatus(`Organize: ${p.done}/${p.total} · ${p.copied} copied · ${p.skipped} already organized`);
           setProgress((p.done / p.total) * 100);
@@ -741,16 +793,19 @@ async function scan() {
   const pool = new Set();
   const inFlight = new Map();
 
-  const { id: folderId, name: folderName } = getSelectedFolder();
-  log('Scanning folder', `${folderName ?? 'All photos'} (id=${folderId})`);
+  const folders = getSelectedFolders();
+  log('Scanning folders', folders.map(f => `${f.name ?? 'All photos'} (id=${f.id})`).join(', '));
 
-  // Phase 1: BFS all folders to discover the full file list
+  // Phase 1: BFS all selected folders to discover the full file list
   setStatus('Discovering files…');
   const sharphoFolderId = await findSharphoRootIfExists();
   const allFiles = [];
-  for await (const file of listImages(folderId, sharphoFolderId)) {
-    allFiles.push(file);
-    setStatus(`Discovering… ${allFiles.length} files found`);
+  for (const { id: folderId, name: folderName } of folders) {
+    log('Discovering', `${folderName ?? 'All photos'} (id=${folderId})`);
+    for await (const file of listImages(folderId, sharphoFolderId)) {
+      allFiles.push(file);
+      setStatus(`Discovering… ${allFiles.length} files found`);
+    }
   }
   const total = allFiles.length;
   log('Discovery done', `${total} JPEG files`);

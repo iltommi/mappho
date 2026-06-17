@@ -1,8 +1,8 @@
-import { listImages, listFolders, createFolderIfNotExists, copyFile, renameFile, deleteFile } from './pcloud.js';
+import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile } from './pcloud.js';
 import { getAllCached, getOrphansPage, countOrphans, clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, UNDATED_TS } from './db.js';
 import { log } from './log.js';
 
-const ROOT_NAME = 'SharPho';
+const ROOT_NAME = 'Photos';
 
 // pCloud's `hash` field can come back as a number or string depending on
 // endpoint — normalize to string everywhere so it's a stable IndexedDB key.
@@ -10,7 +10,7 @@ export function normHash(h) {
   return h != null ? String(h) : null;
 }
 
-const UNKNOWN_DATE_FOLDER = 'Unknown date';
+const UNKNOWN_DATE_FOLDER = 'Unknown';
 
 let _rootFolderId  = null;
 let _unknownFolderId = null;
@@ -176,9 +176,9 @@ export async function organize({ onProgress, isCancelled } = {}) {
       const name = hasDate
         ? nextName(p.ts, extOf(p.name), takenNames)
         : nextNameForUnknown(p.name, extOf(p.name), takenNames);
-      const newFileid = await copyFile(p.fileid, folderId, name);
+      await renameFile(p.fileid, { tofolderid: folderId, toname: name });
       takenNames.add(name);
-      await putSharphoIndexEntry({ hash, fileid: newFileid, folderid: folderId, name });
+      await putSharphoIndexEntry({ hash, fileid: p.fileid, folderid: folderId, name });
       copied++;
     } catch (e) {
       log('Organize error', `${p.name}: ${e.message}`);
