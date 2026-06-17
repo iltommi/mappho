@@ -5,7 +5,7 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
-import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { listImages, listFolders, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName } from './map.js';
@@ -16,7 +16,7 @@ import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganiz
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -80,73 +80,6 @@ stopScanBtn.addEventListener('click', () => {
 const menuFab = document.getElementById('menu-fab');
 const overflowMenu = document.getElementById('overflow-menu');
 
-document.getElementById('export-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  try {
-    progressFill.classList.add('indeterminate');
-    showBriefStatus('Reading local cache…', 60000);
-    log('Backup', 'exporting…');
-    const backup = await exportDb();
-    showBriefStatus(`Uploading ${backup.photos.length} records to pCloud…`, 120000);
-    await uploadBackup(JSON.stringify(backup));
-    progressFill.classList.remove('indeterminate');
-    setProgress(100);
-    log('Backup', `saved ${backup.photos.length} records to pCloud`);
-    showBriefStatus(`Backup saved — ${backup.photos.length} photos exported.`);
-    setTimeout(() => setProgress(0), 1000);
-  } catch (e) {
-    progressFill.classList.remove('indeterminate');
-    setProgress(0);
-    log('Backup error', e.message);
-    showBriefStatus(`Backup failed: ${e.message}`);
-  }
-});
-
-document.getElementById('import-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  try {
-    progressFill.classList.add('indeterminate');
-    showBriefStatus('Downloading backup from pCloud…', 120000);
-    log('Restore', 'downloading from pCloud…');
-    const backup = await downloadBackup();
-    if (!backup?.photos) throw new Error('Invalid backup file');
-    showBriefStatus(`Importing ${backup.photos.length} records…`);
-    await importDb(backup);  // writes both STORE and ORPHAN_STORE in one transaction
-    log('Restore', `DB import done (${backup.photos.length} records)`);
-    clearMarkers();
-    showBriefStatus(`Loading ${backup.photos.length} photos into map…`);
-    progressFill.classList.remove('indeterminate');
-    setProgress(0);
-    const cached = await getAllCached();
-    log('Restore', `getAllCached returned ${cached.length} records`);
-    let geo = 0, dated = 0, unknown = 0, ignored = 0;
-    for (let i = 0; i < cached.length; i++) {
-      const p = cached[i];
-      if (p.ignored) { ignored++; continue; }
-      if (p.lat != null) { addMarker(p); geo++; }
-      else if (p.ts != null) dated++;
-      else unknown++;
-      if (i % 200 === 199) {
-        setProgress((i + 1) / cached.length * 100);
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-    setProgress(100);
-    topbarGeotagged = geo;
-    topbarDated     = dated;
-    topbarUnknown   = unknown;
-    topbarTotal     = cached.length - ignored;
-    updateTopbar();
-    log('Restore', `done — ${geo} geotagged, ${dated} dated, ${unknown} unknown`);
-    showBriefStatus(`Restored — ${geo} geotagged out of ${cached.length} photos.`);
-    setTimeout(() => setProgress(0), 1000);
-  } catch (e) {
-    progressFill.classList.remove('indeterminate');
-    setProgress(0);
-    log('Restore error', e.message);
-    showBriefStatus(`Restore failed: ${e.message}`);
-  }
-});
 
 async function getOrphanListing() {
   const range = getActiveFilterRange();
