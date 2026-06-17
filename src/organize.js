@@ -130,13 +130,13 @@ export async function buildHashIndex(rootFolderId, onProgress) {
 
 // Loads the hash index from the persisted JSON on pCloud, falling back to a
 // full Photos/ listing if the file is absent or corrupt.
-export async function loadOrganizeIndex(rootFolderId, onProgress) {
+export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild = false } = {}) {
   _hashMap.clear();
   _takenNames.clear();
   _hashDirty  = false;
   _indexReady = false;
 
-  const stored = localStorage.getItem(HASH_INDEX_FILEID_KEY);
+  const stored = !forceRebuild && localStorage.getItem(HASH_INDEX_FILEID_KEY);
   if (stored) {
     _hashFileid = Number(stored);
     try {
