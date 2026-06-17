@@ -15,7 +15,8 @@ import { openGrid } from './grid.js';
 import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
-import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -678,7 +679,11 @@ async function startScan() {
   startScanInProgress = true;
   // Load cached markers first — no network needed, works immediately after wake.
   showBriefStatus('Loading cache…', 30000);
-  const cached = await getAllCached();
+  let cached = await getAllCached();
+  if (cached.length === 0) {
+    const n = await loadPhotoIndex();
+    if (n > 0) cached = await getAllCached();
+  }
   let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
   for (const p of cached) {
@@ -797,6 +802,7 @@ async function rebuildScan() {
   setStatus('Rebuilding Photos index…', 0);
   await loadOrganizeIndex(root, n => setStatus(`Rebuilding Photos index… ${n} entries`, 0), { forceRebuild: true });
   await flushOrganizeIndex(root);
+  flushPhotoIndex(root).catch(e => log('PhotoIndex flush error', e.message));
 
   clearScanStatus();
   await reloadTopbarCounts();
@@ -928,9 +934,10 @@ async function scan() {
   log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
 
-  // Persist the updated hash index (no-op if nothing was organized this scan).
+  // Persist hash index and photo index (no-op if nothing was organized this scan).
   if (_organizeRoot) {
     flushOrganizeIndex(_organizeRoot).catch(e => log('HashIndex flush error', e.message));
+    flushPhotoIndex(_organizeRoot).catch(e => log('PhotoIndex flush error', e.message));
   }
   _organizeRoot = null;
 
