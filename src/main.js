@@ -57,8 +57,8 @@ topbarTitle.addEventListener('click', () => {
 
 function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
-  const dupNote  = cached > 0 ? ` ${cached} dup.` : '';
-  setStatus(`${progress}. ${geotagged} 📍 ${dated} 📅${dupNote}`);
+  const dupNote  = cached > 0 ? ` ${cached}🔁` : '';
+  setStatus(`${progress}. ${geotagged}📍 ${dated}📅${dupNote}`);
 }
 function clearScanStatus() { /* status bar stays; last message persists, then auto-hides */ }
 
