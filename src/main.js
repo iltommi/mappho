@@ -224,6 +224,7 @@ function startFixDate(photo, onDone) {
   fixDateInput.value = existing.toISOString().split('T')[0];
   fixDateTimeInput.value = existing.toTimeString().slice(0, 5);
   fixDateBar.style.display = 'flex';
+  document.body.classList.add('action-bar-open');
 }
 
 fixDateSaveBtn.addEventListener('click', async () => {
@@ -282,6 +283,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
 
     await reloadTopbarCounts();
     fixDateBar.style.display = 'none';
+    document.body.classList.remove('action-bar-open');
     fixDateOnDone?.();
   } catch (e) {
     log('Fix date error', e.message);
@@ -295,6 +297,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
 
 fixDateCancelBtn.addEventListener('click', () => {
   fixDateBar.style.display = 'none';
+  document.body.classList.remove('action-bar-open');
   fixDatePhoto  = null;
   fixDateOnDone = null;
 });

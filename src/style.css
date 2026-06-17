@@ -178,8 +178,9 @@ html, body {
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,.5);
   min-width: 160px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
   z-index: 1100;
-  overflow: hidden;
 }
 #overflow-menu.open { display: block; }
 
@@ -234,7 +235,8 @@ html, body {
 #stop-scan-btn {
   position: fixed;
   bottom: 6px;
-  right: 6px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1002;
   height: 18px;
   padding: 0 6px;
@@ -276,7 +278,7 @@ html, body {
 #log-panel {
   display: none;
   position: fixed;
-  bottom: 26px;
+  bottom: 80px;
   right: 0;
   z-index: 3000;
   width: min(420px, 100vw);
@@ -1069,7 +1071,7 @@ body.filter-open #map { top: 40px; }
 /* Pin-drop bar */
 #pin-drop-bar {
   position: fixed;
-  bottom: 20px;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2000;
@@ -1122,7 +1124,7 @@ body.filter-open #map { top: 40px; }
 /* Fix date panel */
 #fix-date-bar {
   position: fixed;
-  bottom: 20px;
+  bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2000;
@@ -1314,3 +1316,7 @@ body.filter-open #map { top: 40px; }
 }
 #info-actions button:hover { background: #334155; }
 #auth-btn { color: #f87171 !important; }
+
+/* Hide FABs while action bars are active */
+body.action-bar-open #menu-fab,
+body.action-bar-open #heatmap-btn { display: none !important; }
