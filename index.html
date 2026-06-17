@@ -24,8 +24,7 @@
         <button id="nodatetime-menu-btn" class="menu-item">🕳 No date &amp; no location</button>
         <button id="filter-menu-btn" class="menu-item">📅 Date filter</button>
         <button id="retry-menu-btn" class="menu-item" style="display:none"></button>
-        <button id="check-update-btn" class="menu-item">🔄 Check for updates</button>
-<button id="auth-btn" class="menu-item">Disconnect</button>
+        <button id="info-btn" class="menu-item">ℹ️ Info</button>
       </div>
     </div>
   </header>
@@ -179,6 +178,19 @@
     <div id="fix-date-actions">
       <button id="fix-date-save">💾 Save</button>
       <button id="fix-date-cancel">✕ Cancel</button>
+    </div>
+  </div>
+  <div id="info-popup" style="display:none">
+    <div id="info-popup-inner">
+      <div id="info-popup-header">
+        <span>Library stats</span>
+        <button id="info-popup-close">✕</button>
+      </div>
+      <div id="info-rows"></div>
+      <div id="info-actions">
+        <button id="check-update-btn">🔄 Check for updates</button>
+        <button id="auth-btn">Disconnect</button>
+      </div>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>
