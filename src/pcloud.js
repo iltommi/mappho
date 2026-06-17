@@ -253,6 +253,36 @@ export async function overwriteFile(fileid, arrayBuffer) {
 
 const BACKUP_FILENAME = 'sharpho.json';
 
+export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFileid = null) {
+  if (existingFileid) {
+    try { await api('deletefile', { fileid: existingFileid }); } catch {}
+  }
+  const boundary = 'SharPho' + crypto.randomUUID().replace(/-/g, '');
+  const crlf = '\r\n';
+  const body = `--${boundary}${crlf}Content-Disposition: form-data; name="file"; filename="${filename}"${crlf}Content-Type: application/json${crlf}${crlf}${jsonStr}${crlf}--${boundary}--`;
+  const resp = await CapacitorHttp.request({
+    method: 'POST',
+    url: buildUrl('uploadfile', { folderid, nopartial: 1 }).toString(),
+    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    data: body,
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+  });
+  if (resp.data?.result !== 0) throw new Error(`pCloud upload ${resp.data?.result}: ${resp.data?.error}`);
+  return resp.data.fileids?.[0] ?? null;
+}
+
+export async function downloadJsonFile(fileid) {
+  const link = await api('getfilelink', { fileid });
+  const host = link.hosts?.[0];
+  if (!host) throw new Error('pCloud getfilelink: no CDN host');
+  const resp = await CapacitorHttp.request({
+    method: 'GET',
+    url: `https://${host}${link.path}`,
+    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+  });
+  return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
+}
+
 export async function uploadBackup(jsonStr) {
   try {
     const stat = await api('stat', { path: `/${BACKUP_FILENAME}` });

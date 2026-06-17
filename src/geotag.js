@@ -3,6 +3,7 @@ import { deleteRecord, deleteOrphan, putCached } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
 import { syncSharphoOnEdit } from './organize.js';
+import { setVideoMetaEntry } from './videometa.js';
 import { log } from './log.js';
 
 const bar      = document.getElementById('pin-drop-bar');
@@ -94,12 +95,11 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(name);
 
   if (isMP4) {
-    // MP4 files can be hundreds of MB — save GPS to local cache only.
-    log('Geotag', `MP4: saving GPS to cache only`);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
     await putCached({ fileid, name, lat, lng, ts: realTs });
     addMarker({ fileid, name, lat, lng, ts: realTs });
+    await setVideoMetaEntry(fileid, { lat, lng, ts: realTs });
     return;
   }
 
