@@ -522,6 +522,14 @@ clearCacheBtn.addEventListener('click', async () => {
   clearCacheBtn.disabled = false;
 });
 
+document.getElementById('rebuild-btn').addEventListener('click', async () => {
+  overflowMenu.classList.remove('open');
+  log('Rebuild', 'rebuilding cache from Photos/ folder');
+  const btn = document.getElementById('rebuild-btn');
+  btn.disabled = true;
+  await runRebuild();
+  btn.disabled = false;
+});
 
 document.getElementById('use-token-btn').addEventListener('click', async () => {
   const token = document.getElementById('token-input').value.trim();
@@ -730,6 +738,81 @@ async function runScan() {
     console.error(e);
   } finally {
     stopScanBtn.style.display = 'none';
+  }
+}
+
+async function runRebuild() {
+  scanCancelled = false;
+  stopScanBtn.style.display = '';
+  stopScanBtn.disabled = false;
+  stopScanBtn.textContent = '■';
+  setProgress(0);
+  try {
+    await rebuildScan();
+  } catch (e) {
+    clearScanStatus();
+    if (e.message?.includes('1000') || e.message?.includes('2000') || e.message?.includes('auth')) {
+      logout();
+      setStatus('Session expired — please reconnect.');
+      location.reload();
+    } else {
+      setStatus(`Rebuild error: ${e.message}`);
+    }
+    console.error(e);
+  } finally {
+    stopScanBtn.style.display = 'none';
+  }
+}
+
+async function rebuildScan() {
+  // Clear EXIF cache and markers — we are rebuilding from Photos/ as source of truth.
+  await Promise.all([clearNonIgnored(), clearOrphans()]);
+  clearMarkers();
+
+  const root = await getSharphoRoot();
+
+  setStatus('Discovering files in Photos/…', 0);
+  const allFiles = [];
+  for await (const file of listImages(root, null)) {
+    if (scanCancelled) break;
+    allFiles.push(file);
+    setStatus(`Discovering… ${allFiles.length} files found`, 0);
+  }
+  const total = allFiles.length;
+  log('Rebuild', `${total} files found in Photos/`);
+  setProgress(0);
+
+  // Process files for EXIF — already in Photos/, do not re-organise.
+  _organizeRoot = null;
+  _organizeLock = Promise.resolve();
+  const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
+  const pool = new Set(), inFlight = new Map(), failedFiles = [];
+  await processFiles(allFiles, total, stats, pool, inFlight, failedFiles);
+  await Promise.all(pool);
+
+  // Rebuild hash index from scratch (ignore any stale JSON).
+  resetOrganizeState();
+  setStatus('Rebuilding Photos index…', 0);
+  await loadOrganizeIndex(root, n => setStatus(`Rebuilding Photos index… ${n} entries`, 0), { forceRebuild: true });
+  await flushOrganizeIndex(root);
+
+  clearScanStatus();
+  await reloadTopbarCounts();
+  const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
+  if (scanCancelled) {
+    setStatus(`Rebuild stopped — ${stats.geotagged + sessionGeotagged} geotagged, ${stats.completed} processed${manualNote}.`);
+    setProgress(0);
+  } else {
+    setStatus(`Rebuild done — ${stats.geotagged + sessionGeotagged} geotagged, ${total} total${manualNote}.`);
+    setProgress(100);
+    setTimeout(() => setProgress(0), 1000);
+  }
+
+  if (failedFiles.length > 0) {
+    log('Rebuild errors', `${failedFiles.length} files failed`);
+    retryQueue = failedFiles;
+    updateRetryBtn();
+    showRetryDialog(failedFiles);
   }
 }
 
