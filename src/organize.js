@@ -19,7 +19,7 @@ const _nameCounters  = new Map(); // 'YYYY-MM-DD_HH-MM-SS' -> next N to try
 
 // ── Hash index ────────────────────────────────────────────────────────────────
 
-const HASH_INDEX_FILENAME   = 'sharpho-hash-index.json';
+const HASH_INDEX_FILENAME   = 'hash-index.json';
 const HASH_INDEX_FILEID_KEY = 'sharpho_hash_index_fileid';
 
 const _hashMap    = new Map(); // hash → { fileid, folderid, name }
