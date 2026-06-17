@@ -232,6 +232,27 @@ export async function organizeFile(record, rootFolderId) {
   return name;
 }
 
+// Removes a file's entry from the hash index when the file is deleted.
+// Without this, a re-added identical file would be silently skipped by scan.
+export async function removeOrganizedEntry(fileid) {
+  let foundHash = null;
+  let foundName = null;
+  for (const [hash, entry] of _hashMap) {
+    if (entry.fileid === fileid) { foundHash = hash; foundName = entry.name; break; }
+  }
+  if (!foundHash) return;
+  _hashMap.delete(foundHash);
+  if (foundName) _takenNames.delete(foundName);
+  _hashDirty = true;
+  await deleteSharphoIndexEntry(foundHash);
+  try {
+    const root = await getSharphoRoot();
+    await flushOrganizeIndex(root);
+  } catch (e) {
+    log('HashIndex remove flush error', e.message);
+  }
+}
+
 // ── Edit-time sync ─────────────────────────────────────────────────────────────
 // Called after a content-mutating edit (geotag/fix-date). If the pre-edit hash
 // was already in Photos/, refresh that slot without waiting for the next scan.
