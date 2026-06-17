@@ -14,6 +14,7 @@ import { startGeotagging } from './geotag.js';
 import { openGrid } from './grid.js';
 import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
+import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
@@ -170,7 +171,7 @@ async function openOrphanSlideshow() {
     openOrphanSlideshow();
   }));
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow(fetcher, total);
 }
 
@@ -184,7 +185,7 @@ async function openOrphanGrid() {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid(fetcher, total, { reopen: openOrphanGrid });
 }
 
@@ -202,7 +203,7 @@ async function openNodatetimeGrid() {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS), total, { reopen: openNodatetimeGrid });
 }
 
@@ -613,7 +614,7 @@ async function openDatedOrphanGrid() {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getOrphansPage(offset, limit, 1, UNDATED_TS - 1), total, { reopen: openDatedOrphanGrid });
 }
 
@@ -702,6 +703,7 @@ async function startScan() {
     : 'Cache empty — open the menu and pick a folder to scan.');
 
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
+  applyIgnored().catch(e => log('Ignored apply error', e.message));
 
   // Populate folder picker — a network failure here shouldn't affect the already-loaded markers.
   try {
@@ -798,6 +800,8 @@ async function rebuildScan() {
 
   clearScanStatus();
   await reloadTopbarCounts();
+  applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
+  applyIgnored().catch(e => log('Ignored apply error', e.message));
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   if (scanCancelled) {
     setStatus(`Rebuild stopped — ${stats.geotagged + sessionGeotagged} geotagged, ${stats.completed} processed${manualNote}.`);
@@ -933,6 +937,7 @@ async function scan() {
   clearScanStatus();
   await reloadTopbarCounts();
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
+  applyIgnored().catch(e => log('Ignored apply error', e.message));
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   if (scanCancelled) {
     setStatus(`Stopped — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.completed} scanned${manualNote} (${total - stats.completed} remaining).`);

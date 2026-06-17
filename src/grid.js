@@ -6,6 +6,7 @@ import { deleteRecord, deleteOrphan } from './db.js';
 import { removeMarker } from './map.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
+import { removeIgnoredEntry } from './ignoremeta.js';
 import { log } from './log.js';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -165,7 +166,7 @@ bulkDeleteBtn.addEventListener('click', async () => {
     bulkDeleteBtn.title = `Deleting ${i + 1}/${photos.length}…`;
     try {
       await deleteFile(photo.fileid);
-      await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid), removeVideoMetaEntry(photo.fileid), removeOrganizedEntry(photo.fileid)]);
+      await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid), removeVideoMetaEntry(photo.fileid), removeOrganizedEntry(photo.fileid), removeIgnoredEntry(photo.fileid)]);
       removeMarker(photo.fileid);
       ok++;
     } catch (e) {
