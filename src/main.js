@@ -93,7 +93,6 @@ stopScanBtn.addEventListener('click', () => {
   stopScanBtn.disabled = true;
   stopScanBtn.textContent = 'Stopping…';
 });
-const localInput = document.getElementById('local-input');
 const menuWrap = document.getElementById('menu-wrap');
 const menuBtn = document.getElementById('menu-btn');
 const overflowMenu = document.getElementById('overflow-menu');
@@ -378,23 +377,6 @@ document.addEventListener('click', (e) => {
   if (!menuWrap.contains(e.target)) overflowMenu.classList.remove('open');
 });
 
-localInput.addEventListener('change', async () => {
-  overflowMenu.classList.remove('open');
-  const files = Array.from(localInput.files);
-  let found = 0;
-  for (const file of files) {
-    const buf  = await file.arrayBuffer();
-    const exif = await extractEXIF(buf);
-    const hasGps = exif.lat != null && !isNaN(exif.lat);
-    log(file.name, hasGps ? `GPS: ${exif.lat.toFixed(5)}, ${exif.lng.toFixed(5)}` : 'no GPS');
-    if (hasGps) {
-      found++;
-      addMarker({ fileid: file.name, name: file.name, lat: exif.lat, lng: exif.lng });
-    }
-  }
-  setStatus(`Local test: ${found} geotagged out of ${files.length} files.`);
-  localInput.value = '';
-});
 let pendingTfaToken = null;
 
 const FOLDERS_KEY = 'pcloud_folders';
