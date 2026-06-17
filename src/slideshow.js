@@ -1,5 +1,6 @@
 import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
+import { removeVideoMetaEntry } from './videometa.js';
 import { getDateLocale } from './auth.js';
 import { removeMarker } from './map.js';
 import { openLightbox } from './lightbox.js';
@@ -236,7 +237,7 @@ deleteBtn.addEventListener('click', async () => {
   deleteBtn.title = 'Deleting…';
   try {
     await deleteFile(photo.fileid);
-    await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid)]);
+    await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid), removeVideoMetaEntry(photo.fileid)]);
     removeMarker(photo.fileid);
     imgCache.delete(photo.fileid);
 

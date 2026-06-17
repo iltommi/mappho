@@ -13,6 +13,7 @@ import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandle
 import { startGeotagging } from './geotag.js';
 import { openGrid } from './grid.js';
 import { organize, findSharphoRootIfExists, syncSharphoOnEdit } from './organize.js';
+import { applyVideoMeta } from './videometa.js';
 import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
@@ -690,6 +691,8 @@ async function startScan() {
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and pick a folder to scan.');
 
+  applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
+
   // Populate folder picker — a network failure here shouldn't affect the already-loaded markers.
   try {
     await populateFolderPicker();
@@ -825,6 +828,7 @@ async function scan() {
   await Promise.all(pool);
   clearScanStatus();
   await reloadTopbarCounts();
+  applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
   if (scanCancelled) {
     setStatus(`Stopped — ${stats.geotagged + sessionGeotagged} geotagged out of ${stats.completed} scanned${manualNote} (${total - stats.completed} remaining).`);
