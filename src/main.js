@@ -604,6 +604,7 @@ function openInfoPopup() {
 infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
 infoPopup.addEventListener('click', e => { if (e.target === infoPopup) infoPopup.style.display = 'none'; });
 document.getElementById('info-btn').addEventListener('click', openInfoPopup);
+document.getElementById('log-open-btn').addEventListener('click', () => { infoPopup.style.display = 'none'; toggleLog(); });
 
 function showApp() {
   loginOverlay.style.display = 'none';
