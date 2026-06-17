@@ -337,7 +337,7 @@ document.getElementById('filter-menu-btn').addEventListener('click', () => {
 
 
 document.getElementById('check-update-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
+  infoPopup.style.display = 'none';
   showBriefStatus('Checking for updates…', 15000);
   try {
     const resp = await CapacitorHttp.request({
@@ -595,11 +595,37 @@ heatmapBtn.addEventListener('click', () => {
   heatmapBtn.classList.toggle('active', active);
 });
 
+const infoPopup      = document.getElementById('info-popup');
+const infoRowsEl     = document.getElementById('info-rows');
+const infoPopupClose = document.getElementById('info-popup-close');
+
+function openInfoPopup() {
+  overflowMenu.classList.remove('open');
+  const located = topbarGeotagged + sessionGeotagged;
+  const rows = [
+    { icon: '📷', label: 'Total',    value: topbarTotal },
+    { icon: '📍', label: 'Located',  value: located },
+    { icon: '📅', label: 'Dated',    value: topbarDated },
+    { icon: '❓', label: 'Unknown',  value: topbarUnknown },
+  ];
+  infoRowsEl.innerHTML = rows.map(r =>
+    `<div class="info-row">
+      <span class="info-row-label">${r.icon} ${r.label}</span>
+      <span class="info-row-value">${r.value}</span>
+    </div>`
+  ).join('');
+  infoPopup.style.display = 'flex';
+}
+
+infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
+infoPopup.addEventListener('click', e => { if (e.target === infoPopup) infoPopup.style.display = 'none'; });
+document.getElementById('info-btn').addEventListener('click', openInfoPopup);
+
 function showApp() {
   loginOverlay.style.display = 'none';
   menuWrap.style.display = '';
   heatmapBtn.style.display = '';
-  authBtn.onclick = () => { logout(); location.reload(); };
+  authBtn.onclick = () => { infoPopup.style.display = 'none'; logout(); location.reload(); };
 }
 
 loginForm.addEventListener('submit', async (e) => {
