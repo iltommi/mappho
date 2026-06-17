@@ -8,11 +8,11 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, fetchFileHead, uploadBackup, downloadBackup, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta } from './mp4.js';
-import { initMap, addMarker, clearMarkers, toggleHeatmap } from './map.js';
+import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid } from './grid.js';
-import { organize, findSharphoRootIfExists, syncSharphoOnEdit } from './organize.js';
+import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { getCached, putCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, exportDb, importDb, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
@@ -533,14 +533,6 @@ clearCacheBtn.addEventListener('click', async () => {
   clearCacheBtn.disabled = false;
 });
 
-const organizeBtn = document.getElementById('organize-btn');
-organizeBtn.addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  if (organizeBtn.disabled) return;
-  organizeBtn.disabled = true;
-  try { await runOrganize(); }
-  finally { organizeBtn.disabled = false; }
-});
 
 document.getElementById('use-token-btn').addEventListener('click', async () => {
   const token = document.getElementById('token-input').value.trim();
@@ -698,39 +690,10 @@ async function startScan() {
   startScanInProgress = false;
 }
 
-async function runOrganize() {
-  scanCancelled = false;
-  stopScanBtn.style.display = '';
-  stopScanBtn.disabled = false;
-  stopScanBtn.textContent = '✕ Stop';
-  setProgress(0);
-  try {
-    setStatus('Organize: indexing Photos…');
-    const { copied, skipped, failed } = await organize({
-      isCancelled: () => scanCancelled,
-      onProgress: p => {
-        if (p.phase === 'indexing') {
-          setStatus(`Organize: indexing Photos… ${p.done} found`);
-        } else if (p.phase === 'copying') {
-          setStatus(`Organize: ${p.done}/${p.total} · ${p.copied} copied · ${p.skipped} already organized`);
-          setProgress((p.done / p.total) * 100);
-        }
-      },
-    });
-    setProgress(100);
-    setTimeout(() => setProgress(0), 1000);
-    const failedNote = failed > 0 ? ` (${failed} failed)` : '';
-    setStatus(scanCancelled
-      ? `Organize stopped — ${copied} copied, ${skipped} already organized${failedNote}.`
-      : `Organize done — ${copied} copied, ${skipped} already organized${failedNote}.`);
-  } catch (e) {
-    setProgress(0);
-    setStatus(`Organize error: ${e.message}`);
-    console.error(e);
-  } finally {
-    stopScanBtn.style.display = 'none';
-  }
-}
+
+// Per-scan organize state. Reset at the start of each scan.
+let _organizeRoot = null;  // Photos/ folderid (null = organize not ready)
+let _organizeLock = Promise.resolve(); // serialises concurrent organizeFile calls
 
 async function runScan() {
   scanCancelled = false;
@@ -757,6 +720,13 @@ async function runScan() {
 
 // Returns true on success, false on network/download failure (file not written to DB so retry works).
 async function processFile(file, stats) {
+  // Fast path: file already organised into Photos/ — it's a duplicate in the source folder.
+  if (_organizeRoot && isHashOrganized(normHash(file.hash))) {
+    stats.cached++;
+    log(`${file.name} [organized duplicate]`, 'skipped');
+    return true;
+  }
+
   const hit = await getCached(file.fileid);
   if (hit) {
     if (hit.ignored) return true;
@@ -787,6 +757,25 @@ async function processFile(file, stats) {
   }
   const hasGps = exif.lat != null && !isNaN(exif.lat) && exif.lng != null && !isNaN(exif.lng);
   const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null, hash: file.hash != null ? String(file.hash) : null };
+
+  // Organize: serialize name-pick + rename so concurrent processFile calls
+  // don't race on _takenNames / _nameCounters.
+  if (_organizeRoot && (hasGps || (record.ts != null && record.ts > 0))) {
+    let resolveOrganizeLock;
+    const prevLock = _organizeLock;
+    _organizeLock = new Promise(r => { resolveOrganizeLock = r; });
+    await prevLock;
+    try {
+      const newName = await organizeFile(record, _organizeRoot);
+      if (newName) {
+        record.name = newName;
+        updateMarkerName(record.fileid, newName);
+      }
+    } finally {
+      resolveOrganizeLock();
+    }
+  }
+
   await putCached(record);
   if (hasGps) { stats.geotagged++; addMarker(record); }
   else { if (record.ts != null) stats.dated++; await putOrphan(record); }
@@ -816,12 +805,33 @@ async function scan() {
   log('Discovery done', `${total} JPEG files`);
   setProgress(0);
 
+  // Initialise organize index before Phase 2 so each processFile can move files immediately.
+  _organizeRoot = null;
+  _organizeLock = Promise.resolve();
+  try {
+    const root = await getSharphoRoot();
+    resetOrganizeState();
+    setStatus('Loading Photos index…');
+    await loadOrganizeIndex(root, n => setStatus(`Loading Photos index… ${n} entries`));
+    _organizeRoot = root;
+    log('Organize', `index ready — ${total} files to process`);
+  } catch (e) {
+    log('Organize init error', `${e.message} — organizing disabled for this scan`);
+  }
+
   // Phase 2: process with accurate progress bar
   const failedFiles = [];
   await processFiles(allFiles, total, stats, pool, inFlight, failedFiles);
 
   log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
+
+  // Persist the updated hash index (no-op if nothing was organized this scan).
+  if (_organizeRoot) {
+    flushOrganizeIndex(_organizeRoot).catch(e => log('HashIndex flush error', e.message));
+  }
+  _organizeRoot = null;
+
   clearScanStatus();
   await reloadTopbarCounts();
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));

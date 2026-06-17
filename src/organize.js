@@ -1,27 +1,37 @@
-import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile } from './pcloud.js';
-import { getAllCached, getOrphansPage, countOrphans, clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, putCached, putOrphan, UNDATED_TS } from './db.js';
+import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, copyFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
+import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry } from './db.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
 
 const ROOT_NAME = 'Photos';
 
-// pCloud's `hash` field can come back as a number or string depending on
-// endpoint — normalize to string everywhere so it's a stable IndexedDB key.
 export function normHash(h) {
   return h != null ? String(h) : null;
 }
 
 const UNKNOWN_DATE_FOLDER = 'Unknown';
 
-let _rootFolderId  = null;
+let _rootFolderId    = null;
 let _unknownFolderId = null;
-const _yearFolders  = new Map(); // 'YYYY' -> folderid
+const _yearFolders   = new Map(); // 'YYYY' -> folderid
 const _monthFolders  = new Map(); // 'YYYY-MM' -> folderid
 const _nameCounters  = new Map(); // 'YYYY-MM-DD_HH-MM-SS' -> next N to try
 
-// Resolves (creating if needed) SharPho/YYYY/MM, caching folderids for this run.
+// ── Hash index ────────────────────────────────────────────────────────────────
+
+const HASH_INDEX_FILENAME   = 'sharpho-hash-index.json';
+const HASH_INDEX_FILEID_KEY = 'sharpho_hash_index_fileid';
+
+const _hashMap    = new Map(); // hash → { fileid, folderid, name }
+const _takenNames = new Set(); // filenames currently in Photos/
+let _hashFileid   = null;
+let _hashDirty    = false;
+let _indexReady   = false;
+
+// ── Folder helpers ────────────────────────────────────────────────────────────
+
 export async function getSharphoMonthFolder(rootFolderId, ts) {
-  const d = new Date(ts);
+  const d    = new Date(ts);
   const yyyy = String(d.getFullYear());
   const mm   = String(d.getMonth() + 1).padStart(2, '0');
 
@@ -39,8 +49,6 @@ export async function getSharphoMonthFolder(rootFolderId, ts) {
   return monthId;
 }
 
-// Resolves (creating if needed) SharPho/Unknown date — for geotagged photos
-// with no usable timestamp, which otherwise have nowhere to bucket by date.
 async function getSharphoUnknownFolder(rootFolderId) {
   if (_unknownFolderId == null) {
     _unknownFolderId = await createFolderIfNotExists(rootFolderId, UNKNOWN_DATE_FOLDER);
@@ -54,8 +62,6 @@ export async function getSharphoRoot() {
   return _rootFolderId;
 }
 
-// Looks up SharPho/'s folderid WITHOUT creating it — used to exclude it from
-// the regular scan. Returns null if Organize has never been run.
 export async function findSharphoRootIfExists() {
   if (_rootFolderId != null) return _rootFolderId;
   try {
@@ -68,6 +74,8 @@ export async function findSharphoRootIfExists() {
   }
 }
 
+// ── Name helpers ──────────────────────────────────────────────────────────────
+
 function fmtBase(ts) {
   const d = new Date(ts);
   const p = n => String(n).padStart(2, '0');
@@ -79,158 +87,184 @@ function extOf(name) {
   return m ? m[0].toLowerCase() : '';
 }
 
-// Picks the next unused "BASE_N.ext" name for this exact timestamp, tracking
-// counters in-memory for this run only — collisions are checked against the
-// live index built from SharPho's own listing, so this is always correct
-// even across multiple organize runs.
-function nextName(ts, ext, takenNames) {
+function nextName(ts, ext) {
   const base = fmtBase(ts);
   let n = _nameCounters.get(base) ?? 1;
   let name;
-  do {
-    name = `${base}_${n}${ext}`;
-    n++;
-  } while (takenNames.has(name));
+  do { name = `${base}_${n}${ext}`; n++; } while (_takenNames.has(name));
   _nameCounters.set(base, n);
   return name;
 }
 
-// For geotagged-but-undated photos: no timestamp to build a name from, so
-// keep the original filename (deduped against what's already in SharPho).
-function nextNameForUnknown(originalName, ext, takenNames) {
+function nextNameForUnknown(originalName, ext) {
   const base = originalName.replace(/\.[^.]+$/, '') || 'photo';
   let name = `${base}${ext}`;
   let n = 1;
-  while (takenNames.has(name)) {
-    name = `${base}_${n}${ext}`;
-    n++;
-  }
+  while (_takenNames.has(name)) { name = `${base}_${n}${ext}`; n++; }
   return name;
 }
 
-// Rebuilds the local hash-index cache from a fresh listing of SharPho/ —
-// SharPho's own contents are the ground truth, not our bookkeeping.
+// ── Hash index management ─────────────────────────────────────────────────────
+
+// Rebuilds the hash index from a fresh Photos/ listing.
+// Also populates the in-memory _hashMap and _takenNames.
 export async function buildHashIndex(rootFolderId, onProgress) {
   await clearSharphoIndex();
+  _hashMap.clear();
+  _takenNames.clear();
   const entries = [];
-  const takenNames = new Set();
   let count = 0;
   for await (const item of listImages(rootFolderId)) {
     if (!item.hash) continue;
-    entries.push({ hash: normHash(item.hash), fileid: item.fileid, folderid: item.parentfolderid, name: item.name });
-    takenNames.add(item.name);
+    const e = { hash: normHash(item.hash), fileid: item.fileid, folderid: item.parentfolderid, name: item.name };
+    entries.push(e);
+    _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
+    _takenNames.add(item.name);
     count++;
     if (count % 50 === 0) onProgress?.(count);
   }
   await bulkPutSharphoIndex(entries);
   onProgress?.(count);
-  return { count, takenNames };
+  return { count, takenNames: _takenNames };
 }
 
-// Photos qualify if they have GPS and/or a real date. STORE holds every
-// scanned photo (geotagged or not) so it's restricted to the GPS ones here;
-// ORPHAN_STORE holds only non-GPS photos, so a real date is required there —
-// this keeps the two loops disjoint (no photo can satisfy both).
-async function* allDatedCandidates() {
-  for (const p of await getAllCached()) {
-    if (p.ignored || p.lat == null) continue;
-    yield p;
-  }
-  const total = await countOrphans();
-  const pageSize = 200;
-  for (let offset = 0; offset < total; offset += pageSize) {
-    const page = await getOrphansPage(offset, pageSize);
-    for (const p of page) {
-      if (p.ts != null && p.ts !== UNDATED_TS) yield p;
-    }
-  }
-}
+// Loads the hash index from the persisted JSON on pCloud, falling back to a
+// full Photos/ listing if the file is absent or corrupt.
+export async function loadOrganizeIndex(rootFolderId, onProgress) {
+  _hashMap.clear();
+  _takenNames.clear();
+  _hashDirty  = false;
+  _indexReady = false;
 
-// Runs one full organize pass: rebuild the SharPho hash index, then walk every
-// dated local record and copy anything not already represented in SharPho.
-// `onProgress({ phase, done, total, copied, skipped })` is called periodically.
-export async function organize({ onProgress, isCancelled } = {}) {
-  const rootFolderId = await getSharphoRoot();
-
-  onProgress?.({ phase: 'indexing', done: 0 });
-  const { takenNames } = await buildHashIndex(rootFolderId, done => onProgress?.({ phase: 'indexing', done }));
-
-  const candidates = [];
-  for await (const p of allDatedCandidates()) candidates.push(p);
-
-  let copied = 0, skipped = 0, failed = 0;
-  for (let i = 0; i < candidates.length; i++) {
-    if (isCancelled?.()) break;
-    const p = candidates[i];
-    onProgress?.({ phase: 'copying', done: i, total: candidates.length, copied, skipped });
-
-    const hash = normHash(p.hash);
-    if (!hash) { skipped++; continue; } // not yet rescanned with hash support
-    const existing = await getSharphoIndexEntry(hash);
-    if (existing) { skipped++; continue; }
-
+  const stored = localStorage.getItem(HASH_INDEX_FILEID_KEY);
+  if (stored) {
+    _hashFileid = Number(stored);
     try {
-      const hasDate = p.ts != null && p.ts > 0;
-      const folderId = hasDate
-        ? await getSharphoMonthFolder(rootFolderId, p.ts)
-        : await getSharphoUnknownFolder(rootFolderId);
-      const name = hasDate
-        ? nextName(p.ts, extOf(p.name), takenNames)
-        : nextNameForUnknown(p.name, extOf(p.name), takenNames);
-      await renameFile(p.fileid, { tofolderid: folderId, toname: name });
-      takenNames.add(name);
-      await putSharphoIndexEntry({ hash, fileid: p.fileid, folderid: folderId, name });
-      if (p.lat != null) await putCached({ ...p, name });
-      else await putOrphan({ ...p, name });
-      updateMarkerName(p.fileid, name);
-      copied++;
+      const data = await downloadJsonFile(_hashFileid);
+      if (Array.isArray(data?.entries)) {
+        const idbEntries = [];
+        for (const e of data.entries) {
+          _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
+          _takenNames.add(e.name);
+          idbEntries.push(e);
+        }
+        await clearSharphoIndex();
+        await bulkPutSharphoIndex(idbEntries);
+        _indexReady = true;
+        log('HashIndex', `loaded ${_hashMap.size} entries from JSON`);
+        onProgress?.(_hashMap.size);
+        return;
+      }
     } catch (e) {
-      log('Organize error', `${p.name}: ${e.message}`);
-      failed++;
+      log('HashIndex', `JSON load failed (${e.message}) — rebuilding from Photos/`);
+      _hashFileid = null;
+      localStorage.removeItem(HASH_INDEX_FILEID_KEY);
     }
   }
 
-  onProgress?.({ phase: 'done', done: candidates.length, total: candidates.length, copied, skipped, failed });
-  return { copied, skipped, failed };
+  // Fallback: full Photos/ listing
+  _hashDirty = true;
+  const { count } = await buildHashIndex(rootFolderId, onProgress);
+  _indexReady = true;
+  log('HashIndex', `built ${count} entries from Photos/ listing`);
 }
 
-// ── Edit-time sync ─────────────────────────────────────────────────────────
-// Called by geotag.js / the fix-date handler right after a content-mutating
-// edit completes. If the pre-edit hash was already represented in SharPho,
-// refresh that slot in place (and move it if the date bucket changed) instead
-// of waiting for the next organize pass — which would otherwise see the new
-// hash as "unrelated new content" and copy it again, leaving a stale orphan
-// copy behind.
+// Saves the in-memory index to pCloud as JSON. No-op if nothing changed.
+export async function flushOrganizeIndex(rootFolderId) {
+  if (!_hashDirty) return;
+  const entries = [..._hashMap.entries()].map(([hash, v]) => ({ hash, ...v }));
+  try {
+    const json = JSON.stringify({ version: 1, entries });
+    const newFileid = await uploadJsonToFolder(rootFolderId, HASH_INDEX_FILENAME, json, _hashFileid);
+    _hashFileid = newFileid;
+    if (newFileid) localStorage.setItem(HASH_INDEX_FILEID_KEY, String(newFileid));
+    _hashDirty = false;
+    log('HashIndex', `flushed ${entries.length} entries`);
+  } catch (e) {
+    log('HashIndex flush error', e.message);
+  }
+}
+
+// Resets per-scan folder/name caches without touching the hash index.
+export function resetOrganizeState() {
+  _yearFolders.clear();
+  _monthFolders.clear();
+  _nameCounters.clear();
+  _unknownFolderId = null;
+}
+
+// Fast check: is this hash already represented in Photos/?
+// Use as a pre-lock guard in processFile to skip the serialize queue for known duplicates.
+export function isHashOrganized(hash) {
+  return hash != null && _hashMap.has(hash);
+}
+
+// Organizes one file into Photos/YYYY/MM/ with a date-based name.
+// Must be called inside a serialisation lock (see main.js) so that _takenNames
+// and _nameCounters are never updated by two concurrent calls at once.
+// Returns the new name on success, null if already organized or doesn't qualify.
+export async function organizeFile(record, rootFolderId) {
+  const hash = record.hash;
+
+  // Double-check inside the lock (another concurrent processFile may have just organized this hash)
+  if (hash && _hashMap.has(hash)) return null;
+
+  const hasDate = record.ts != null && record.ts > 0;
+  const hasGps  = record.lat != null;
+  if (!hasGps && !hasDate) return null;
+
+  const folderId = hasDate
+    ? await getSharphoMonthFolder(rootFolderId, record.ts)
+    : await getSharphoUnknownFolder(rootFolderId);
+
+  const name = hasDate
+    ? nextName(record.ts, extOf(record.name))
+    : nextNameForUnknown(record.name, extOf(record.name));
+
+  await renameFile(record.fileid, { tofolderid: folderId, toname: name });
+
+  _takenNames.add(name);
+  if (hash) {
+    _hashMap.set(hash, { fileid: record.fileid, folderid: folderId, name });
+    _hashDirty = true;
+    await putSharphoIndexEntry({ hash, fileid: record.fileid, folderid: folderId, name });
+  }
+  return name;
+}
+
+// ── Edit-time sync ─────────────────────────────────────────────────────────────
+// Called after a content-mutating edit (geotag/fix-date). If the pre-edit hash
+// was already in Photos/, refresh that slot without waiting for the next scan.
 export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
   oldHash = normHash(oldHash);
   newHash = normHash(newHash);
   if (!oldHash) return;
-  const existing = await getSharphoIndexEntry(oldHash);
+  const existing = _hashMap.get(oldHash) ?? await getSharphoIndexEntry(oldHash);
   if (!existing) return;
 
   try {
-    const rootFolderId = await getSharphoRoot();
-    const monthFolderId = (ts != null && ts > 0)
+    const rootFolderId   = await getSharphoRoot();
+    const monthFolderId  = (ts != null && ts > 0)
       ? await getSharphoMonthFolder(rootFolderId, ts)
       : await getSharphoUnknownFolder(rootFolderId);
 
-    if (monthFolderId === existing.folderid && newHash === oldHash) {
-      return; // nothing actually changed — same content, same bucket
-    }
+    if (monthFolderId === existing.folderid && newHash === oldHash) return;
 
     if (monthFolderId === existing.folderid) {
-      // Same bucket: delete the stale copy first, then copy fresh content into
-      // its slot — copyFile would otherwise collide with the name still in use.
       await deleteFile(existing.fileid);
       const refreshedFileid = await copyFile(newFileid, monthFolderId, existing.name);
       await deleteSharphoIndexEntry(oldHash);
       await putSharphoIndexEntry({ hash: newHash, fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
+      _hashMap.delete(oldHash);
+      _hashMap.set(newHash, { fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
     } else {
-      // Date moved: relocate to the new YYYY/MM bucket, keep the name.
       await renameFile(existing.fileid, { tofolderid: monthFolderId });
       await deleteSharphoIndexEntry(oldHash);
       await putSharphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: existing.name });
+      _hashMap.delete(oldHash);
+      _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: existing.name });
     }
+    _hashDirty = true;
   } catch (e) {
     log('SharPho sync error', e.message);
   }
