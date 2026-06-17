@@ -1294,6 +1294,8 @@ body.filter-open #map { top: 40px; }
   border-bottom: 1px solid #1e293b;
 }
 .info-row:last-child { border-bottom: none; }
+.info-row-btn { cursor: pointer; }
+.info-row-btn:hover, .info-row-btn:active { background: #1e293b; }
 .info-row-label { display: flex; align-items: center; gap: 8px; }
 .info-row-value { font-weight: 600; color: #e2e8f0; font-size: 1rem; }
 
