@@ -35,25 +35,7 @@ let topbarGeotagged = 0;
 let topbarDated   = 0;
 let topbarUnknown = 0;
 let topbarTotal   = 0;
-let topbarStatIdx = 0;
-
-const topbarTitle = document.getElementById('topbar-title');
-function updateTopbar() {
-  if (!topbarTotal) { topbarTitle.textContent = ''; return; }
-  const located = topbarGeotagged + sessionGeotagged;
-  const labels = [
-    `${topbarTotal} total`,
-    `📍 ${located} located`,
-    `📅 ${topbarDated} dated`,
-    `❓ ${topbarUnknown} unknown`,
-  ];
-  topbarTitle.textContent = labels[topbarStatIdx];
-}
-
-topbarTitle.addEventListener('click', () => {
-  topbarStatIdx = (topbarStatIdx + 1) % 4;
-  updateTopbar();
-});
+function updateTopbar() { /* stats available via Info popup */ }
 
 function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
@@ -93,8 +75,7 @@ stopScanBtn.addEventListener('click', () => {
   stopScanBtn.disabled = true;
   stopScanBtn.textContent = 'Stopping…';
 });
-const menuWrap = document.getElementById('menu-wrap');
-const menuBtn = document.getElementById('menu-btn');
+const menuFab = document.getElementById('menu-fab');
 const overflowMenu = document.getElementById('overflow-menu');
 
 document.getElementById('export-btn').addEventListener('click', async () => {
@@ -368,13 +349,13 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   }
 });
 
-menuBtn.addEventListener('click', (e) => {
+menuFab.addEventListener('click', (e) => {
   e.stopPropagation();
   overflowMenu.classList.toggle('open');
 });
 
 document.addEventListener('click', (e) => {
-  if (!menuWrap.contains(e.target)) overflowMenu.classList.remove('open');
+  if (!overflowMenu.contains(e.target) && e.target !== menuFab) overflowMenu.classList.remove('open');
 });
 
 let pendingTfaToken = null;
@@ -623,7 +604,7 @@ document.getElementById('info-btn').addEventListener('click', openInfoPopup);
 
 function showApp() {
   loginOverlay.style.display = 'none';
-  menuWrap.style.display = '';
+  menuFab.style.display = '';
   heatmapBtn.style.display = '';
   authBtn.onclick = () => { infoPopup.style.display = 'none'; logout(); location.reload(); };
 }
