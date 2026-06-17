@@ -172,19 +172,23 @@ html, body {
 #menu-btn:hover { background: #334155; }
 
 #heatmap-btn {
-  width: 36px;
-  height: 36px;
+  position: fixed;
+  bottom: 24px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
   border: none;
-  background: none;
-  font-size: 1.1rem;
+  border-radius: 50%;
+  background: #1e293b;
+  font-size: 1.4rem;
   line-height: 1;
   cursor: pointer;
-  border-radius: 6px;
-  flex-shrink: 0;
-  opacity: .55;
+  opacity: .7;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
   transition: opacity .15s, background .15s;
+  z-index: 1000;
 }
-#heatmap-btn:hover { background: #334155; opacity: 1; }
+#heatmap-btn:hover { opacity: 1; }
 #heatmap-btn.active { background: #1e3a5f; opacity: 1; }
 
 #overflow-menu {
