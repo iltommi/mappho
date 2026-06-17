@@ -68,4 +68,5 @@ export function log(label, data) {
     entry.appendChild(pre);
   }
   list.prepend(entry);
+  while (list.children.length > 500) list.removeChild(list.lastChild);
 }
