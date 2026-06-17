@@ -1,5 +1,6 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile } from './pcloud.js';
 import { getAllCached, getOrphansPage, countOrphans, clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, putCached, putOrphan, UNDATED_TS } from './db.js';
+import { updateMarkerName } from './map.js';
 import { log } from './log.js';
 
 const ROOT_NAME = 'Photos';
@@ -181,6 +182,7 @@ export async function organize({ onProgress, isCancelled } = {}) {
       await putSharphoIndexEntry({ hash, fileid: p.fileid, folderid: folderId, name });
       if (p.lat != null) await putCached({ ...p, name });
       else await putOrphan({ ...p, name });
+      updateMarkerName(p.fileid, name);
       copied++;
     } catch (e) {
       log('Organize error', `${p.name}: ${e.message}`);
