@@ -53,6 +53,7 @@ export async function startGeotagging(photo, callback) {
   saveBtn.disabled    = pendingLatLng === null;
   saveBtn.textContent = '💾 Save';
   bar.style.display   = 'flex';
+  document.body.classList.add('action-bar-open');
 
   enterPinDropMode({
     initialPin,
@@ -76,6 +77,7 @@ export async function startBulkGeotagging(photos, callback) {
   saveBtn.disabled    = true;
   saveBtn.textContent = '💾 Save';
   bar.style.display   = 'flex';
+  document.body.classList.add('action-bar-open');
 
   enterPinDropMode({
     initialPin: null,
@@ -204,6 +206,7 @@ cancelBtn.addEventListener('click', () => {
 function finish() {
   exitPinDropMode();
   bar.style.display = 'none';
+  document.body.classList.remove('action-bar-open');
   mode          = null;
   pendingPhoto  = null;
   pendingPhotos = null;
