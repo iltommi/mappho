@@ -61,6 +61,14 @@ export async function putCached(photo) {
   return (await db()).put(STORE, photo);
 }
 
+export async function bulkPutCached(records) {
+  if (!records.length) return;
+  const d = await db();
+  const tx = d.transaction(STORE, 'readwrite');
+  for (const r of records) tx.store.put(r);
+  await tx.done;
+}
+
 export async function getAllCached() {
   return (await db()).getAll(STORE);
 }
