@@ -11,7 +11,7 @@ import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
-import { openGrid } from './grid.js';
+import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
@@ -152,73 +152,110 @@ const fixDateTimeInput = document.getElementById('fix-date-time-input');
 const fixDateSaveBtn  = document.getElementById('fix-date-save');
 const fixDateCancelBtn = document.getElementById('fix-date-cancel');
 
-let fixDatePhoto = null;
+let fixDatePhoto  = null;
+let fixDatePhotos = null; // bulk mode
 let fixDateOnDone = null;
+
+async function applyFixDateToPhoto(photo, ts) {
+  const { fileid, name } = photo;
+  const isHeic = /\.heic$/i.test(name);
+  const isMP4  = isVideo(name);
+
+  let newFileid = fileid;
+  let newName   = name;
+  let newHash   = null;
+
+  if (isMP4) {
+    const { hash } = await getFileStat(fileid).catch(() => ({}));
+    newHash = hash ?? null;
+    await syncSharphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
+  } else if (isHeic) {
+    const meta = await extractHeicMeta(fileid);
+    const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+    const heicBuf = await downloadFullFile(fileid);
+    const jpegBuf = await heicToJpeg(heicBuf);
+    const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model });
+    newName = name.replace(/\.heic$/i, '.jpg');
+    const { parentfolderid } = await getFileStat(fileid);
+    newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
+    await deleteFile(fileid);
+    ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+  } else {
+    const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+    const buffer = await downloadFullFile(fileid);
+    const modified = injectExif(buffer, { ts });
+    newFileid = await overwriteFile(fileid, modified);
+    ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+  }
+
+  const cached = await getCached(fileid);
+  await deleteRecord(fileid);
+  await deleteOrphan(fileid);
+  if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
+  else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
+}
 
 function startFixDate(photo, onDone) {
   fixDatePhoto  = photo;
+  fixDatePhotos = null;
   fixDateOnDone = onDone;
   const existing = (photo.ts && photo.ts > 0) ? new Date(photo.ts) : new Date();
   fixDateInput.value = existing.toISOString().split('T')[0];
   fixDateTimeInput.value = existing.toTimeString().slice(0, 5);
+  fixDateSaveBtn.textContent = '💾 Save';
+  fixDateBar.style.display = 'flex';
+  document.body.classList.add('action-bar-open');
+}
+
+function startBulkFixDate(photos, onDone) {
+  fixDatePhoto  = null;
+  fixDatePhotos = photos;
+  fixDateOnDone = onDone;
+  const now = new Date();
+  fixDateInput.value = now.toISOString().split('T')[0];
+  fixDateTimeInput.value = now.toTimeString().slice(0, 5);
+  fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   fixDateBar.style.display = 'flex';
   document.body.classList.add('action-bar-open');
 }
 
 fixDateSaveBtn.addEventListener('click', async () => {
-  if (!fixDatePhoto || !fixDateInput.value) return;
+  if (!fixDateInput.value) return;
   const origText = fixDateSaveBtn.textContent;
   fixDateSaveBtn.disabled = true;
-  try {
-    const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
-    const { fileid, name } = fixDatePhoto;
-    const isHeic = /\.heic$/i.test(name);
-    const isMP4  = isVideo(name);
+  const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
 
-    let newFileid = fileid;
-    let newName   = name;
-    let newHash   = null;
-
-    if (isMP4) {
-      log('Fix date', 'MP4: saving date to cache only');
-      const { hash } = await getFileStat(fileid).catch(() => ({}));
-      newHash = hash ?? null;
-      await syncSharphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
-    } else if (isHeic) {
-      fixDateSaveBtn.textContent = '⏳ Fetching…';
-      const meta = await extractHeicMeta(fileid);
-      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
-      fixDateSaveBtn.textContent = '⏳ Downloading…';
-      const heicBuf = await downloadFullFile(fileid);
-      fixDateSaveBtn.textContent = '⏳ Converting…';
-      const jpegBuf = await heicToJpeg(heicBuf);
-      fixDateSaveBtn.textContent = '⏳ Injecting EXIF…';
-      const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model });
-      newName = name.replace(/\.heic$/i, '.jpg');
-      const { parentfolderid } = await getFileStat(fileid);
-      fixDateSaveBtn.textContent = '⏳ Uploading…';
-      newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
-      log('Fix date', 'Removing original HEIC…');
-      await deleteFile(fileid);
-      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
-      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
-    } else {
-      const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
-      fixDateSaveBtn.textContent = '⏳ Downloading…';
-      const buffer = await downloadFullFile(fileid);
-      const modified = injectExif(buffer, { ts });
-      fixDateSaveBtn.textContent = '⏳ Uploading…';
-      newFileid = await overwriteFile(fileid, modified);
-      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
-      await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+  if (fixDatePhotos) {
+    const list = fixDatePhotos;
+    let ok = 0, failed = 0;
+    for (let i = 0; i < list.length; i++) {
+      fixDateSaveBtn.textContent = `⏳ ${i + 1}/${list.length}…`;
+      try {
+        await applyFixDateToPhoto(list[i], ts);
+        ok++;
+      } catch (e) {
+        failed++;
+        log('Bulk fix date error', `${list[i].name}: ${e.message}`);
+      }
     }
+    await reloadTopbarCounts();
+    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+    fixDateBar.style.display = 'none';
+    document.body.classList.remove('action-bar-open');
+    const cb = fixDateOnDone;
+    fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
+    fixDateSaveBtn.disabled = false;
+    fixDateSaveBtn.textContent = origText;
+    cb?.({ success: ok > 0, count: ok, failed });
+    return;
+  }
 
-    const cached = await getCached(fileid);
-    await deleteRecord(fileid);
-    await deleteOrphan(fileid);
-    if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
-    else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
-
+  if (!fixDatePhoto) { fixDateSaveBtn.disabled = false; return; }
+  try {
+    fixDateSaveBtn.textContent = '⏳ Saving…';
+    await applyFixDateToPhoto(fixDatePhoto, ts);
     await reloadTopbarCounts();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     fixDateBar.style.display = 'none';
@@ -237,8 +274,12 @@ fixDateSaveBtn.addEventListener('click', async () => {
 fixDateCancelBtn.addEventListener('click', () => {
   fixDateBar.style.display = 'none';
   document.body.classList.remove('action-bar-open');
+  const wasBulk = !!fixDatePhotos;
+  const cb = fixDateOnDone;
   fixDatePhoto  = null;
+  fixDatePhotos = null;
   fixDateOnDone = null;
+  if (wasBulk) cb?.({ success: false, count: 0, failed: 0 });
 });
 
 
@@ -1112,6 +1153,7 @@ async function main() {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
 
   // Handlers for map marker slideshow — update in place, no redirect.
   setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
