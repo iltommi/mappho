@@ -69,7 +69,6 @@ const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderBtn = document.getElementById('folder-btn');
 const stopScanBtn = document.getElementById('stop-scan-btn');
-const clearCacheBtn = document.getElementById('clear-cache-btn');
 const eraseCacheBtn = document.getElementById('erase-cache-btn');
 
 stopScanBtn.addEventListener('click', () => {
@@ -446,16 +445,6 @@ eraseCacheBtn.addEventListener('click', async () => {
   setStatus('Cache erased — pick a folder to scan.');
 });
 
-clearCacheBtn.addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
-  await Promise.all([clearNonIgnored(), clearOrphans()]);
-  clearMarkers();
-  log('Cache cleared');
-  setStatus('Cache cleared — scanning…');
-  clearCacheBtn.disabled = true;
-  await runScan();
-  clearCacheBtn.disabled = false;
-});
 
 document.getElementById('rebuild-btn').addEventListener('click', async () => {
   overflowMenu.classList.remove('open');
