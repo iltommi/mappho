@@ -10,10 +10,10 @@ from pathlib import Path
 def convert(avi: Path, dry_run: bool) -> bool:
     mp4 = avi.with_suffix('.mp4')
     if mp4.exists():
-        print(f"  skip — {mp4.name} already exists")
+        print(f"  skip — {mp4} already exists")
         return False
 
-    print(f"  converting {avi.name} → {mp4.name}")
+    print(f"  converting {avi} → {mp4}")
     if dry_run:
         return True
 
@@ -34,7 +34,7 @@ def convert(avi: Path, dry_run: bool) -> bool:
         return False
 
     avi.unlink()
-    print(f"  done — deleted {avi.name}")
+    print(f"  done — deleted {avi}")
     return True
 
 
@@ -57,7 +57,6 @@ def main():
     print(f"Found {len(avis)} AVI file(s){' (dry run)' if args.dry_run else ''}:\n")
     ok = fail = skip = 0
     for avi in avis:
-        print(f"[{avi.parent.relative_to(root)}]")
         result = convert(avi, args.dry_run)
         if result is True:
             ok += 1
