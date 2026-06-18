@@ -792,7 +792,7 @@ async function processFile(file, stats) {
 
   // Organize: serialize name-pick + rename so concurrent processFile calls
   // don't race on _takenNames / _nameCounters.
-  if (_organizeRoot && (hasGps || (record.ts != null && record.ts > 0))) {
+  if (_organizeRoot) {
     let resolveOrganizeLock;
     const prevLock = _organizeLock;
     _organizeLock = new Promise(r => { resolveOrganizeLock = r; });
