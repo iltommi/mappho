@@ -832,9 +832,11 @@ async function scan() {
   setStatus('Discovering files…');
   const sharphoFolderId = await findSharphoRootIfExists();
   const allFiles = [];
-  for (const { id: folderId, name: folderName } of folders) {
+  outer: for (const { id: folderId, name: folderName } of folders) {
+    if (scanCancelled) break;
     log('Discovering', `${folderName ?? '/'} (id=${folderId})`);
     for await (const file of listImages(folderId, sharphoFolderId)) {
+      if (scanCancelled) break outer;
       allFiles.push(file);
       setStatus(`Discovering… ${allFiles.length} files found`);
     }
