@@ -757,7 +757,11 @@ async function rebuildScan() {
   // Rebuild hash index from scratch (ignore any stale JSON).
   resetOrganizeState();
   setStatus('Rebuilding Photos index…', 0);
-  await loadOrganizeIndex(root, n => setStatus(`Rebuilding Photos index… ${n} entries`, 0), { forceRebuild: true });
+  setProgress(0);
+  await loadOrganizeIndex(root, n => {
+    setStatus(`Rebuilding Photos index… ${n} / ${total}`, 0);
+    if (total > 0) setProgress((n / total) * 100);
+  }, { forceRebuild: true });
   flushOrganizeIndex();
   flushPhotoIndex(root);
   await flushAll();
