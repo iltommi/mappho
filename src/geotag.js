@@ -1,17 +1,55 @@
 import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectExif } from './exif.js';
 import { deleteRecord, deleteOrphan, putCached } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
-import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
+import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker, findClosestMarker } from './map.js';
 import { syncSharphoOnEdit } from './organize.js';
 import { isVideo } from './mp4.js';
 import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
+import { searchLocation } from './geocode.js';
 import { log } from './log.js';
 
-const bar      = document.getElementById('pin-drop-bar');
-const hintEl   = document.getElementById('pin-drop-hint');
-const saveBtn  = document.getElementById('pin-drop-save');
-const cancelBtn = document.getElementById('pin-drop-cancel');
+const bar        = document.getElementById('pin-drop-bar');
+const hintEl     = document.getElementById('pin-drop-hint');
+const saveBtn    = document.getElementById('pin-drop-save');
+const cancelBtn  = document.getElementById('pin-drop-cancel');
+const searchInput = document.getElementById('pin-drop-search');
+const searchBtn   = document.getElementById('pin-drop-search-btn');
+const resultsEl   = document.getElementById('pin-drop-results');
+
+async function doSearch() {
+  const q = searchInput.value.trim();
+  if (!q) return;
+  searchBtn.disabled = true;
+  searchBtn.textContent = '⏳';
+  resultsEl.innerHTML = '';
+  try {
+    const results = await searchLocation(q);
+    if (!results.length) {
+      resultsEl.textContent = 'No results found.';
+    } else {
+      for (const r of results) {
+        const btn = document.createElement('button');
+        btn.className = 'pin-drop-result-btn';
+        btn.textContent = r.label;
+        btn.addEventListener('click', () => {
+          flyToAndPlacePin(r.lat, r.lng);
+          resultsEl.innerHTML = '';
+          searchInput.value = r.label.split(',')[0].trim();
+        });
+        resultsEl.appendChild(btn);
+      }
+    }
+  } catch (e) {
+    resultsEl.textContent = `Error: ${e.message}`;
+  } finally {
+    searchBtn.disabled = false;
+    searchBtn.textContent = '🔍';
+  }
+}
+
+searchBtn.addEventListener('click', doSearch);
+searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
 
 let mode          = null; // 'single' | 'bulk'
 let pendingPhoto  = null;
@@ -99,6 +137,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const isMP4  = isVideo(name);
 
   if (isMP4) {
+    removeMarker(fileid);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
     await putCached({ fileid, name, lat, lng, ts: realTs });
@@ -132,6 +171,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
     await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
 
+    removeMarker(fileid);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
     await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
@@ -154,6 +194,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
   await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
 
+  removeMarker(fileid);
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
   await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
@@ -211,6 +252,8 @@ function finish() {
   exitPinDropMode();
   bar.style.display = 'none';
   document.body.classList.remove('action-bar-open');
+  resultsEl.innerHTML = '';
+  searchInput.value   = '';
   mode          = null;
   pendingPhoto  = null;
   pendingPhotos = null;

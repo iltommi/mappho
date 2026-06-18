@@ -38,6 +38,9 @@ let pinDropMarker = null;
 let pinDropHandler = null;
 let pinDropOnPlace = null;
 
+let markerGeotagHandler = null;
+export function setMarkerGeotagHandler(fn) { markerGeotagHandler = fn; }
+
 const PIN_ICON = L.icon({
   iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
@@ -83,6 +86,12 @@ export function exitPinDropMode() {
   pinDropOnPlace = null;
 }
 
+export function flyToAndPlacePin(lat, lng) {
+  map.flyTo([lat, lng], 13);
+  placePinAt(lat, lng);
+  pinDropOnPlace?.({ lat, lng });
+}
+
 function buildLegendControl() {
   const ctrl = L.control({ position: 'bottomright' });
   ctrl.onAdd = () => {
@@ -114,15 +123,30 @@ export function initMap() {
   map.on('moveend zoomend', updateLegend);
 
   cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false });
+
+  let clusterPressTime = 0;
+  map.getContainer().addEventListener('pointerdown', e => {
+    if (e.target.closest('.marker-cluster')) clusterPressTime = Date.now();
+  }, { capture: true });
+
   cluster.on('clusterclick', e => {
-    const children = e.layer.getAllChildMarkers();
-    log('clusterclick', `${children.length} child markers, markerData size=${markerData.size}`);
-    const photos = children.map(m => markerData.get(m)).filter(Boolean);
-    log('clusterclick', `${photos.length} photos resolved`);
-    setGeotagHandler(null);
-    setFixDateHandler(null);
-    setIgnoreHandler(null);
-    openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
+    const duration = clusterPressTime > 0 ? Date.now() - clusterPressTime : 0;
+    clusterPressTime = 0;
+    if (duration >= 500) {
+      const children = e.layer.getAllChildMarkers();
+      const photos = children.map(m => markerData.get(m)).filter(Boolean);
+      log('clusterclick long-press', `${photos.length} photos`);
+      setGeotagHandler(null);
+      setFixDateHandler(null);
+      setIgnoreHandler(null);
+      openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
+    } else {
+      if (map.getZoom() === map.getMaxZoom()) {
+        e.layer.spiderfy();
+      } else {
+        e.layer.zoomToBounds({ padding: [20, 20] });
+      }
+    }
   });
   map.addLayer(cluster);
 }
@@ -165,7 +189,10 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
           marker.getPopup()?.update();
         };
         img.style.cursor = 'zoom-in';
-        img.addEventListener('click', () => openSlideshow([markerData.get(marker)], 0));
+        img.addEventListener('click', () => {
+          setGeotagHandler(markerGeotagHandler);
+          openSlideshow([markerData.get(marker)], 0);
+        });
         div.insertBefore(img, caption);
       }
       marker.getPopup()?.update();
