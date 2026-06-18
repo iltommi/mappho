@@ -17,7 +17,7 @@ import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countGeotagged, getGeotaggedPage, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -627,24 +627,6 @@ async function openDatedOrphanGrid() {
 infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
 infoPopup.addEventListener('click', e => { if (e.target === infoPopup) infoPopup.style.display = 'none'; });
 document.getElementById('info-btn').addEventListener('click', openInfoPopup);
-
-async function openFixLocationGrid() {
-  overflowMenu.classList.remove('open');
-  const total = await countGeotagged();
-  if (!total) { showBriefStatus('No photos with location in cache.'); return; }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
-    openFixLocationGrid();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
-  setIgnoreHandler(null);
-  openGrid((offset, limit) => getGeotaggedPage(offset, limit), total, { reopen: openFixLocationGrid });
-}
-
-document.getElementById('fix-location-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
-  openFixLocationGrid().catch(e => { log('Fix location error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
 
 document.getElementById('fix-date-only-btn').addEventListener('click', () => {
   overflowMenu.classList.remove('open');
