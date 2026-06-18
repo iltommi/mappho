@@ -38,6 +38,7 @@ export async function openVideoPlayer(fileid, name = '') {
   try {
     vpVideo.src = await fetchVideoSrc(fileid);
     vpLoad.style.display = 'none';
+    vpVideo.play().catch(() => {});
   } catch (e) {
     vpLoad.textContent = `Error: ${e.message}`;
   }
