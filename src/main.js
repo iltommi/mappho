@@ -104,7 +104,7 @@ async function openOrphanSlideshow() {
     return;
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     openOrphanSlideshow();
   }));
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
@@ -119,7 +119,7 @@ async function openOrphanGrid() {
     return;
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -137,7 +137,7 @@ async function openNodatetimeGrid() {
     return;
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -573,13 +573,13 @@ const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 const infoPopupClose = document.getElementById('info-popup-close');
 
-function openInfoPopup() {
+async function openInfoPopup() {
   overflowMenu.classList.remove('open');
-  const located = topbarGeotagged + sessionGeotagged;
+  await reloadTopbarCounts();
   const X = (e) => `<span class="icon-x">${e}</span>`;
   const rows = [
     { icon: '📷',                   label: 'Total',             value: topbarTotal,          action: null },
-    { icon: '📅📍',                 label: 'Position & Date',   value: located,              action: null },
+    { icon: '📅📍',                 label: 'Position & Date',   value: topbarGeotagged - topbarLocatedUndated, action: null },
     { icon: X('📍'),                label: 'Only Date',         value: topbarDated,          action: 'dated' },
     { icon: X('📅'),                label: 'Only Position',     value: topbarLocatedUndated, action: 'located-undated' },
     { icon: X('📅') + X('📍'),     label: 'Nothing',           value: topbarUnknown,        action: 'unknown' },
@@ -617,7 +617,7 @@ async function openDatedOrphanGrid() {
   const total = await countOrphansInRange(from, to);
   if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -647,7 +647,7 @@ async function openLocatedUndatedGrid() {
   const total = await countLocatedUndated();
   if (!total) { showBriefStatus('No located photos without a date.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => { openLocatedUndatedGrid(); }));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -1149,18 +1149,14 @@ async function main() {
   });
 
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
 
   // Handlers for map marker slideshow — update in place, no redirect.
   setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) {
-      sessionGeotagged++;
-      updateTopbar();
-      showBriefStatus(`📍 Location updated!`);
-    }
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
   }));
   setMarkerFixDateHandler(photo => startFixDate(photo, () => {}));
 
