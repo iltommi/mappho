@@ -58,6 +58,12 @@ export async function* listImages(folderid = 0, excludeFolderId = null) {
   }
 }
 
+// Returns pCloud metadata for a file at an absolute path, or throws if not found.
+export async function statByPath(path) {
+  const data = await api('stat', { path });
+  return data.metadata;
+}
+
 // Idempotently create a folder under `folderid`, returns the (new or existing) folderid.
 export async function createFolderIfNotExists(folderid, name) {
   const data = await api('createfolderifnotexists', { folderid, name });

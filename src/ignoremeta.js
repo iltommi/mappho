@@ -1,4 +1,4 @@
-import { uploadJsonToFolder, downloadJsonFile } from './pcloud.js';
+import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
 import { getSharphoRoot } from './organize.js';
 import { getCached, putCached, deleteOrphan } from './db.js';
 import { removeMarker } from './map.js';
@@ -14,8 +14,17 @@ let _ignored = new Set(); // Set<number>
 async function load() {
   if (_loaded) return;
   _loaded = true;
-  const stored = localStorage.getItem(FILEID_KEY);
-  if (!stored) return;
+  let stored = localStorage.getItem(FILEID_KEY);
+  if (!stored) {
+    try {
+      const meta = await statByPath('/Photos/ignored.json');
+      _fileid = meta.fileid;
+      localStorage.setItem(FILEID_KEY, String(_fileid));
+      stored = String(_fileid);
+    } catch {
+      return;
+    }
+  }
   _fileid = Number(stored);
   try {
     const data = await downloadJsonFile(_fileid);
