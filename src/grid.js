@@ -216,7 +216,27 @@ function makeTile(item, index) {
   }
   tile._item = item;
   tile._img  = img;
+  let pressTimer = null, didLongPress = false, pressOrigin = null;
+  tile.addEventListener('pointerdown', e => {
+    didLongPress = false;
+    pressOrigin = { x: e.clientX, y: e.clientY };
+    pressTimer = setTimeout(() => {
+      didLongPress = true;
+      pressTimer = null;
+      if (!selectMode) setSelectMode(true);
+      toggleTileSelected(tile, index);
+    }, 500);
+  });
+  const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
+  tile.addEventListener('pointermove', e => {
+    if (!pressTimer || !pressOrigin) return;
+    if (Math.hypot(e.clientX - pressOrigin.x, e.clientY - pressOrigin.y) > 10) cancelPress();
+  });
+  tile.addEventListener('pointerup', cancelPress);
+  tile.addEventListener('pointercancel', cancelPress);
+
   tile.addEventListener('click', () => {
+    if (didLongPress) { didLongPress = false; return; }
     if (selectMode) { toggleTileSelected(tile, index); return; }
     const fetcher = fetchPageFn, seed = items, idx = index, t = total;
     // Grid view (z-index 3500) stays open underneath the slideshow (4000).
