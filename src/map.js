@@ -126,14 +126,28 @@ export function initMap() {
 
   let longPressTimer = null;
   let suppressNextClusterClick = false;
+  let pressedClusterEl = null;
   let pressOrigin = null;
 
   map.getContainer().addEventListener('pointerdown', e => {
-    if (!e.target.closest('.marker-cluster')) return;
+    const clusterEl = e.target.closest('.marker-cluster');
+    if (!clusterEl) return;
+    pressedClusterEl = clusterEl;
     pressOrigin = { x: e.clientX, y: e.clientY };
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
       suppressNextClusterClick = true;
+      cluster._featureGroup.eachLayer(layer => {
+        if (layer._icon !== pressedClusterEl) return;
+        const children = layer.getAllChildMarkers();
+        const photos = children.map(m => markerData.get(m)).filter(Boolean);
+        if (!photos.length) return;
+        log('cluster long-press', `${photos.length} photos`);
+        setGeotagHandler(null);
+        setFixDateHandler(null);
+        setIgnoreHandler(null);
+        openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
+      });
     }, 500);
   }, { capture: true });
 
@@ -153,13 +167,6 @@ export function initMap() {
   cluster.on('clusterclick', e => {
     if (suppressNextClusterClick) {
       suppressNextClusterClick = false;
-      const children = e.layer.getAllChildMarkers();
-      const photos = children.map(m => markerData.get(m)).filter(Boolean);
-      log('cluster long-press', `${photos.length} photos`);
-      setGeotagHandler(null);
-      setFixDateHandler(null);
-      setIgnoreHandler(null);
-      openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
       return;
     }
     if (map.getZoom() === map.getMaxZoom()) {
