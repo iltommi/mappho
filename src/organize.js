@@ -211,7 +211,6 @@ export async function organizeFile(record, rootFolderId) {
 
   const hasDate = record.ts != null && record.ts > 0;
   const hasGps  = record.lat != null;
-  if (!hasGps && !hasDate) return null;
 
   const folderId = hasDate
     ? await getSharphoMonthFolder(rootFolderId, record.ts)
