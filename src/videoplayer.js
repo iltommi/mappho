@@ -1,4 +1,5 @@
 import { fetchVideoSrc } from './pcloud.js';
+import { openWithIntent } from './intentlauncher.js';
 
 const player  = document.getElementById('video-player');
 const vpClose = document.getElementById('vp-close');
@@ -17,7 +18,19 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && player.classList.contains('open')) close();
 });
 
-export async function openVideoPlayer(fileid) {
+export async function openVideoPlayer(fileid, name = '') {
+  if (/\.avi$/i.test(name)) {
+    try {
+      const url = await fetchVideoSrc(fileid);
+      await openWithIntent(url, 'video/x-msvideo');
+    } catch (e) {
+      vpLoad.textContent = `Error: ${e.message}`;
+      vpLoad.style.display = '';
+      player.classList.add('open');
+    }
+    return;
+  }
+
   vpVideo.src = '';
   vpLoad.textContent = 'Loading…';
   vpLoad.style.display = '';
