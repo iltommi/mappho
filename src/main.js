@@ -17,7 +17,7 @@ import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countGeotagged, getGeotaggedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countGeotagged, getGeotaggedPage, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -35,10 +35,11 @@ let sessionGeotagged = 0;
 let scanCancelled = false;
 let retryQueue = [];
 let retryContext = null; // { prevStats, prevTotal } from the scan that produced the queue
-let topbarGeotagged = 0;
-let topbarDated   = 0;
-let topbarUnknown = 0;
-let topbarTotal   = 0;
+let topbarGeotagged      = 0;
+let topbarDated          = 0;
+let topbarUnknown        = 0;
+let topbarLocatedUndated = 0;
+let topbarTotal          = 0;
 function updateTopbar() { /* stats available via Info popup */ }
 
 function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
@@ -53,10 +54,11 @@ async function reloadTopbarCounts() {
   const ignored = await countIgnored();
   const orphans = await countOrphans();
   const noDate  = await countOrphansInRange(UNDATED_TS, UNDATED_TS);
-  topbarTotal     = total - ignored;
-  topbarGeotagged = total - ignored - orphans;
-  topbarDated     = orphans - noDate;
-  topbarUnknown   = noDate;
+  topbarTotal          = total - ignored;
+  topbarGeotagged      = total - ignored - orphans;
+  topbarDated          = orphans - noDate;
+  topbarUnknown        = noDate;
+  topbarLocatedUndated = await countLocatedUndated();
   updateTopbar();
 }
 
@@ -467,10 +469,11 @@ eraseCacheBtn.addEventListener('click', async () => {
   clearMarkers();
   heatmapBtn.classList.remove('active');
   closeFilter();
-  topbarGeotagged = 0;
-  topbarDated     = 0;
-  topbarUnknown   = 0;
-  topbarTotal     = 0;
+  topbarGeotagged      = 0;
+  topbarDated          = 0;
+  topbarUnknown        = 0;
+  topbarLocatedUndated = 0;
+  topbarTotal          = 0;
   sessionGeotagged = 0;
   updateTopbar();
   log('Cache erased');
@@ -533,10 +536,11 @@ function openInfoPopup() {
   overflowMenu.classList.remove('open');
   const located = topbarGeotagged + sessionGeotagged;
   const rows = [
-    { icon: '📷', label: 'Total',   value: topbarTotal,   action: null },
-    { icon: '📍', label: 'Located', value: located,       action: null },
-    { icon: '📅', label: 'Dated',   value: topbarDated,   action: 'dated' },
-    { icon: '❓', label: 'Unknown', value: topbarUnknown, action: 'unknown' },
+    { icon: '📷', label: 'Total',            value: topbarTotal,          action: null },
+    { icon: '📍', label: 'Located',          value: located,              action: null },
+    { icon: '📅', label: 'Dated',            value: topbarDated,          action: 'dated' },
+    { icon: '📍❓', label: 'Located, no date', value: topbarLocatedUndated, action: 'located-undated' },
+    { icon: '❓', label: 'Unknown',          value: topbarUnknown,        action: 'unknown' },
   ];
   infoRowsEl.innerHTML = rows.map(r =>
     r.action
@@ -556,6 +560,8 @@ function openInfoPopup() {
         openDatedOrphanGrid().catch(e => { log('Dated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
       } else if (el.dataset.action === 'unknown') {
         openNodatetimeGrid().catch(e => { log('Unknown grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      } else if (el.dataset.action === 'located-undated') {
+        openLocatedUndatedGrid().catch(e => { log('Located undated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
       }
     });
   });
@@ -596,6 +602,15 @@ async function openFixLocationGrid() {
 document.getElementById('fix-location-btn').addEventListener('click', () => {
   openFixLocationGrid().catch(e => { log('Fix location error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
+
+async function openLocatedUndatedGrid() {
+  const total = await countLocatedUndated();
+  if (!total) { showBriefStatus('No located photos without a date.'); return; }
+  setGeotagHandler(null);
+  setFixDateHandler(photo => startFixDate(photo, () => { openLocatedUndatedGrid(); }));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  openGrid((offset, limit) => getLocatedUndatedPage(offset, limit), total, { reopen: openLocatedUndatedGrid });
+}
 document.getElementById('log-open-btn').addEventListener('click', () => { infoPopup.style.display = 'none'; toggleLog(); });
 
 function showApp() {

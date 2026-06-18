@@ -213,6 +213,36 @@ export async function getGeotaggedPage(offset, limit) {
   return results;
 }
 
+export async function countLocatedUndated() {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.openCursor();
+  let count = 0;
+  while (cursor) {
+    const v = cursor.value;
+    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0)) count++;
+    cursor = await cursor.continue();
+  }
+  return count;
+}
+
+export async function getLocatedUndatedPage(offset, limit) {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.openCursor();
+  const results = [];
+  let skipped = 0;
+  while (cursor) {
+    const v = cursor.value;
+    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0)) {
+      if (skipped < offset) { skipped++; }
+      else { results.push(v); if (results.length >= limit) break; }
+    }
+    cursor = await cursor.continue();
+  }
+  return results;
+}
+
 // SharPho hash index: hash -> { hash, fileid, folderid, name }.
 // Rebuilt from a fresh listfolder of SharPho/ at the start of every organize pass
 // (SharPho's own contents are the ground truth), but cached here so edit-time
