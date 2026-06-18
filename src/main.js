@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName } from './map.js';
+import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName, setMarkerGeotagHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid } from './grid.js';
@@ -1081,6 +1081,15 @@ async function main() {
       showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`);
     }
     openOrphanSlideshow();
+  }));
+
+  // Handler for map marker slideshow — just updates the marker, no redirect.
+  setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) {
+      sessionGeotagged++;
+      updateTopbar();
+      showBriefStatus(`📍 Location updated!`);
+    }
   }));
 
   const token = getToken();
