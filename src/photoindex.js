@@ -1,5 +1,4 @@
 import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
-import { isHashOrganized, normHash } from './organize.js';
 import { getAllCached, bulkPutCached } from './db.js';
 import { log } from './log.js';
 
@@ -15,13 +14,13 @@ function storedFileid() {
   return _fileid;
 }
 
-// Saves all organized, non-ignored cache entries to Photos/index.json.
+// Saves all non-ignored cache entries to Photos/index.json.
 // Called fire-and-forget at the end of every scan and rebuild.
 export async function flushPhotoIndex(rootFolderId) {
   try {
     const all = await getAllCached();
     const entries = all
-      .filter(r => !r.ignored && r.hash != null && isHashOrganized(normHash(r.hash)))
+      .filter(r => !r.ignored)
       .map(({ fileid, name, lat, lng, ts, hash }) => ({ fileid, name, lat, lng, ts, hash }));
     const json = JSON.stringify({ version: 1, entries });
     const newId = await uploadJsonToFolder(rootFolderId, FILENAME, json, storedFileid());
