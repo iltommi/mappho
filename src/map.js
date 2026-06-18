@@ -41,6 +41,9 @@ let pinDropOnPlace = null;
 let markerGeotagHandler = null;
 export function setMarkerGeotagHandler(fn) { markerGeotagHandler = fn; }
 
+let markerFixDateHandler = null;
+export function setMarkerFixDateHandler(fn) { markerFixDateHandler = fn; }
+
 const PIN_ICON = L.icon({
   iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
@@ -218,6 +221,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
         img.style.cursor = 'zoom-in';
         img.addEventListener('click', () => {
           setGeotagHandler(markerGeotagHandler);
+          setFixDateHandler(markerFixDateHandler);
           openSlideshow([markerData.get(marker)], 0);
         });
         div.insertBefore(img, caption);
