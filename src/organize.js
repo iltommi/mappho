@@ -1,5 +1,6 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, copyFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
-import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry } from './db.js';
+import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, getAllSharphoIndex } from './db.js';
+import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
 
@@ -128,37 +129,56 @@ export async function buildHashIndex(rootFolderId, onProgress) {
   return { count, takenNames: _takenNames };
 }
 
-// Loads the hash index from the persisted JSON on pCloud, falling back to a
-// full Photos/ listing if the file is absent or corrupt.
+// Loads the hash index. Order of preference:
+//   1. IDB (instant, no network) — used on every normal scan after the first
+//   2. pCloud JSON (one-time download after reinstall)
+//   3. Full Photos/ listing (fallback / forceRebuild)
 export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild = false } = {}) {
   _hashMap.clear();
   _takenNames.clear();
   _hashDirty  = false;
   _indexReady = false;
 
-  const stored = !forceRebuild && localStorage.getItem(HASH_INDEX_FILEID_KEY);
-  if (stored) {
-    _hashFileid = Number(stored);
-    try {
-      const data = await downloadJsonFile(_hashFileid);
-      if (Array.isArray(data?.entries)) {
-        const idbEntries = [];
-        for (const e of data.entries) {
-          _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
-          _takenNames.add(e.name);
-          idbEntries.push(e);
-        }
-        await clearSharphoIndex();
-        await bulkPutSharphoIndex(idbEntries);
-        _indexReady = true;
-        log('HashIndex', `loaded ${_hashMap.size} entries from JSON`);
-        onProgress?.(_hashMap.size);
-        return;
+  if (!forceRebuild) {
+    // Fast path: IDB already has the index from a previous scan
+    const idbEntries = await getAllSharphoIndex();
+    if (idbEntries.length > 0) {
+      for (const e of idbEntries) {
+        _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
+        _takenNames.add(e.name);
       }
-    } catch (e) {
-      log('HashIndex', `JSON load failed (${e.message}) — rebuilding from Photos/`);
-      _hashFileid = null;
-      localStorage.removeItem(HASH_INDEX_FILEID_KEY);
+      const storedFid = localStorage.getItem(HASH_INDEX_FILEID_KEY);
+      if (storedFid) _hashFileid = Number(storedFid);
+      _indexReady = true;
+      log('HashIndex', `loaded ${_hashMap.size} entries from IDB`);
+      onProgress?.(_hashMap.size);
+      return;
+    }
+
+    // IDB empty (reinstall) — download from pCloud JSON
+    const stored = localStorage.getItem(HASH_INDEX_FILEID_KEY);
+    if (stored) {
+      _hashFileid = Number(stored);
+      try {
+        const data = await downloadJsonFile(_hashFileid);
+        if (Array.isArray(data?.entries)) {
+          const entries = data.entries;
+          for (const e of entries) {
+            _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
+            _takenNames.add(e.name);
+          }
+          await clearSharphoIndex();
+          await bulkPutSharphoIndex(entries);
+          _indexReady = true;
+          log('HashIndex', `loaded ${_hashMap.size} entries from pCloud JSON`);
+          onProgress?.(_hashMap.size);
+          return;
+        }
+      } catch (e) {
+        log('HashIndex', `JSON load failed (${e.message}) — rebuilding from Photos/`);
+        _hashFileid = null;
+        localStorage.removeItem(HASH_INDEX_FILEID_KEY);
+      }
     }
   }
 
@@ -169,20 +189,20 @@ export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild
   log('HashIndex', `built ${count} entries from Photos/ listing`);
 }
 
-// Saves the in-memory index to pCloud as JSON. No-op if nothing changed.
-export async function flushOrganizeIndex(rootFolderId) {
+// Schedules a pCloud upload of the hash index. No-op if nothing changed.
+// The upload runs on the next syncmanager tick or when flushAll() is called.
+export function flushOrganizeIndex() {
   if (!_hashDirty) return;
-  const entries = [..._hashMap.entries()].map(([hash, v]) => ({ hash, ...v }));
-  try {
+  scheduleUpload('hashindex', async () => {
+    const rootFolderId = await getSharphoRoot();
+    const entries = [..._hashMap.entries()].map(([hash, v]) => ({ hash, ...v }));
     const json = JSON.stringify({ version: 1, entries });
     const newFileid = await uploadJsonToFolder(rootFolderId, HASH_INDEX_FILENAME, json, _hashFileid);
     _hashFileid = newFileid;
     if (newFileid) localStorage.setItem(HASH_INDEX_FILEID_KEY, String(newFileid));
     _hashDirty = false;
     log('HashIndex', `flushed ${entries.length} entries`);
-  } catch (e) {
-    log('HashIndex flush error', e.message);
-  }
+  });
 }
 
 // Resets per-scan folder/name caches without touching the hash index.
@@ -244,12 +264,7 @@ export async function removeOrganizedEntry(fileid) {
   if (foundName) _takenNames.delete(foundName);
   _hashDirty = true;
   await deleteSharphoIndexEntry(foundHash);
-  try {
-    const root = await getSharphoRoot();
-    await flushOrganizeIndex(root);
-  } catch (e) {
-    log('HashIndex remove flush error', e.message);
-  }
+  flushOrganizeIndex();
 }
 
 // ── Edit-time sync ─────────────────────────────────────────────────────────────
@@ -285,6 +300,7 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: existing.name });
     }
     _hashDirty = true;
+    flushOrganizeIndex();
   } catch (e) {
     log('SharPho sync error', e.message);
   }

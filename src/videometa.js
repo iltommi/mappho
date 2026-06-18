@@ -2,18 +2,35 @@ import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
 import { getSharphoRoot } from './organize.js';
 import { getCached, putCached, deleteOrphan } from './db.js';
 import { addMarker } from './map.js';
+import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
-const FILENAME      = 'sharpho-video-meta.json';
-const FILEID_KEY    = 'sharpho_video_meta_fileid';
+const FILENAME    = 'sharpho-video-meta.json';
+const FILEID_KEY  = 'sharpho_video_meta_fileid';
+const CONTENT_KEY = 'sharpho_videometa_content'; // mirrors JSON content locally
 
-let _loaded   = false;
-let _fileid   = null;             // pCloud fileid of the meta file (null = not yet uploaded)
-let _entries  = new Map();        // string(fileid) → { lat, lng, ts }
+let _loaded  = false;
+let _fileid  = null;
+let _entries = new Map(); // string(fileid) → { lat, lng, ts }
 
 async function load() {
   if (_loaded) return;
   _loaded = true;
+
+  // Fast path: content cached locally — no network needed
+  const local = localStorage.getItem(CONTENT_KEY);
+  if (local) {
+    try {
+      const data = JSON.parse(local);
+      for (const [id, entry] of Object.entries(data.entries ?? {})) _entries.set(id, entry);
+      const fid = localStorage.getItem(FILEID_KEY);
+      if (fid) _fileid = Number(fid);
+      log('VideoMeta', `loaded ${_entries.size} entries from local cache`);
+      return;
+    } catch { localStorage.removeItem(CONTENT_KEY); }
+  }
+
+  // Download from pCloud
   let stored = localStorage.getItem(FILEID_KEY);
   if (!stored) {
     try {
@@ -21,48 +38,49 @@ async function load() {
       _fileid = meta.fileid;
       localStorage.setItem(FILEID_KEY, String(_fileid));
       stored = String(_fileid);
-    } catch {
-      return;
-    }
+    } catch { return; }
   }
   _fileid = Number(stored);
   try {
     const data = await downloadJsonFile(_fileid);
-    for (const [id, entry] of Object.entries(data.entries ?? {})) {
-      _entries.set(id, entry);
-    }
-    log('VideoMeta', `loaded ${_entries.size} entries`);
+    for (const [id, entry] of Object.entries(data.entries ?? {})) _entries.set(id, entry);
+    localStorage.setItem(CONTENT_KEY, JSON.stringify({ version: 1, entries: Object.fromEntries(_entries) }));
+    log('VideoMeta', `loaded ${_entries.size} entries from pCloud`);
   } catch (e) {
     log('VideoMeta', `load failed (${e.message}) — resetting`);
-    _fileid = null;
-    _entries = new Map();
+    _fileid = null; _entries = new Map();
     localStorage.removeItem(FILEID_KEY);
+    localStorage.removeItem(CONTENT_KEY);
   }
 }
 
-async function flush() {
-  try {
-    const rootFolderId = await getSharphoRoot();
-    const jsonStr = JSON.stringify({ version: 1, entries: Object.fromEntries(_entries) });
-    const newFileid = await uploadJsonToFolder(rootFolderId, FILENAME, jsonStr, _fileid);
-    _fileid = newFileid;
-    if (newFileid) localStorage.setItem(FILEID_KEY, String(newFileid));
-  } catch (e) {
-    log('VideoMeta', `save failed: ${e.message}`);
-  }
+async function doUpload() {
+  const rootFolderId = await getSharphoRoot();
+  const jsonStr = JSON.stringify({ version: 1, entries: Object.fromEntries(_entries) });
+  const newFileid = await uploadJsonToFolder(rootFolderId, FILENAME, jsonStr, _fileid);
+  _fileid = newFileid;
+  if (newFileid) localStorage.setItem(FILEID_KEY, String(newFileid));
+  log('VideoMeta', `uploaded ${_entries.size} entries`);
+}
+
+function flush() {
+  // Mirror to localStorage immediately so the next session loads without network
+  localStorage.setItem(CONTENT_KEY, JSON.stringify({ version: 1, entries: Object.fromEntries(_entries) }));
+  // Schedule pCloud upload — batched by syncmanager
+  scheduleUpload('videometa', doUpload);
 }
 
 export async function setVideoMetaEntry(fileid, { lat, lng, ts }) {
   await load();
   _entries.set(String(fileid), { lat, lng, ts });
-  await flush();
+  flush();
 }
 
 export async function removeVideoMetaEntry(fileid) {
   await load();
   if (!_entries.has(String(fileid))) return;
   _entries.delete(String(fileid));
-  await flush();
+  flush();
 }
 
 // Applies stored GPS to any cache records that still have lat==null.
@@ -82,5 +100,5 @@ export async function applyVideoMeta() {
     addMarker(updated);
     applied++;
   }
-  if (applied) log('VideoMeta', `applied ${applied} GPS entries from pCloud`);
+  if (applied) log('VideoMeta', `applied ${applied} GPS entries from local cache`);
 }
