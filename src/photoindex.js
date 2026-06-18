@@ -1,4 +1,5 @@
 import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
+import { getSharphoRoot } from './organize.js';
 import { getAllCached, bulkPutCached } from './db.js';
 import { log } from './log.js';
 
@@ -16,14 +17,15 @@ function storedFileid() {
 
 // Saves all non-ignored cache entries to Photos/index.json.
 // Called fire-and-forget at the end of every scan and rebuild.
-export async function flushPhotoIndex(rootFolderId) {
+export async function flushPhotoIndex(rootFolderId = null) {
   try {
+    const folderId = rootFolderId ?? await getSharphoRoot();
     const all = await getAllCached();
     const entries = all
       .filter(r => !r.ignored)
       .map(({ fileid, name, lat, lng, ts, hash }) => ({ fileid, name, lat, lng, ts, hash }));
     const json = JSON.stringify({ version: 1, entries });
-    const newId = await uploadJsonToFolder(rootFolderId, FILENAME, json, storedFileid());
+    const newId = await uploadJsonToFolder(folderId, FILENAME, json, storedFileid());
     _fileid = newId;
     if (newId) localStorage.setItem(FILEID_KEY, String(newId));
     log('PhotoIndex', `saved ${entries.length} entries`);
