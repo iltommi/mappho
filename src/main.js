@@ -641,7 +641,23 @@ async function openFixLocationGrid() {
 }
 
 document.getElementById('fix-location-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
   openFixLocationGrid().catch(e => { log('Fix location error', e.message); showBriefStatus(`Error: ${e.message}`); });
+});
+
+document.getElementById('fix-date-only-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+  openLocatedUndatedGrid().catch(e => { log('Fix date error', e.message); showBriefStatus(`Error: ${e.message}`); });
+});
+
+document.getElementById('fix-position-only-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+  openDatedOrphanGrid().catch(e => { log('Fix position error', e.message); showBriefStatus(`Error: ${e.message}`); });
+});
+
+document.getElementById('fix-date-and-pos-btn').addEventListener('click', () => {
+  overflowMenu.classList.remove('open');
+  openNodatetimeGrid().catch(e => { log('Fix date & position error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
 async function openLocatedUndatedGrid() {
