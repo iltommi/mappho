@@ -411,13 +411,13 @@ function openFolderPicker() {
 }
 
 function closeFolderPicker() {
-  const oldIds = new Set(getSelectedFolders().map(f => f.id));
-  const folders = [...fpSelected.values()];
-  const newFolders = folders.length ? folders : [{ id: 0, name: '/' }];
-  saveSelectedFolders(newFolders);
-  updateFolderBtn();
   folderPicker.style.display = 'none';
-  const newIds = new Set(newFolders.map(f => f.id));
+  const folders = [...fpSelected.values()];
+  if (!folders.length) return;
+  const oldIds = new Set(getSelectedFolders().map(f => f.id));
+  saveSelectedFolders(folders);
+  updateFolderBtn();
+  const newIds = new Set(folders.map(f => f.id));
   const changed = oldIds.size !== newIds.size || [...oldIds].some(id => !newIds.has(id));
   if (changed) runScan();
 }
