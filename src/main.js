@@ -578,11 +578,11 @@ function openInfoPopup() {
   const located = topbarGeotagged + sessionGeotagged;
   const X = (e) => `<span class="icon-x">${e}</span>`;
   const rows = [
-    { icon: '📷',                   label: 'Total',            value: topbarTotal,          action: null },
-    { icon: '📍',                   label: 'Located',          value: located,              action: null },
-    { icon: X('📍'),                label: 'Dated',            value: topbarDated,          action: 'dated' },
-    { icon: X('📅'),                label: 'Located, no date', value: topbarLocatedUndated, action: 'located-undated' },
-    { icon: X('📅') + X('📍'),     label: 'Unknown',          value: topbarUnknown,        action: 'unknown' },
+    { icon: '📷',                   label: 'Total',             value: topbarTotal,          action: null },
+    { icon: '📅📍',                 label: 'Position & Date',   value: located,              action: null },
+    { icon: X('📍'),                label: 'Only Date',         value: topbarDated,          action: 'dated' },
+    { icon: X('📅'),                label: 'Only Position',     value: topbarLocatedUndated, action: 'located-undated' },
+    { icon: X('📅') + X('📍'),     label: 'Nothing',           value: topbarUnknown,        action: 'unknown' },
   ];
   infoRowsEl.innerHTML = rows.map(r =>
     r.action
