@@ -30,29 +30,6 @@ html, body {
 }
 #menu-fab:hover { opacity: 1; background: #334155; }
 
-#folder-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid #1e3a5f;
-}
-
-#folder-btn {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #334155;
-  background: #0f3460;
-  color: #e2e8f0;
-  font-size: .82rem;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* Folder picker overlay */
 #folder-picker {
