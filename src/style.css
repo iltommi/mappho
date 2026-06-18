@@ -202,6 +202,7 @@ html, body {
 .menu-item:last-child { border-bottom: none; }
 .menu-item:hover:not(:disabled) { background: #1e3a5f; }
 .menu-item:disabled { opacity: .4; cursor: default; }
+.menu-icon { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; flex-shrink: 0; }
 #retry-menu-btn { color: #fbbf24; }
 
 #map {

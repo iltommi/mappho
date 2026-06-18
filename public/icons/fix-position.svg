@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- Pin body -->
+  <path d="M11 2C7.1 2 4 5.1 4 9c0 5.5 7 13 7 13s7-7.5 7-13c0-3.9-3.1-7-7-7z" fill="#5a8fd4"/>
+  <!-- Pin inner circle -->
+  <circle cx="11" cy="9" r="2.8" fill="white"/>
+  <!-- Red X badge background -->
+  <circle cx="19.5" cy="4.5" r="4.5" fill="#e74c3c"/>
+  <!-- X lines -->
+  <line x1="17" y1="2" x2="22" y2="7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+  <line x1="22" y1="2" x2="17" y2="7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
