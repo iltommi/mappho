@@ -990,7 +990,10 @@ function showRetryDialog(files) {
     dialog.remove();
     const ctx = retryContext;
     const total = ctx?.prevTotal ?? files.length;
-    const stats = ctx?.prevStats ? { ...ctx.prevStats } : { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
+    const succeeded = total - files.length;
+    const stats = ctx?.prevStats
+      ? { ...ctx.prevStats, completed: succeeded, scanned: succeeded }
+      : { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
     const pool = new Set(), inFlight = new Map(), stillFailed = [];
     scanCancelled = false;
     stopScanBtn.style.display = '';
