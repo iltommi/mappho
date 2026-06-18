@@ -33,6 +33,7 @@ const scanStatusEl = document.getElementById('scan-status');
 let sessionGeotagged = 0;
 let scanCancelled = false;
 let retryQueue = [];
+let retryContext = null; // { prevStats, prevTotal } from the scan that produced the queue
 let topbarGeotagged = 0;
 let topbarDated   = 0;
 let topbarUnknown = 0;
@@ -743,6 +744,7 @@ async function rebuildScan() {
   if (failedFiles.length > 0) {
     log('Rebuild errors', `${failedFiles.length} files failed`);
     retryQueue = failedFiles;
+    retryContext = { prevStats: { ...stats }, prevTotal: total };
     updateRetryBtn();
     showRetryDialog(failedFiles);
   }
@@ -880,6 +882,7 @@ async function scan() {
   if (failedFiles.length > 0) {
     log('Scan errors', `${failedFiles.length} files failed to download`);
     retryQueue = failedFiles;
+    retryContext = { prevStats: { ...stats }, prevTotal: total };
     updateRetryBtn();
     showRetryDialog(failedFiles);
   }
@@ -981,14 +984,15 @@ function showRetryDialog(files) {
   });
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
-    const total = files.length;
-    const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
+    const ctx = retryContext;
+    const total = ctx?.prevTotal ?? files.length;
+    const stats = ctx?.prevStats ? { ...ctx.prevStats } : { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
     const pool = new Set(), inFlight = new Map(), stillFailed = [];
     scanCancelled = false;
     stopScanBtn.style.display = '';
     stopScanBtn.disabled = false;
     stopScanBtn.textContent = '■';
-    setProgress(0);
+    setProgress((stats.completed / total) * 100);
     try {
       await processFiles(files, total, stats, pool, inFlight, stillFailed);
       await Promise.all(pool);
@@ -998,9 +1002,10 @@ function showRetryDialog(files) {
     clearScanStatus();
     await reloadTopbarCounts();
     retryQueue = stillFailed;
+    retryContext = stillFailed.length > 0 ? { prevStats: { ...stats }, prevTotal: total } : null;
     updateRetryBtn();
     if (stillFailed.length === 0) { setProgress(100); setTimeout(() => setProgress(0), 1000); }
-    else setProgress(0);
+    else setProgress((stats.completed / total) * 100);
     log('Retry done', `${stillFailed.length} still failing after retry`);
     if (stillFailed.length > 0) showRetryDialog(stillFailed);
   });
