@@ -1,4 +1,4 @@
-import { uploadJsonToFolder, downloadJsonFile } from './pcloud.js';
+import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
 import { isHashOrganized, normHash } from './organize.js';
 import { getAllCached, bulkPutCached } from './db.js';
 import { log } from './log.js';
@@ -37,8 +37,17 @@ export async function flushPhotoIndex(rootFolderId) {
 // Only called when the local cache is empty (fresh install / cache cleared).
 // Returns the number of entries loaded, or 0 if unavailable.
 export async function loadPhotoIndex() {
-  const fid = storedFileid();
-  if (!fid) return 0;
+  let fid = storedFileid();
+  if (!fid) {
+    try {
+      const meta = await statByPath('/Photos/index.json');
+      _fileid = meta.fileid;
+      localStorage.setItem(FILEID_KEY, String(_fileid));
+      fid = _fileid;
+    } catch {
+      return 0;
+    }
+  }
   try {
     const data = await downloadJsonFile(fid);
     if (!Array.isArray(data?.entries) || !data.entries.length) return 0;
