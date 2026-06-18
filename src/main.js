@@ -636,6 +636,7 @@ async function startScan() {
   startScanInProgress = true;
   // Load cached markers first — no network needed, works immediately after wake.
   showBriefStatus('Loading cache…', 30000);
+  setProgress(0);
   let cached = await getAllCached();
   if (cached.length === 0) {
     const n = await loadPhotoIndex();
@@ -643,11 +644,19 @@ async function startScan() {
   }
   let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
-  for (const p of cached) {
-    if (p.ignored) { cachedIgnored++; continue; }
-    if (p.lat != null) { addMarker(p); cachedGeo++; }
+  const cacheTotal = cached.length;
+  for (let i = 0; i < cacheTotal; i++) {
+    const p = cached[i];
+    if (p.ignored) { cachedIgnored++; }
+    else if (p.lat != null) { addMarker(p); cachedGeo++; }
     else { toMigrate.push(p); if (p.ts != null) cachedDated++; else cachedUnknown++; }
+    if (i % 100 === 0) {
+      setProgress(cacheTotal > 0 ? (i / cacheTotal) * 100 : 0);
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
+  setProgress(100);
+  setTimeout(() => setProgress(0), 500);
   topbarGeotagged = cachedGeo;
   topbarDated     = cachedDated;
   topbarUnknown   = cachedUnknown;
