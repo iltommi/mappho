@@ -508,6 +508,17 @@ body.filter-open #map { top: 40px; }
   cursor: pointer;
   user-select: none;
 }
+#filter-reset-btn {
+  margin-left: auto;
+  font-size: .75rem;
+  color: #94a3b8;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+#filter-reset-btn:active { background: #1e3a5f; }
 .filter-dt-input {
   position: absolute;
   opacity: 0;
