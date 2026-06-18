@@ -5,6 +5,7 @@ import { getDateLocale } from './auth.js';
 const panel       = document.getElementById('filter-panel');
 const fromDisplay = document.getElementById('filter-from-val');
 const toDisplay   = document.getElementById('filter-to-val');
+const resetBtn    = document.getElementById('filter-reset-btn');
 
 let minTs = 0, maxTs = 0;
 let fromTs = 0, toTs = 0;
@@ -41,9 +42,16 @@ function scheduleRangeInfo() {
 function apply() {
   fromDisplay.textContent = fmt(fromTs);
   toDisplay.textContent   = fmt(toTs);
+  resetBtn.style.display  = (fromTs === minTs && toTs === maxTs) ? 'none' : '';
   filterMarkers(fromTs, toTs);
   scheduleRangeInfo();
 }
+
+resetBtn.addEventListener('click', () => {
+  fromTs = minTs;
+  toTs   = maxTs;
+  apply();
+});
 
 // Single tap: open date picker. Double tap within 350ms: reset to default.
 function makeDateDisplay(displayEl, getDefault) {
