@@ -16,6 +16,7 @@ import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganiz
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
+import { startSyncTimer, flushAll } from './syncmanager.js';
 import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
@@ -725,8 +726,9 @@ async function rebuildScan() {
   resetOrganizeState();
   setStatus('Rebuilding Photos index…', 0);
   await loadOrganizeIndex(root, n => setStatus(`Rebuilding Photos index… ${n} entries`, 0), { forceRebuild: true });
-  await flushOrganizeIndex(root);
-  flushPhotoIndex(root).catch(e => log('PhotoIndex flush error', e.message));
+  flushOrganizeIndex();
+  flushPhotoIndex(root);
+  await flushAll();
 
   clearScanStatus();
   await reloadTopbarCounts();
@@ -859,12 +861,13 @@ async function scan() {
   log('Drain', `waiting for: ${[...inFlight.values()].join(', ') || 'none'}`);
   await Promise.all(pool);
 
-  // Persist hash index and photo index (no-op if nothing was organized this scan).
+  // Schedule uploads for hash index and photo index, then force-flush immediately.
   if (_organizeRoot) {
-    flushOrganizeIndex(_organizeRoot).catch(e => log('HashIndex flush error', e.message));
-    flushPhotoIndex(_organizeRoot).catch(e => log('PhotoIndex flush error', e.message));
+    flushOrganizeIndex();
+    flushPhotoIndex(_organizeRoot);
   }
   _organizeRoot = null;
+  flushAll().catch(e => log('Sync flush error', e.message));
 
   clearScanStatus();
   await reloadTopbarCounts();
@@ -1014,6 +1017,7 @@ function showRetryDialog(files) {
 
 async function main() {
   handleCallback();
+  startSyncTimer();
   initMap();
   setAfterDeleteCallback(() => reloadTopbarCounts());
   document.getElementById('retry-menu-btn').addEventListener('click', () => {

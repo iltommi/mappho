@@ -207,6 +207,10 @@ export async function bulkPutSharphoIndex(entries) {
   await tx.done;
 }
 
+export async function getAllSharphoIndex() {
+  return (await db()).getAll(SHARPHO_INDEX_STORE);
+}
+
 export async function getSharphoIndexEntry(hash) {
   if (!hash) return null;
   return (await db()).get(SHARPHO_INDEX_STORE, hash);

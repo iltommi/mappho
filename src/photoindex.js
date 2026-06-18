@@ -1,6 +1,7 @@
 import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
 import { getSharphoRoot } from './organize.js';
 import { getAllCached, bulkPutCached } from './db.js';
+import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
 const FILENAME   = 'index.json';
@@ -15,10 +16,10 @@ function storedFileid() {
   return _fileid;
 }
 
-// Saves all non-ignored cache entries to Photos/index.json.
-// Called fire-and-forget at the end of every scan and rebuild.
-export async function flushPhotoIndex(rootFolderId = null) {
-  try {
+// Schedules a pCloud upload of all non-ignored cache entries.
+// The upload runs on the next syncmanager tick or when flushAll() is called.
+export function flushPhotoIndex(rootFolderId = null) {
+  scheduleUpload('photoindex', async () => {
     const folderId = rootFolderId ?? await getSharphoRoot();
     const all = await getAllCached();
     const entries = all
@@ -29,9 +30,7 @@ export async function flushPhotoIndex(rootFolderId = null) {
     _fileid = newId;
     if (newId) localStorage.setItem(FILEID_KEY, String(newId));
     log('PhotoIndex', `saved ${entries.length} entries`);
-  } catch (e) {
-    log('PhotoIndex', `save failed: ${e.message}`);
-  }
+  });
 }
 
 // Downloads Photos/index.json and bulk-inserts into IDB.
