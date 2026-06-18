@@ -122,30 +122,50 @@ export function initMap() {
 
   map.on('moveend zoomend', updateLegend);
 
-  cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false });
+  cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false, showCoverageOnHover: false });
 
-  let clusterPressTime = 0;
+  let longPressTimer = null;
+  let suppressNextClusterClick = false;
+  let pressOrigin = null;
+
   map.getContainer().addEventListener('pointerdown', e => {
-    if (e.target.closest('.marker-cluster')) clusterPressTime = Date.now();
+    if (!e.target.closest('.marker-cluster')) return;
+    pressOrigin = { x: e.clientX, y: e.clientY };
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      suppressNextClusterClick = true;
+    }, 500);
+  }, { capture: true });
+
+  map.getContainer().addEventListener('pointermove', e => {
+    if (!longPressTimer || !pressOrigin) return;
+    if (Math.hypot(e.clientX - pressOrigin.x, e.clientY - pressOrigin.y) > 10) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }, { capture: true });
+
+  map.getContainer().addEventListener('pointerup', () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
   }, { capture: true });
 
   cluster.on('clusterclick', e => {
-    const duration = clusterPressTime > 0 ? Date.now() - clusterPressTime : 0;
-    clusterPressTime = 0;
-    if (duration >= 500) {
+    if (suppressNextClusterClick) {
+      suppressNextClusterClick = false;
       const children = e.layer.getAllChildMarkers();
       const photos = children.map(m => markerData.get(m)).filter(Boolean);
-      log('clusterclick long-press', `${photos.length} photos`);
+      log('cluster long-press', `${photos.length} photos`);
       setGeotagHandler(null);
       setFixDateHandler(null);
       setIgnoreHandler(null);
       openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
+      return;
+    }
+    if (map.getZoom() === map.getMaxZoom()) {
+      e.layer.spiderfy();
     } else {
-      if (map.getZoom() === map.getMaxZoom()) {
-        e.layer.spiderfy();
-      } else {
-        e.layer.zoomToBounds({ padding: [20, 20] });
-      }
+      e.layer.zoomToBounds({ padding: [20, 20] });
     }
   });
   map.addLayer(cluster);
