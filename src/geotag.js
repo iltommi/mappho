@@ -4,6 +4,7 @@ import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } 
 import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
 import { syncSharphoOnEdit } from './organize.js';
 import { setVideoMetaEntry } from './videometa.js';
+import { flushPhotoIndex } from './photoindex.js';
 import { log } from './log.js';
 
 const bar      = document.getElementById('pin-drop-bar');
@@ -178,6 +179,7 @@ saveBtn.addEventListener('click', async () => {
       }
     }
     finish();
+    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     onDone?.({ success: ok > 0, count: ok, failed });
     return;
   }
@@ -188,6 +190,7 @@ saveBtn.addEventListener('click', async () => {
   try {
     await applyGeotagToPhoto(pendingPhoto, lat, lng);
     finish();
+    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     onDone?.({ success: true });
   } catch (e) {
     log('Geotag error', e.message);

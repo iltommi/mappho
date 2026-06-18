@@ -217,6 +217,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
     else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
 
     await reloadTopbarCounts();
+    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     fixDateBar.style.display = 'none';
     document.body.classList.remove('action-bar-open');
     fixDateOnDone?.();
