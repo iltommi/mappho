@@ -504,9 +504,9 @@ function updateCaption() {
   const buildCaption = folder => folder ? `${folder} / ${name}` : name;
 
   captionEl.textContent = buildCaption('');
-  if (geotagHandler) geotagBtn.style.display = '';
-  fixDateBtn.style.display  = fixDateHandler ? '' : 'none';
-  ignoreBtn.style.display   = ignoreHandler  ? '' : 'none';
+  geotagBtn.style.display   = '';
+  fixDateBtn.style.display  = '';
+  ignoreBtn.style.display   = ignoreHandler ? '' : 'none';
   playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   shareBtn.style.display = isVideo(name) ? 'none' : '';
@@ -572,8 +572,6 @@ async function go(index) {
 
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
-  geotagHandler  = null;
-  fixDateHandler = null;
   ignoreHandler  = null;
   resetLazy();
   lazyDone = true;
@@ -608,7 +606,8 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
     photos = firstPage;
   }
   if (!photos.length) return;
-  geotagBtn.style.display = geotagHandler ? '' : 'none';
+  geotagBtn.style.display = '';
+  fixDateBtn.style.display = '';
   el.classList.add('open');
   go(startIndex);
 }

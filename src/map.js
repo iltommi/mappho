@@ -146,8 +146,6 @@ export function initMap() {
         const photos = children.map(m => markerData.get(m)).filter(Boolean);
         if (!photos.length) return;
         log('cluster long-press', `${photos.length} photos`);
-        setGeotagHandler(null);
-        setFixDateHandler(null);
         setIgnoreHandler(null);
         openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
       });
