@@ -5,7 +5,7 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
-import { listImages, listFolders, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName } from './map.js';
@@ -328,14 +328,7 @@ function fpUpdateCount() {
 }
 
 function updateFolderBtn() {
-  const folders = getSelectedFolders();
-  if (folders.length === 1 && folders[0].id === 0) {
-    folderBtn.textContent = '/';
-  } else if (folders.length === 1) {
-    folderBtn.textContent = folders[0].name;
-  } else {
-    folderBtn.textContent = `${folders.length} folders`;
-  }
+  folderBtn.textContent = 'Folders';
 }
 
 async function fpRender() {
@@ -344,6 +337,35 @@ async function fpRender() {
   fpBack.disabled = fpStack.length <= 1;
   fpUpdateCount();
   fpList.innerHTML = '';
+
+  // Selected folders summary — lets user remove any selected folder (incl. deleted ones)
+  if (fpSelected.size > 0) {
+    const header = document.createElement('div');
+    header.style.cssText = 'padding:8px 20px 4px;color:#94a3b8;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em';
+    header.textContent = 'Selected';
+    fpList.appendChild(header);
+    for (const [key, f] of fpSelected) {
+      const row = document.createElement('div');
+      row.className = 'fp-item fp-selected-entry';
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between';
+      const label = document.createElement('span');
+      label.textContent = `☑ ${f.name}`;
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.style.cssText = 'background:none;border:none;color:#94a3b8;font-size:1rem;cursor:pointer;padding:0 4px';
+      removeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        fpSelected.delete(key);
+        fpRender();
+      });
+      row.appendChild(label);
+      row.appendChild(removeBtn);
+      fpList.appendChild(row);
+    }
+    const sep = document.createElement('div');
+    sep.style.cssText = 'height:1px;background:#334155;margin:6px 0';
+    fpList.appendChild(sep);
+  }
 
   // Toggle-include row for the current folder
   const toggleRow = document.createElement('button');
@@ -397,17 +419,24 @@ async function fpRender() {
   }
 }
 
-function openFolderPicker() {
-  // Load current saved selection into the working set.
+async function openFolderPicker() {
   fpSelected = new Map();
   const saved = getSelectedFolders();
-  // Don't pre-populate the "/" default — it's the fallback, not an explicit selection.
   for (const f of saved) {
     if (f.id !== 0) fpSelected.set(String(f.id), f);
   }
   fpStack = [{ id: 0, name: '/' }];
   folderPicker.style.display = 'flex';
   fpRender();
+
+  // Validate saved folders in the background — remove any that no longer exist on pCloud.
+  for (const [key, f] of [...fpSelected.entries()]) {
+    const exists = await folderExists(f.id);
+    if (!exists) {
+      fpSelected.delete(key);
+      fpRender();
+    }
+  }
 }
 
 function closeFolderPicker() {

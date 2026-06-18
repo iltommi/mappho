@@ -35,6 +35,15 @@ export async function listFolders(folderid = 0) {
   return (data.metadata.contents ?? []).filter(i => i.isfolder);
 }
 
+export async function folderExists(folderid) {
+  try {
+    await api('stat', { folderid });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function* listImages(folderid = 0, excludeFolderId = null) {
   const queue = [folderid];
   while (queue.length > 0) {
