@@ -534,14 +534,17 @@ function openInfoPopup() {
 }
 
 async function openDatedOrphanGrid() {
-  const total = await countOrphansInRange(1, UNDATED_TS - 1);
-  if (!total) { showBriefStatus('No dated photos without location.'); return; }
+  const range = getActiveFilterRange();
+  const from = range?.from ?? 1;
+  const to = range?.to ?? UNDATED_TS - 1;
+  const total = await countOrphansInRange(from, to);
+  if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid((offset, limit) => getOrphansPage(offset, limit, 1, UNDATED_TS - 1), total, { reopen: openDatedOrphanGrid });
+  openGrid((offset, limit) => getOrphansPage(offset, limit, from, to), total, { reopen: openDatedOrphanGrid });
 }
 
 infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
