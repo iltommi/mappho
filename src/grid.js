@@ -20,10 +20,14 @@ const sentinel   = document.getElementById('grid-sentinel');
 const scrollEl   = document.getElementById('grid-scroll');
 const bulkBar    = document.getElementById('grid-bulk-bar');
 const bulkCountEl  = document.getElementById('grid-bulk-count');
-const bulkGeotagBtn = document.getElementById('grid-bulk-geotag');
-const bulkShareBtn  = document.getElementById('grid-bulk-share');
-const bulkDeleteBtn = document.getElementById('grid-bulk-delete');
-const bulkCancelBtn = document.getElementById('grid-bulk-cancel');
+const bulkGeotagBtn   = document.getElementById('grid-bulk-geotag');
+const bulkFixDateBtn  = document.getElementById('grid-bulk-fixdate');
+const bulkShareBtn    = document.getElementById('grid-bulk-share');
+const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
+const bulkCancelBtn   = document.getElementById('grid-bulk-cancel');
+
+let bulkFixDateHandler = null;
+export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
 
 const PAGE_SIZE  = 60;
 const THUMB_SIZE = '256x256';
@@ -59,10 +63,11 @@ function tileAt(index) {
 }
 
 function updateBulkBar() {
-  bulkCountEl.textContent = `${selected.size} selected`;
-  bulkGeotagBtn.disabled  = selected.size === 0;
-  bulkShareBtn.disabled   = selected.size === 0;
-  bulkDeleteBtn.disabled  = selected.size === 0;
+  bulkCountEl.textContent  = `${selected.size} selected`;
+  bulkGeotagBtn.disabled   = selected.size === 0;
+  bulkFixDateBtn.disabled  = selected.size === 0;
+  bulkShareBtn.disabled    = selected.size === 0;
+  bulkDeleteBtn.disabled   = selected.size === 0;
 }
 
 function setSelectMode(on) {
@@ -91,6 +96,17 @@ bulkGeotagBtn.addEventListener('click', () => {
   close();
   startBulkGeotagging(photos, ({ success, count, failed }) => {
     if (success) log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
+    reopen?.();
+  });
+});
+
+bulkFixDateBtn.addEventListener('click', () => {
+  if (!selected.size || !bulkFixDateHandler) return;
+  const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const reopen = reopenFn;
+  close();
+  bulkFixDateHandler(photos, ({ success, count, failed }) => {
+    if (success) log('Bulk fix date', `dated ${count}${failed ? `, ${failed} failed` : ''}`);
     reopen?.();
   });
 });
