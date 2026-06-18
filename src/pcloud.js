@@ -71,8 +71,9 @@ export async function createFolderIfNotExists(folderid, name) {
 }
 
 // Server-side copy — no bandwidth cost regardless of file size. Returns the new fileid.
-export async function copyFile(fileid, tofolderid, toname) {
-  const data = await api('copyfile', { fileid, tofolderid, toname });
+// renameifexists=1 prevents pCloud from creating _original backup files on name conflicts.
+export async function copyFile(fileid, tofolderid) {
+  const data = await api('copyfile', { fileid, tofolderid, renameifexists: 1 });
   return data.metadata.fileid;
 }
 
@@ -252,9 +253,8 @@ export async function renameFile(fileid, { toname, tofolderid } = {}) {
 
 export async function overwriteFile(fileid, arrayBuffer) {
   const { name, parentfolderid } = await getFileStat(fileid);
-  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
   await deleteFile(fileid);
-  return newFileid;
+  return uploadFile(parentfolderid, name, arrayBuffer);
 }
 
 export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFileid = null) {
