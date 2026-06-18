@@ -655,8 +655,6 @@ async function startScan() {
       await new Promise(r => setTimeout(r, 0));
     }
   }
-  setProgress(100);
-  setTimeout(() => setProgress(0), 500);
   topbarGeotagged = cachedGeo;
   topbarDated     = cachedDated;
   topbarUnknown   = cachedUnknown;
@@ -668,13 +666,15 @@ async function startScan() {
     catch (e) { log('orphan migration error', e.message); }
   }
 
+  await applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
+  await applyIgnored().catch(e => log('Ignored apply error', e.message));
+
+  setProgress(100);
+  setTimeout(() => setProgress(0), 500);
   updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and pick a folder to scan.');
-
-  applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
-  applyIgnored().catch(e => log('Ignored apply error', e.message));
 
   // Populate folder picker — a network failure here shouldn't affect the already-loaded markers.
   try {
