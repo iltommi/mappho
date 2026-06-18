@@ -273,7 +273,7 @@ nextBtn.addEventListener('click', () => navigate(1));
 curImg.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || imgScale !== 1) return;
-  if (isVideo(photo.name)) openVideoPlayer(photo.fileid);
+  if (isVideo(photo.name)) openVideoPlayer(photo.fileid, photo.name);
   else                      openLightbox(photo.fileid, photo.name);
 });
 
