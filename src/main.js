@@ -371,7 +371,7 @@ function fpUpdateCount() {
 }
 
 function updateFolderBtn() {
-  folderBtn.textContent = 'Folders';
+  folderBtn.textContent = '📁 Folders';
 }
 
 async function fpRender() {
