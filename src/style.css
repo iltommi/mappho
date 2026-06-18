@@ -202,7 +202,22 @@ html, body {
 .menu-item:last-child { border-bottom: none; }
 .menu-item:hover:not(:disabled) { background: #1e3a5f; }
 .menu-item:disabled { opacity: .4; cursor: default; }
-.menu-icon { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; flex-shrink: 0; }
+.icon-x {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+}
+.icon-x::after {
+  content: '✕';
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  font-size: 9px;
+  font-weight: bold;
+  color: #ef4444;
+  text-shadow: 0 0 2px #000;
+  line-height: 1;
+}
 #retry-menu-btn { color: #fbbf24; }
 
 #map {
