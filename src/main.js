@@ -301,7 +301,7 @@ function getSelectedFolders() {
   }
   const raw = localStorage.getItem(FOLDERS_KEY);
   const arr = raw ? JSON.parse(raw) : [];
-  return arr.length ? arr : [{ id: 0, name: 'All photos' }];
+  return arr.length ? arr : [{ id: 0, name: '/' }];
 }
 
 function saveSelectedFolders(folders) {
@@ -319,7 +319,7 @@ const fpBreadcrumb  = document.getElementById('fp-breadcrumb');
 const fpCount       = document.getElementById('fp-count');
 const fpList        = document.getElementById('fp-list');
 
-// Stack of { id, name } — root entry is always { id: 0, name: 'All photos' }
+// Stack of { id, name } — root entry is always { id: 0, name: '/' }
 let fpStack = [];
 
 function fpUpdateCount() {
@@ -330,7 +330,7 @@ function fpUpdateCount() {
 function updateFolderBtn() {
   const folders = getSelectedFolders();
   if (folders.length === 1 && folders[0].id === 0) {
-    folderBtn.textContent = 'All photos';
+    folderBtn.textContent = '/';
   } else if (folders.length === 1) {
     folderBtn.textContent = folders[0].name;
   } else {
@@ -401,11 +401,11 @@ function openFolderPicker() {
   // Load current saved selection into the working set.
   fpSelected = new Map();
   const saved = getSelectedFolders();
-  // Don't pre-populate the "All photos" default — it's the fallback, not an explicit selection.
+  // Don't pre-populate the "/" default — it's the fallback, not an explicit selection.
   for (const f of saved) {
     if (f.id !== 0) fpSelected.set(String(f.id), f);
   }
-  fpStack = [{ id: 0, name: 'All photos' }];
+  fpStack = [{ id: 0, name: '/' }];
   folderPicker.style.display = 'flex';
   fpRender();
 }
@@ -413,7 +413,7 @@ function openFolderPicker() {
 function closeFolderPicker() {
   const oldIds = new Set(getSelectedFolders().map(f => f.id));
   const folders = [...fpSelected.values()];
-  const newFolders = folders.length ? folders : [{ id: 0, name: 'All photos' }];
+  const newFolders = folders.length ? folders : [{ id: 0, name: '/' }];
   saveSelectedFolders(newFolders);
   updateFolderBtn();
   folderPicker.style.display = 'none';
@@ -826,14 +826,14 @@ async function scan() {
   const inFlight = new Map();
 
   const folders = getSelectedFolders();
-  log('Scanning folders', folders.map(f => `${f.name ?? 'All photos'} (id=${f.id})`).join(', '));
+  log('Scanning folders', folders.map(f => `${f.name ?? '/'} (id=${f.id})`).join(', '));
 
   // Phase 1: BFS all selected folders to discover the full file list
   setStatus('Discovering files…');
   const sharphoFolderId = await findSharphoRootIfExists();
   const allFiles = [];
   for (const { id: folderId, name: folderName } of folders) {
-    log('Discovering', `${folderName ?? 'All photos'} (id=${folderId})`);
+    log('Discovering', `${folderName ?? '/'} (id=${folderId})`);
     for await (const file of listImages(folderId, sharphoFolderId)) {
       allFiles.push(file);
       setStatus(`Discovering… ${allFiles.length} files found`);
