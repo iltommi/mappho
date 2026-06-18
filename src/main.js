@@ -606,7 +606,9 @@ document.getElementById('fix-location-btn').addEventListener('click', () => {
 async function openLocatedUndatedGrid() {
   const total = await countLocatedUndated();
   if (!total) { showBriefStatus('No located photos without a date.'); return; }
-  setGeotagHandler(null);
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
+  }));
   setFixDateHandler(photo => startFixDate(photo, () => { openLocatedUndatedGrid(); }));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getLocatedUndatedPage(offset, limit), total, { reopen: openLocatedUndatedGrid });
@@ -1107,13 +1109,9 @@ async function main() {
   });
 
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) {
-      sessionGeotagged++;
-      updateTopbar();
-      showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`);
-    }
-    openOrphanSlideshow();
+    if (success) { sessionGeotagged++; updateTopbar(); showBriefStatus(`📍 Location updated!`); }
   }));
+  setFixDateHandler(photo => startFixDate(photo, () => {}));
 
   // Handlers for map marker slideshow — update in place, no redirect.
   setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
