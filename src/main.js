@@ -7,7 +7,7 @@ import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
 import { listImages, listFolders, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
-import { extractMP4Meta } from './mp4.js';
+import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
@@ -171,7 +171,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     const { fileid, name } = fixDatePhoto;
     const isHeic = /\.heic$/i.test(name);
-    const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(name);
+    const isMP4  = isVideo(name);
 
     let newFileid = fileid;
     let newName   = name;
@@ -776,7 +776,7 @@ async function processFile(file, stats) {
   let exif;
   try {
     const isHeic = /\.heic$/i.test(file.name);
-    const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(file.name);
+    const isMP4  = isVideo(file.name);
     if (isMP4) {
       const buf = await fetchFileHead(file.fileid);
       if (buf) log(`${file.name}`, `buffer: ${buf.byteLength}B`);
