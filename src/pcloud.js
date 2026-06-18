@@ -51,7 +51,7 @@ export async function* listImages(folderid = 0, excludeFolderId = null) {
     for (const item of data.metadata.contents ?? []) {
       if (item.isfolder) {
         if (excludeFolderId == null || item.folderid !== excludeFolderId) queue.push(item.folderid);
-      } else if (/\.(jpe?g|heic|mp4|mov|3gp|3gpp)$/i.test(item.name)) {
+      } else if (/\.(jpe?g|heic|mp4|mov|3gp|3gpp|avi)$/i.test(item.name)) {
         yield item;
       }
     }

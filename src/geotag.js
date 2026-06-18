@@ -3,6 +3,7 @@ import { deleteRecord, deleteOrphan, putCached } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, addMarker, findClosestMarker } from './map.js';
 import { syncSharphoOnEdit } from './organize.js';
+import { isVideo } from './mp4.js';
 import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
 import { log } from './log.js';
@@ -95,7 +96,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const { fileid, name, ts } = photo;
   const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
   const isHeic = /\.heic$/i.test(name);
-  const isMP4  = /\.(mp4|mov|3gp|3gpp)$/i.test(name);
+  const isMP4  = isVideo(name);
 
   if (isMP4) {
     await deleteRecord(fileid);

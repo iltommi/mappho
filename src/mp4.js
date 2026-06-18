@@ -63,4 +63,4 @@ export function extractMP4Meta(buffer) {
   return result;
 }
 
-export const isVideo = name => /\.(mp4|mov|3gp|3gpp)$/i.test(name ?? '');
+export const isVideo = name => /\.(mp4|mov|3gp|3gpp|avi)$/i.test(name ?? '');
