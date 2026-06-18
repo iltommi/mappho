@@ -187,13 +187,15 @@ html, body {
 .icon-x::after {
   content: '✕';
   position: absolute;
-  top: -3px;
-  right: -4px;
-  font-size: 9px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2em;
   font-weight: bold;
   color: #ef4444;
-  text-shadow: 0 0 2px #000;
+  text-shadow: 0 0 4px #000, 0 0 4px #000;
   line-height: 1;
+  pointer-events: none;
 }
 #retry-menu-btn { color: #fbbf24; }
 
