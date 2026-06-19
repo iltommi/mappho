@@ -5,6 +5,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import 'leaflet.heat';
 import { fetchThumbSrc } from './pcloud.js';
+import { deleteRecord, deleteOrphan } from './db.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid } from './grid.js';
@@ -225,8 +226,15 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
         div.insertBefore(img, caption);
       }
       marker.getPopup()?.update();
-    }).catch(() => {
+    }).catch(e => {
       loading.remove();
+      if (e.pcloudResult === 2009) {
+        marker.closePopup();
+        removeMarker(fileid);
+        Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
+        log('Purged stale marker', fileid);
+        return;
+      }
       const errEl = document.createElement('p');
       errEl.className = 'popup-error';
       errEl.textContent = 'Preview unavailable';
