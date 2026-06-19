@@ -120,6 +120,7 @@ async function openOrphanGrid() {
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    openOrphanGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -138,6 +139,7 @@ async function openNodatetimeGrid() {
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    openNodatetimeGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -509,7 +511,23 @@ function populateFolderPicker() {
   updateFolderBtn();
 }
 
+let eraseCacheConfirmPending = false;
+let eraseCacheConfirmTimer  = null;
+
 eraseCacheBtn.addEventListener('click', async () => {
+  if (!eraseCacheConfirmPending) {
+    eraseCacheConfirmPending = true;
+    const orig = eraseCacheBtn.textContent;
+    eraseCacheBtn.textContent = '⚠️ Tap again to confirm';
+    eraseCacheConfirmTimer = setTimeout(() => {
+      eraseCacheConfirmPending = false;
+      eraseCacheBtn.textContent = orig;
+    }, 3000);
+    return;
+  }
+  clearTimeout(eraseCacheConfirmTimer);
+  eraseCacheConfirmPending = false;
+  eraseCacheBtn.textContent = '🗑 Erase cache';
   infoPopup.style.display = 'none';
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
@@ -626,6 +644,7 @@ async function openDatedOrphanGrid() {
   if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+    openDatedOrphanGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -656,6 +675,7 @@ async function openLocatedUndatedGrid() {
   if (!total) { showBriefStatus('No located photos without a date.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    openLocatedUndatedGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, () => { openLocatedUndatedGrid(); }));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
@@ -778,7 +798,11 @@ async function startScan() {
 let _organizeRoot = null;  // Photos/ folderid (null = organize not ready)
 let _organizeLock = Promise.resolve(); // serialises concurrent organizeFile calls
 
+let scanOperationInProgress = false;
+
 async function runScan() {
+  if (scanOperationInProgress) { showBriefStatus('A scan is already in progress.'); return; }
+  scanOperationInProgress = true;
   scanCancelled = false;
   stopScanBtn.style.display = '';
   stopScanBtn.disabled = false;
@@ -798,10 +822,13 @@ async function runScan() {
     console.error(e);
   } finally {
     stopScanBtn.style.display = 'none';
+    scanOperationInProgress = false;
   }
 }
 
 async function runRebuild() {
+  if (scanOperationInProgress) { showBriefStatus('A scan is already in progress — stop it first.'); return; }
+  scanOperationInProgress = true;
   scanCancelled = false;
   stopScanBtn.style.display = '';
   stopScanBtn.disabled = false;
@@ -821,6 +848,7 @@ async function runRebuild() {
     console.error(e);
   } finally {
     stopScanBtn.style.display = 'none';
+    scanOperationInProgress = false;
   }
 }
 
