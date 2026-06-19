@@ -125,9 +125,8 @@ html, body {
 
 /* Overflow menu */
 
-#heatmap-btn {
+#heatmap-btn, #media-type-btn {
   position: fixed;
-  bottom: 24px;
   right: 16px;
   width: 48px;
   height: 48px;
@@ -142,8 +141,10 @@ html, body {
   transition: opacity .15s, background .15s;
   z-index: 1000;
 }
-#heatmap-btn:hover { opacity: 1; }
-#heatmap-btn.active { background: #1e3a5f; opacity: 1; }
+#heatmap-btn { bottom: 24px; }
+#media-type-btn { bottom: 80px; }
+#heatmap-btn:hover, #media-type-btn:hover { opacity: 1; }
+#heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 
 #overflow-menu {
   display: none;
@@ -1391,4 +1392,5 @@ body.filter-open #map { top: 40px; }
 
 /* Hide FABs while action bars are active */
 body.action-bar-open #menu-fab,
-body.action-bar-open #heatmap-btn { display: none !important; }
+body.action-bar-open #heatmap-btn,
+body.action-bar-open #media-type-btn { display: none !important; }
