@@ -1,5 +1,5 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, copyFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
-import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, getAllSharphoIndex } from './db.js';
+import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, getAllSharphoIndex, UNDATED_TS } from './db.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
@@ -278,14 +278,16 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
   if (!existing) return;
 
   try {
-    const rootFolderId   = await getSharphoRoot();
-    const monthFolderId  = (ts != null && ts > 0)
+    const rootFolderId = await getSharphoRoot();
+    const hasDate      = ts != null && ts > 0 && ts < UNDATED_TS;
+    const monthFolderId = hasDate
       ? await getSharphoMonthFolder(rootFolderId, ts)
       : await getSharphoUnknownFolder(rootFolderId);
 
     if (monthFolderId === existing.folderid && newHash === oldHash) return;
 
     if (monthFolderId === existing.folderid) {
+      // Same folder, content changed — replace file keeping the existing name.
       await deleteFile(existing.fileid);
       const refreshedFileid = await copyFile(newFileid, monthFolderId, existing.name);
       await deleteSharphoIndexEntry(oldHash);
@@ -293,11 +295,14 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
     } else {
-      await renameFile(existing.fileid, { tofolderid: monthFolderId });
+      // Different folder — move and rename to match the new date.
+      const newName = hasDate ? nextName(ts, extOf(existing.name)) : existing.name;
+      await renameFile(existing.fileid, { tofolderid: monthFolderId, toname: newName });
+      _takenNames.add(newName);
       await deleteSharphoIndexEntry(oldHash);
-      await putSharphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: existing.name });
+      await putSharphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: newName });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: existing.name });
+      _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: newName });
     }
     _hashDirty = true;
     flushOrganizeIndex();
