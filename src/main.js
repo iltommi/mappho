@@ -503,14 +503,14 @@ fpBack.addEventListener('click', () => {
   if (fpStack.length > 1) { fpStack.pop(); fpRender(); }
 });
 fpClose.addEventListener('click', closeFolderPicker);
-folderBtn.addEventListener('click', () => { overflowMenu.classList.remove('open'); openFolderPicker(); });
+folderBtn.addEventListener('click', () => { infoPopup.style.display = 'none'; openFolderPicker(); });
 
 function populateFolderPicker() {
   updateFolderBtn();
 }
 
 eraseCacheBtn.addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
+  infoPopup.style.display = 'none';
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
   heatmapBtn.classList.remove('active');
@@ -528,7 +528,7 @@ eraseCacheBtn.addEventListener('click', async () => {
 
 
 document.getElementById('rebuild-btn').addEventListener('click', async () => {
-  overflowMenu.classList.remove('open');
+  infoPopup.style.display = 'none';
   log('Rebuild', 'rebuilding cache from Photos/ folder');
   const btn = document.getElementById('rebuild-btn');
   btn.disabled = true;

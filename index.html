@@ -9,15 +9,12 @@
 <body>
   <button id="menu-fab" style="display:none">⋮</button>
   <div id="overflow-menu">
-    <button id="folder-btn" class="menu-item">📁 Folders</button>
-    <button id="erase-cache-btn" class="menu-item">🗑 Erase cache</button>
-    <button id="rebuild-btn" class="menu-item">🔄 Rebuild from Photos</button>
     <button id="filter-menu-btn" class="menu-item">📅↔️📅 Date filter</button>
     <button id="fix-date-only-btn" class="menu-item"><span class="icon-x">📅</span> Fix date</button>
     <button id="fix-position-only-btn" class="menu-item"><span class="icon-x">📍</span> Fix position</button>
     <button id="fix-date-and-pos-btn" class="menu-item"><span class="icon-x">📅</span><span class="icon-x">📍</span> Fix date &amp; position</button>
     <button id="retry-menu-btn" class="menu-item" style="display:none"></button>
-    <button id="info-btn" class="menu-item">ℹ️ Info</button>
+    <button id="info-btn" class="menu-item">⚙️ Settings</button>
   </div>
 
   <div id="login-overlay">
@@ -181,11 +178,15 @@
   <div id="info-popup" style="display:none">
     <div id="info-popup-inner">
       <div id="info-popup-header">
-        <span>Library stats</span>
+        <span>Settings</span>
         <button id="info-popup-close">✕</button>
       </div>
       <div id="info-rows"></div>
       <div id="info-actions">
+        <button id="folder-btn">📁 Folders</button>
+        <button id="erase-cache-btn">🗑 Erase cache</button>
+        <button id="rebuild-btn">🔄 Rebuild from Photos</button>
+        <div class="info-actions-sep"></div>
         <button id="check-update-btn">🔄 Check for updates</button>
         <button id="log-open-btn">🐛 Debug log</button>
         <button id="auth-btn">Disconnect</button>
