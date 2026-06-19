@@ -89,7 +89,7 @@ keytool -genkeypair -v \
 base64 -i mappho.keystore | pbcopy   # macOS — copies to clipboard
 ```
 
-**3. Add the four GitHub secrets**
+**3. Add the four GitHub secrets** 
 
 Go to **repo → Settings → Secrets and variables → Actions → New repository secret**:
 
