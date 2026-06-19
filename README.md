@@ -1,4 +1,4 @@
-# SharPho
+# Mappho
 
 An Android app (Capacitor 8) that plots your pCloud photo library on an interactive map using GPS EXIF data, with a slideshow for untagged photos and a built-in geotagging tool.
 
@@ -12,7 +12,7 @@ An Android app (Capacitor 8) that plots your pCloud photo library on an interact
 - **Date filter** — two-slider panel to narrow markers to a chosen time range
 - **No Location slideshow** — lazy-paginated slideshow of all photos without GPS, sorted by date
 - **Geotagging** — from the No Location slideshow, tap *📍 Set location* to drop a draggable pin on the map; the app shows the nearest geotagged photo by time as a placement hint, downloads the full JPEG, injects GPS EXIF via piexifjs, and overwrites the file on pCloud
-- **pCloud backup / restore** — export the full IndexedDB cache to `sharpho.json` in your pCloud root; restore it on another device without rescanning
+- **pCloud backup / restore** — export the full IndexedDB cache to `mappho.json` in your pCloud root; restore it on another device without rescanning
 - **Scan status bar** — live counter of scanned / geotagged files; tracks photos tagged manually in the current session
 - **Persistent cache** — GPS coordinates and dates stored in IndexedDB; app opens instantly without rescanning
 - **Over-the-air updates** — APK is signed with a stable release key; install new versions directly over the previous one without uninstalling
@@ -46,7 +46,7 @@ Requires Node 22+ and Java 21+.
 
 The [GitHub Actions workflow](.github/workflows/android.yml) builds a **signed release APK** on every push to `main` and publishes it to the [latest release](../../releases/tag/latest).
 
-To install: download `SharPho.apk`, open it on your device, and enable *Install from unknown sources* when prompted. Subsequent installs update the app in place (no uninstall needed).
+To install: download `Mappho.apk`, open it on your device, and enable *Install from unknown sources* when prompted. Subsequent installs update the app in place (no uninstall needed).
 
 To build locally:
 
@@ -63,16 +63,16 @@ Signing requires four env vars (or GitHub secrets for CI): `KEYSTORE_FILE`, `KEY
 **1. Generate the keystore**
 ```bash
 keytool -genkeypair -v \
-  -keystore sharpho.keystore \
-  -alias sharpho \
+  -keystore mappho.keystore \
+  -alias mappho \
   -keyalg RSA -keysize 2048 \
   -validity 10000
 ```
-Keep `sharpho.keystore` safe — losing it means you can't publish updates to the same app identity.
+Keep `mappho.keystore` safe — losing it means you can't publish updates to the same app identity.
 
 **2. Base64-encode the keystore**
 ```bash
-base64 -i sharpho.keystore | pbcopy   # macOS — copies to clipboard
+base64 -i mappho.keystore | pbcopy   # macOS — copies to clipboard
 ```
 
 **3. Add the four GitHub secrets**
@@ -83,7 +83,7 @@ Go to **repo → Settings → Secrets and variables → Actions → New reposito
 |---|---|
 | `KEYSTORE_BASE64` | base64 string from step 2 |
 | `KEYSTORE_PASSWORD` | password chosen during keytool prompt |
-| `KEY_ALIAS` | `sharpho` (or whatever alias you used) |
+| `KEY_ALIAS` | `mappho` (or whatever alias you used) |
 | `KEY_PASSWORD` | key password (often the same as keystore password) |
 
 The CI workflow decodes `KEYSTORE_BASE64` back to a file and passes the other three to Gradle for signing.

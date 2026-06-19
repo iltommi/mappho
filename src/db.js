@@ -4,7 +4,7 @@ const DB_NAME = 'mappho';
 const DB_VERSION = 7;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
-const SHARPHO_INDEX_STORE = 'mappho_index';
+const MAPPHO_INDEX_STORE = 'mappho_index';
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
@@ -35,7 +35,7 @@ async function db() {
         }
       }
       if (oldVersion < 4) {
-        db.createObjectStore(SHARPHO_INDEX_STORE, { keyPath: 'hash' });
+        db.createObjectStore(MAPPHO_INDEX_STORE, { keyPath: 'hash' });
       }
       if (oldVersion < 5) {
         tx.objectStore(STORE).createIndex('by_ts', 'ts');
@@ -261,37 +261,37 @@ export async function getLocatedUndatedPage(offset, limit) {
 // without a full re-listing.
 
 export async function clearMapphoIndex() {
-  return (await db()).clear(SHARPHO_INDEX_STORE);
+  return (await db()).clear(MAPPHO_INDEX_STORE);
 }
 
 export async function putMapphoIndexEntry(entry) {
-  return (await db()).put(SHARPHO_INDEX_STORE, entry);
+  return (await db()).put(MAPPHO_INDEX_STORE, entry);
 }
 
 export async function bulkPutMapphoIndex(entries) {
   if (!entries.length) return;
   const d = await db();
-  const tx = d.transaction(SHARPHO_INDEX_STORE, 'readwrite');
+  const tx = d.transaction(MAPPHO_INDEX_STORE, 'readwrite');
   for (const e of entries) tx.store.put(e);
   await tx.done;
 }
 
 export async function getAllMapphoIndex() {
-  return (await db()).getAll(SHARPHO_INDEX_STORE);
+  return (await db()).getAll(MAPPHO_INDEX_STORE);
 }
 
 export async function getMapphoIndexEntry(hash) {
   if (!hash) return null;
-  return (await db()).get(SHARPHO_INDEX_STORE, hash);
+  return (await db()).get(MAPPHO_INDEX_STORE, hash);
 }
 
 export async function deleteMapphoIndexEntry(hash) {
   if (!hash) return;
-  return (await db()).delete(SHARPHO_INDEX_STORE, hash);
+  return (await db()).delete(MAPPHO_INDEX_STORE, hash);
 }
 
 export async function countMapphoIndex() {
-  return (await db()).count(SHARPHO_INDEX_STORE);
+  return (await db()).count(MAPPHO_INDEX_STORE);
 }
 
 // Returns { min, max } ms timestamps across all dated orphans, or null if none.

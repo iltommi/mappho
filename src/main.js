@@ -12,7 +12,7 @@ import { initMap, addMarker, clearMarkers, toggleHeatmap, updateMarkerName, setM
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
-import { findSharphoRootIfExists, syncSharphoOnEdit, getSharphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
+import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
@@ -168,7 +168,7 @@ async function applyFixDateToPhoto(photo, ts) {
   if (isMP4) {
     const { hash } = await getFileStat(fileid).catch(() => ({}));
     newHash = hash ?? null;
-    await syncSharphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
+    await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
     const meta = await extractHeicMeta(fileid);
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
@@ -180,14 +180,14 @@ async function applyFixDateToPhoto(photo, ts) {
     newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
     await deleteFile(fileid);
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
-    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   } else {
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
     const buffer = await downloadFullFile(fileid);
     const modified = injectExif(buffer, { ts });
     newFileid = await overwriteFile(fileid, modified);
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
-    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts });
+    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   }
 
   const cached = await getCached(fileid);
@@ -829,7 +829,7 @@ async function rebuildScan() {
   await Promise.all([clearNonIgnored(), clearOrphans()]);
   clearMarkers();
 
-  const root = await getSharphoRoot();
+  const root = await getMapphoRoot();
 
   setStatus('Discovering files in Photos/…', 0);
   const allFiles = [];
@@ -959,7 +959,7 @@ async function scan() {
 
   // Phase 1: BFS all selected folders to discover the full file list
   setStatus('Discovering files…');
-  const organizedFolderId = await findSharphoRootIfExists();
+  const organizedFolderId = await findMapphoRootIfExists();
   const allFiles = [];
   outer: for (const { id: folderId, name: folderName } of folders) {
     if (scanCancelled) break;
@@ -978,7 +978,7 @@ async function scan() {
   _organizeRoot = null;
   _organizeLock = Promise.resolve();
   try {
-    const root = await getSharphoRoot();
+    const root = await getMapphoRoot();
     resetOrganizeState();
     setStatus('Loading Photos index…', 0);
     await loadOrganizeIndex(root, n => setStatus(`Loading Photos index… ${n} entries`, 0));

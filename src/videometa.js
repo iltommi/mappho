@@ -1,5 +1,5 @@
 import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
-import { getSharphoRoot } from './organize.js';
+import { getMapphoRoot } from './organize.js';
 import { getCached, putCached, deleteOrphan } from './db.js';
 import { addMarker } from './map.js';
 import { scheduleUpload } from './syncmanager.js';
@@ -55,7 +55,7 @@ async function load() {
 }
 
 async function doUpload() {
-  const rootFolderId = await getSharphoRoot();
+  const rootFolderId = await getMapphoRoot();
   const jsonStr = JSON.stringify({ version: 1, entries: Object.fromEntries(_entries) });
   const newFileid = await uploadJsonToFolder(rootFolderId, FILENAME, jsonStr, _fileid);
   _fileid = newFileid;

@@ -1,5 +1,5 @@
 import { uploadJsonToFolder, downloadJsonFile, statByPath } from './pcloud.js';
-import { getSharphoRoot } from './organize.js';
+import { getMapphoRoot } from './organize.js';
 import { getAllCached, bulkPutCached } from './db.js';
 import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
@@ -20,7 +20,7 @@ function storedFileid() {
 // The upload runs on the next syncmanager tick or when flushAll() is called.
 export function flushPhotoIndex(rootFolderId = null) {
   scheduleUpload('photoindex', async () => {
-    const folderId = rootFolderId ?? await getSharphoRoot();
+    const folderId = rootFolderId ?? await getMapphoRoot();
     const all = await getAllCached();
     const entries = all
       .filter(r => !r.ignored)
