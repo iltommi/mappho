@@ -181,9 +181,9 @@ closeBtn.addEventListener('click', close);
 
 // ── Share ─────────────────────────────────────────────────────────────────────
 
-const SMALL_VIDEO_THRESHOLD = 50 * 1024 * 1024; // 50 MB — download & share directly below this
+export const SMALL_VIDEO_THRESHOLD = 50 * 1024 * 1024; // 50 MB — download & share directly below this
 
-function bufToBase64(buf) {
+export function bufToBase64(buf) {
   const bytes = new Uint8Array(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 8192)
@@ -191,7 +191,7 @@ function bufToBase64(buf) {
   return btoa(bin);
 }
 
-function confirmVideoShare(sizeMB) {
+export function confirmVideoShare(sizeMB) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
