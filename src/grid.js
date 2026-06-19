@@ -216,6 +216,7 @@ function purgeStaleFile(tile) {
   if (total != null) total--;
   countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
   updateBulkBar();
+  removeMarker(fileid);
   Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
   log('Purged stale file', fileid);
 }

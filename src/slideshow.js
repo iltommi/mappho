@@ -484,6 +484,7 @@ async function fetchCached(fileid, name = '') {
 async function purgeAndAdvance(index) {
   const { fileid } = photos[index];
   imgCache.delete(fileid);
+  removeMarker(fileid);
   Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
   log('Purged stale file from slideshow', fileid);
   photos.splice(index, 1);
