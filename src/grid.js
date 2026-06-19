@@ -1,6 +1,6 @@
-import { fetchThumbSrc, deleteFile } from './pcloud.js';
+import { fetchThumbSrc, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
 import { isVideo } from './mp4.js';
-import { openLazySlideshow, setCloseHandler } from './slideshow.js';
+import { openLazySlideshow, setCloseHandler, confirmVideoShare, bufToBase64, SMALL_VIDEO_THRESHOLD } from './slideshow.js';
 import { startBulkGeotagging } from './geotag.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeMarker } from './map.js';
@@ -114,28 +114,54 @@ bulkFixDateBtn.addEventListener('click', () => {
 bulkShareBtn.addEventListener('click', async () => {
   if (!selected.size) return;
   const all = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
-  const photos = all.filter(p => !isVideo(p.name));
-  if (!photos.length) { log('Bulk share', 'no shareable (non-video) photos selected'); return; }
 
   bulkShareBtn.disabled = true;
   bulkShareBtn.textContent = '⏳';
   const writtenPaths = [];
-  const uris = [];
+  const fileUris = [];
+  const publicLinks = [];
   try {
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
-      bulkShareBtn.title = `Preparing ${i + 1}/${photos.length}…`;
-      const src = await fetchThumbSrc(photo.fileid, '2048x2048');
-      if (!src) { log('Bulk share', `${photo.name}: thumb fetch returned null`); continue; }
-      const b64 = src.slice(src.indexOf(',') + 1);
-      // Prefix with fileid — selected photos can share the same filename across folders.
-      const path = `${photo.fileid}_${photo.name.replace(/\.heic$/i, '.jpg')}`;
-      const written = await Filesystem.writeFile({ path, data: b64, directory: Directory.Cache });
-      writtenPaths.push(path);
-      uris.push(written.uri);
+    for (let i = 0; i < all.length; i++) {
+      const item = all[i];
+      bulkShareBtn.title = `Preparing ${i + 1}/${all.length}…`;
+
+      if (isVideo(item.name)) {
+        const meta = await getFileStat(item.fileid);
+        const size = meta.size ?? 0;
+        if (size > 0 && size <= SMALL_VIDEO_THRESHOLD) {
+          const buf = await downloadFullFile(item.fileid);
+          const b64 = bufToBase64(buf);
+          const ext = item.name.split('.').pop().toLowerCase();
+          const path = `${item.fileid}.${ext}`;
+          const written = await Filesystem.writeFile({ path, data: b64, directory: Directory.Cache });
+          writtenPaths.push(path);
+          fileUris.push(written.uri);
+        } else {
+          const sizeMB = Math.round(size / (1024 * 1024));
+          bulkShareBtn.disabled = false;
+          const confirmed = await confirmVideoShare(sizeMB);
+          bulkShareBtn.disabled = true;
+          if (confirmed) {
+            const link = await getPublicLink(item.fileid);
+            publicLinks.push(`${item.name}: ${link}`);
+          }
+        }
+      } else {
+        const src = await fetchThumbSrc(item.fileid, '2048x2048');
+        if (!src) { log('Bulk share', `${item.name}: thumb fetch returned null`); continue; }
+        const b64 = src.slice(src.indexOf(',') + 1);
+        const path = `${item.fileid}_${item.name.replace(/\.heic$/i, '.jpg')}`;
+        const written = await Filesystem.writeFile({ path, data: b64, directory: Directory.Cache });
+        writtenPaths.push(path);
+        fileUris.push(written.uri);
+      }
     }
-    if (uris.length) {
-      await Share.share({ files: uris, dialogTitle: `Share ${uris.length} photos` });
+
+    if (fileUris.length || publicLinks.length) {
+      const sharePayload = { dialogTitle: `Share ${all.length} item${all.length > 1 ? 's' : ''}` };
+      if (fileUris.length) sharePayload.files = fileUris;
+      if (publicLinks.length) sharePayload.text = publicLinks.join('\n');
+      await Share.share(sharePayload);
     }
   } catch (e) {
     if (e.name !== 'AbortError') log('Bulk share error', e.message ?? String(e));
