@@ -573,16 +573,14 @@ const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 const infoPopupClose = document.getElementById('info-popup-close');
 
-async function openInfoPopup() {
-  overflowMenu.classList.remove('open');
-  await reloadTopbarCounts();
+function renderInfoRows() {
   const X = (e) => `<span class="icon-x">${e}</span>`;
   const rows = [
-    { icon: '📷',                   label: 'Total',             value: topbarTotal,          action: null },
-    { icon: '📅📍',                 label: 'Position & Date',   value: topbarGeotagged - topbarLocatedUndated, action: null },
-    { icon: X('📍'),                label: 'Only Date',         value: topbarDated,          action: 'dated' },
-    { icon: X('📅'),                label: 'Only Position',     value: topbarLocatedUndated, action: 'located-undated' },
-    { icon: X('📅') + X('📍'),     label: 'Nothing',           value: topbarUnknown,        action: 'unknown' },
+    { icon: '📷',                   label: 'Total',           value: topbarTotal,                            action: null },
+    { icon: '📅📍',                 label: 'Position & Date', value: topbarGeotagged - topbarLocatedUndated, action: null },
+    { icon: X('📍'),                label: 'Only Date',       value: topbarDated,                            action: 'dated' },
+    { icon: X('📅'),                label: 'Only Position',   value: topbarLocatedUndated,                   action: 'located-undated' },
+    { icon: X('📅') + X('📍'),     label: 'Nothing',         value: topbarUnknown,                          action: 'unknown' },
   ];
   infoRowsEl.innerHTML = rows.map(r =>
     r.action
@@ -607,7 +605,13 @@ async function openInfoPopup() {
       }
     });
   });
+}
+
+function openInfoPopup() {
+  overflowMenu.classList.remove('open');
+  renderInfoRows();
   infoPopup.style.display = 'flex';
+  reloadTopbarCounts().then(renderInfoRows);
 }
 
 async function openDatedOrphanGrid() {
