@@ -314,10 +314,15 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
     log('fetchThumb status', resp.status);
     const raw = resp.data;
     if (!raw) { log('fetchThumb', 'empty response'); return null; }
-    if (typeof raw === 'object' && raw.result !== undefined) { log('fetchThumb pCloud error', raw); return null; }
+    if (typeof raw === 'object' && raw.result !== undefined) {
+      const err = new Error(`pCloud ${raw.result}: ${raw.error ?? 'unknown error'}`);
+      err.pcloudResult = raw.result;
+      throw err;
+    }
     const b64 = (typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)))).replace(/\s/g, '');
     return `data:image/jpeg;base64,${b64}`;
   } catch (e) {
+    if (e.pcloudResult) throw e; // propagate pCloud errors (e.g. 2009 file not found)
     log('fetchThumb error', e.message);
     return null;
   }
