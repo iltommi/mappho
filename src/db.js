@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'sharpho';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const SHARPHO_INDEX_STORE = 'sharpho_index';
@@ -45,6 +45,17 @@ async function db() {
         let cursor = await store.openCursor();
         while (cursor) {
           if (!cursor.value.ts) await cursor.update({ ...cursor.value, ts: UNDATED_TS });
+          cursor = await cursor.continue();
+        }
+      }
+      if (oldVersion < 7) {
+        // UNDATED_TS must never leak into the geotagged STORE; if it did (old
+        // geotag bug), normalise those records back to ts=null so they are
+        // treated as "located, no date" consistently everywhere.
+        const store = tx.objectStore(STORE);
+        let cursor = await store.openCursor();
+        while (cursor) {
+          if (cursor.value.ts === UNDATED_TS) await cursor.update({ ...cursor.value, ts: null });
           cursor = await cursor.continue();
         }
       }
@@ -234,7 +245,7 @@ export async function getLocatedUndatedPage(offset, limit) {
   let skipped = 0;
   while (cursor) {
     const v = cursor.value;
-    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0)) {
+    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0 && v.ts < UNDATED_TS)) {
       if (skipped < offset) { skipped++; }
       else { results.push(v); if (results.length >= limit) break; }
     }
