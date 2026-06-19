@@ -30,8 +30,6 @@ let cluster;
 let heatLayer     = null;
 let heatmapActive = false;
 let heatPoints    = []; // [lat, lng] pairs currently fed to the heat layer
-let legendControl = null;
-let legendCountEl = null;
 const addedIds = new Set();
 const markerIndex = []; // { marker, ts, name }
 const markerData = new Map(); // marker -> { fileid, name, ts }
@@ -60,7 +58,6 @@ function _applyVisibility() {
       .filter(e => cluster.hasLayer(e.marker))
       .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
     heatLayer.setLatLngs(heatPoints);
-    updateLegend();
   }
 }
 
@@ -125,35 +122,12 @@ export function flyToAndPlacePin(lat, lng) {
   pinDropOnPlace?.({ lat, lng });
 }
 
-function buildLegendControl() {
-  const ctrl = L.control({ position: 'bottomright' });
-  ctrl.onAdd = () => {
-    const div = L.DomUtil.create('div', 'heat-legend');
-    div.innerHTML = '<span class="heat-count">—</span>';
-    legendCountEl = div.querySelector('.heat-count');
-    return div;
-  };
-  return ctrl;
-}
-
-function countInViewport() {
-  const bounds = map.getBounds();
-  return heatPoints.filter(([lat, lng]) => bounds.contains(L.latLng(lat, lng))).length;
-}
-
-function updateLegend() {
-  if (!heatmapActive || !legendCountEl) return;
-  legendCountEl.textContent = countInViewport().toLocaleString();
-}
-
 export function initMap() {
   map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19,
   }).addTo(map);
-
-  map.on('moveend zoomend', updateLegend);
 
   cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false, showCoverageOnHover: false });
 
@@ -333,8 +307,7 @@ export function clearMarkers() {
   markerIndex.length = 0;
   markerData.clear();
   heatPoints = [];
-  if (heatLayer)     { map.removeLayer(heatLayer); heatLayer = null; }
-  if (legendControl) { legendControl.remove(); legendControl = null; legendCountEl = null; }
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
   heatmapActive = false;
   _dateFilter = { fromTs: -Infinity, toTs: Infinity };
   _mediaType  = 'all';
@@ -352,12 +325,8 @@ export function toggleHeatmap() {
       minOpacity: 0.45,
       gradient: HEAT_GRADIENT,
     }).addTo(map);
-    legendControl = buildLegendControl();
-    legendControl.addTo(map);
-    updateLegend();
   } else {
-    if (heatLayer)     { map.removeLayer(heatLayer); heatLayer = null; }
-    if (legendControl) { legendControl.remove(); legendControl = null; legendCountEl = null; }
+    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
     heatPoints = [];
     map.addLayer(cluster);
   }

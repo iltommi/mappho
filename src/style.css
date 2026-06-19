@@ -911,28 +911,6 @@ body.filter-open #map { top: 40px; }
   white-space: nowrap;
 }
 
-/* Heatmap legend */
-.heat-legend {
-  background: rgba(13, 27, 42, 0.88);
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  user-select: none;
-  margin-bottom: 8px;
-  margin-right: 4px;
-}
-.heat-count {
-  font-size: .78rem;
-  color: #7dd3fc;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
 /* Video player */
 #video-player {
   display: none;
