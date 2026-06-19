@@ -129,7 +129,7 @@ export async function startBulkGeotagging(photos, callback) {
 }
 
 // Writes `lat, lng` into one photo (EXIF on pCloud for JPEG/HEIC, cache-only
-// for MP4), syncs its SharPho copy if any, and updates the local cache/map.
+// for MP4), syncs its Photos copy if any, and updates the local cache/map.
 async function applyGeotagToPhoto(photo, lat, lng) {
   const { fileid, name, ts } = photo;
   const realTs = (ts && ts > 0 && ts < UNDATED_TS) ? ts : parseDateFromFilename(name);

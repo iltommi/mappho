@@ -5,7 +5,7 @@ import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
 const FILENAME   = 'index.json';
-const FILEID_KEY = 'sharpho_photo_index_fileid';
+const FILEID_KEY = 'mappho_photo_index_fileid';
 
 let _fileid = null;
 

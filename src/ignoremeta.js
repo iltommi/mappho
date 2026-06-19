@@ -6,8 +6,8 @@ import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
 const FILENAME    = 'ignored.json';
-const FILEID_KEY  = 'sharpho_ignored_fileid';
-const CONTENT_KEY = 'sharpho_ignored_content'; // mirrors JSON content locally
+const FILEID_KEY  = 'mappho_ignored_fileid';
+const CONTENT_KEY = 'mappho_ignored_content'; // mirrors JSON content locally
 
 let _loaded  = false;
 let _fileid  = null;

@@ -1,4 +1,4 @@
-package io.github.iltommi.sharpho;
+package io.github.iltommi.mappho;
 
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
@@ -35,10 +35,10 @@ public class DownloadPlugin extends Plugin {
         }
 
         DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
-        req.setTitle("SharPho update");
+        req.setTitle("Mappho update");
         req.setDescription("Downloading…");
         req.setMimeType("application/vnd.android.package-archive");
-        req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, "SharPho.apk");
+        req.setDestinationInExternalFilesDir(ctx, Environment.DIRECTORY_DOWNLOADS, "Mappho.apk");
         req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         pendingDownloadId = dm.enqueue(req);
 

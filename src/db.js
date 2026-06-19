@@ -1,10 +1,10 @@
 import { openDB } from 'idb';
 
-const DB_NAME = 'sharpho';
+const DB_NAME = 'mappho';
 const DB_VERSION = 7;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
-const SHARPHO_INDEX_STORE = 'sharpho_index';
+const SHARPHO_INDEX_STORE = 'mappho_index';
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
@@ -254,21 +254,21 @@ export async function getLocatedUndatedPage(offset, limit) {
   return results;
 }
 
-// SharPho hash index: hash -> { hash, fileid, folderid, name }.
-// Rebuilt from a fresh listfolder of SharPho/ at the start of every organize pass
-// (SharPho's own contents are the ground truth), but cached here so edit-time
+// Mappho hash index: hash -> { hash, fileid, folderid, name }.
+// Rebuilt from a fresh listfolder of Photos/ at the start of every organize pass
+// (Photos' own contents are the ground truth), but cached here so edit-time
 // sync hooks (geotag/fix-date) can look up "is this hash already organized?"
 // without a full re-listing.
 
-export async function clearSharphoIndex() {
+export async function clearMapphoIndex() {
   return (await db()).clear(SHARPHO_INDEX_STORE);
 }
 
-export async function putSharphoIndexEntry(entry) {
+export async function putMapphoIndexEntry(entry) {
   return (await db()).put(SHARPHO_INDEX_STORE, entry);
 }
 
-export async function bulkPutSharphoIndex(entries) {
+export async function bulkPutMapphoIndex(entries) {
   if (!entries.length) return;
   const d = await db();
   const tx = d.transaction(SHARPHO_INDEX_STORE, 'readwrite');
@@ -276,21 +276,21 @@ export async function bulkPutSharphoIndex(entries) {
   await tx.done;
 }
 
-export async function getAllSharphoIndex() {
+export async function getAllMapphoIndex() {
   return (await db()).getAll(SHARPHO_INDEX_STORE);
 }
 
-export async function getSharphoIndexEntry(hash) {
+export async function getMapphoIndexEntry(hash) {
   if (!hash) return null;
   return (await db()).get(SHARPHO_INDEX_STORE, hash);
 }
 
-export async function deleteSharphoIndexEntry(hash) {
+export async function deleteMapphoIndexEntry(hash) {
   if (!hash) return;
   return (await db()).delete(SHARPHO_INDEX_STORE, hash);
 }
 
-export async function countSharphoIndex() {
+export async function countMapphoIndex() {
   return (await db()).count(SHARPHO_INDEX_STORE);
 }
 

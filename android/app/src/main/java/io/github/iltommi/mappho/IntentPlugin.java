@@ -1,4 +1,4 @@
-package io.github.iltommi.sharpho;
+package io.github.iltommi.mappho;
 
 import android.content.ActivityNotFoundException;
 import android.content.Intent;

@@ -5,9 +5,9 @@ import { addMarker } from './map.js';
 import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
-const FILENAME    = 'sharpho-video-meta.json';
-const FILEID_KEY  = 'sharpho_video_meta_fileid';
-const CONTENT_KEY = 'sharpho_videometa_content'; // mirrors JSON content locally
+const FILENAME    = 'mappho-video-meta.json';
+const FILEID_KEY  = 'mappho_video_meta_fileid';
+const CONTENT_KEY = 'mappho_videometa_content'; // mirrors JSON content locally
 
 let _loaded  = false;
 let _fileid  = null;
@@ -34,7 +34,7 @@ async function load() {
   let stored = localStorage.getItem(FILEID_KEY);
   if (!stored) {
     try {
-      const meta = await statByPath('/Photos/sharpho-video-meta.json');
+      const meta = await statByPath('/Photos/mappho-video-meta.json');
       _fileid = meta.fileid;
       localStorage.setItem(FILEID_KEY, String(_fileid));
       stored = String(_fileid);
