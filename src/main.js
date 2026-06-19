@@ -611,7 +611,6 @@ function openInfoPopup() {
   overflowMenu.classList.remove('open');
   renderInfoRows();
   infoPopup.style.display = 'flex';
-  reloadTopbarCounts().then(renderInfoRows);
 }
 
 async function openDatedOrphanGrid() {
