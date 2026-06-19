@@ -6,6 +6,7 @@ import 'leaflet.markercluster';
 import 'leaflet.heat';
 import { fetchThumbSrc } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
+import { isVideo } from './mp4.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid } from './grid.js';
@@ -32,8 +33,36 @@ let heatPoints    = []; // [lat, lng] pairs currently fed to the heat layer
 let legendControl = null;
 let legendCountEl = null;
 const addedIds = new Set();
-const markerIndex = []; // { marker, ts }
+const markerIndex = []; // { marker, ts, name }
 const markerData = new Map(); // marker -> { fileid, name, ts }
+
+let _dateFilter  = { fromTs: -Infinity, toTs: Infinity };
+let _mediaType   = 'all'; // 'all' | 'photos' | 'videos'
+
+function _isVisible({ ts, name }) {
+  const dateOk = ts == null || (ts >= _dateFilter.fromTs && ts <= _dateFilter.toTs);
+  const typeOk = _mediaType === 'all'
+    || (_mediaType === 'photos' && !isVideo(name))
+    || (_mediaType === 'videos' &&  isVideo(name));
+  return dateOk && typeOk;
+}
+
+function _applyVisibility() {
+  for (const entry of markerIndex) {
+    if (_isVisible(entry)) {
+      if (!cluster.hasLayer(entry.marker)) cluster.addLayer(entry.marker);
+    } else {
+      cluster.removeLayer(entry.marker);
+    }
+  }
+  if (heatmapActive && heatLayer) {
+    heatPoints = markerIndex
+      .filter(e => cluster.hasLayer(e.marker))
+      .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
+    heatLayer.setLatLngs(heatPoints);
+    updateLegend();
+  }
+}
 
 let pinDropMarker = null;
 let pinDropHandler = null;
@@ -245,7 +274,7 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
 
   marker.bindPopup(div, { maxWidth: 280 });
   cluster.addLayer(marker);
-  markerIndex.push({ marker, ts: ts ?? null });
+  markerIndex.push({ marker, ts: ts ?? null, name });
   markerData.set(marker, { fileid, name, ts: ts ?? null });
   if (heatmapActive && heatLayer) {
     heatLayer.addLatLng([lat, lng]);
@@ -253,24 +282,18 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   }
 }
 
-// Show only markers whose ts falls within [fromTs, toTs].
-// Markers with no date are always shown.
 export function filterMarkers(fromTs, toTs) {
-  for (const { marker, ts } of markerIndex) {
-    const visible = ts == null || (ts >= fromTs && ts <= toTs);
-    if (visible) {
-      if (!cluster.hasLayer(marker)) cluster.addLayer(marker);
-    } else {
-      cluster.removeLayer(marker);
-    }
-  }
-  if (heatmapActive && heatLayer) {
-    heatPoints = markerIndex
-      .filter(({ marker }) => cluster.hasLayer(marker))
-      .map(({ marker }) => { const ll = marker.getLatLng(); return [ll.lat, ll.lng]; });
-    heatLayer.setLatLngs(heatPoints);
-    updateLegend();
-  }
+  _dateFilter = { fromTs, toTs };
+  _applyVisibility();
+}
+
+const MEDIA_CYCLES = ['all', 'photos', 'videos'];
+const MEDIA_LABELS = { all: '📷🎬', photos: '📷', videos: '🎬' };
+
+export function cycleMediaTypeFilter() {
+  _mediaType = MEDIA_CYCLES[(MEDIA_CYCLES.indexOf(_mediaType) + 1) % MEDIA_CYCLES.length];
+  _applyVisibility();
+  return { type: _mediaType, label: MEDIA_LABELS[_mediaType], active: _mediaType !== 'all' };
 }
 
 export function removeMarker(fileid) {
@@ -309,6 +332,8 @@ export function clearMarkers() {
   if (heatLayer)     { map.removeLayer(heatLayer); heatLayer = null; }
   if (legendControl) { legendControl.remove(); legendControl = null; legendCountEl = null; }
   heatmapActive = false;
+  _dateFilter = { fromTs: -Infinity, toTs: Infinity };
+  _mediaType  = 'all';
 }
 
 export function toggleHeatmap() {
