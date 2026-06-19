@@ -1035,6 +1035,17 @@ const CONCURRENCY_WINDOW = 10;
 const HIGH_FAILURE_RATE = 0.4;
 const LOW_FAILURE_RATE  = 0.1;
 
+// Pause while the app is backgrounded. Android throttles the WebView JS thread
+// and may abort CapacitorHttp requests when backgrounded, causing CDN downloads
+// to fail silently. We wait for the page to become visible before dispatching
+// each new file so in-flight requests (already on native threads) can finish
+// cleanly without new ones piling up behind them.
+async function waitForForeground() {
+  while (document.hidden) {
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   let concurrency = MAX_CONCURRENCY;
   const recentOutcomes = [];
@@ -1045,6 +1056,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   }, 15000);
 
   for (const file of files) {
+    await waitForForeground();
     if (scanCancelled) break;
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
