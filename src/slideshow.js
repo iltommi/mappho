@@ -1,4 +1,4 @@
-import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile } from './pcloud.js';
+import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -181,28 +181,91 @@ closeBtn.addEventListener('click', close);
 
 // ── Share ─────────────────────────────────────────────────────────────────────
 
+const SMALL_VIDEO_THRESHOLD = 50 * 1024 * 1024; // 50 MB — download & share directly below this
+
+function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192)
+    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  return btoa(bin);
+}
+
+function confirmVideoShare(sizeMB) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1e293b;border-radius:14px;padding:24px;max-width:300px;width:100%;color:#f1f5f9;display:flex;flex-direction:column;gap:14px';
+    const msg = document.createElement('p');
+    msg.style.cssText = 'margin:0;text-align:center;line-height:1.4';
+    msg.innerHTML = `This video is <strong>${sizeMB} MB</strong> — too large to download. Share a public pCloud link instead?`;
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px';
+    const yes = document.createElement('button');
+    yes.textContent = '🔗 Share link';
+    yes.style.cssText = 'flex:1;padding:12px;border-radius:8px;background:#3b82f6;color:#fff;border:none;font-size:1rem;cursor:pointer';
+    const no = document.createElement('button');
+    no.textContent = 'Cancel';
+    no.style.cssText = 'flex:1;padding:12px;border-radius:8px;background:#334155;color:#f1f5f9;border:none;font-size:1rem;cursor:pointer';
+    yes.addEventListener('click', () => { overlay.remove(); resolve(true); });
+    no.addEventListener('click', () => { overlay.remove(); resolve(false); });
+    btnRow.append(yes, no);
+    box.append(msg, btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
+
 shareBtn.addEventListener('click', async () => {
   const photo = photos[current];
-  if (!photo || isVideo(photo.name)) return;
+  if (!photo) return;
   shareBtn.disabled = true;
-  const shareName = photo.name.replace(/\.heic$/i, '.jpg');
+  const origText = shareBtn.textContent;
   try {
-    const src = await fetchThumbSrc(photo.fileid, '2048x2048');
-    if (!src) { log('share', 'thumb fetch returned null'); return; }
-    const b64 = src.slice(src.indexOf(',') + 1);
-    const written = await Filesystem.writeFile({
-      path: shareName, data: b64, directory: Directory.Cache,
-    });
-    log('share', `temp file: ${written.uri}`);
-    try {
-      await Share.share({ files: [written.uri], dialogTitle: 'Share photo' });
-    } finally {
-      Filesystem.deleteFile({ path: shareName, directory: Directory.Cache }).catch(() => {});
+    if (isVideo(photo.name)) {
+      shareBtn.textContent = '⏳';
+      const meta = await getFileStat(photo.fileid);
+      const size = meta.size ?? 0;
+      if (size > 0 && size <= SMALL_VIDEO_THRESHOLD) {
+        const buf = await downloadFullFile(photo.fileid);
+        const b64 = bufToBase64(buf);
+        const ext = photo.name.split('.').pop().toLowerCase();
+        const tmpName = `${photo.fileid}.${ext}`;
+        const written = await Filesystem.writeFile({ path: tmpName, data: b64, directory: Directory.Cache });
+        try {
+          await Share.share({ files: [written.uri], dialogTitle: 'Share video' });
+        } finally {
+          Filesystem.deleteFile({ path: tmpName, directory: Directory.Cache }).catch(() => {});
+        }
+      } else {
+        const sizeMB = Math.round(size / (1024 * 1024));
+        shareBtn.disabled = false;
+        const confirmed = await confirmVideoShare(sizeMB);
+        if (!confirmed) return;
+        shareBtn.disabled = true;
+        shareBtn.textContent = '⏳';
+        const link = await getPublicLink(photo.fileid);
+        await Share.share({ url: link, dialogTitle: 'Share video link' });
+      }
+    } else {
+      const shareName = photo.name.replace(/\.heic$/i, '.jpg');
+      const src = await fetchThumbSrc(photo.fileid, '2048x2048');
+      if (!src) { log('share', 'thumb fetch returned null'); return; }
+      const b64 = src.slice(src.indexOf(',') + 1);
+      const written = await Filesystem.writeFile({ path: shareName, data: b64, directory: Directory.Cache });
+      log('share', `temp file: ${written.uri}`);
+      try {
+        await Share.share({ files: [written.uri], dialogTitle: 'Share photo' });
+      } finally {
+        Filesystem.deleteFile({ path: shareName, directory: Directory.Cache }).catch(() => {});
+      }
     }
   } catch (e) {
     if (e.name !== 'AbortError') log('share error', e.message ?? String(e));
   } finally {
     shareBtn.disabled = false;
+    shareBtn.textContent = origText;
   }
 });
 

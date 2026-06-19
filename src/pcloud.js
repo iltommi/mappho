@@ -148,6 +148,11 @@ export async function getFileStat(fileid) {
   return data.metadata;
 }
 
+export async function getPublicLink(fileid) {
+  const data = await api('getfilepublink', { fileid });
+  return data.link;
+}
+
 const _dimCache = new Map();
 const _fileParentCache = new Map();
 const _folderNameCache   = new Map(); // folderid → name
