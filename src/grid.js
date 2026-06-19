@@ -199,12 +199,35 @@ bulkDeleteBtn.addEventListener('click', async () => {
 
 const THUMB_RETRY_DELAYS = [500, 1500, 4000]; // ms — fetchThumbSrc returns null (not a throw) on transient failures
 
+function purgeStaleFile(tile) {
+  const { fileid } = tile._item;
+  const idx = [...track.children].indexOf(tile);
+  if (idx === -1) return;
+  // Shift down selection indices for items after the removed tile.
+  const shifted = new Set();
+  for (const i of selected) {
+    if (i < idx) shifted.add(i);
+    else if (i > idx) shifted.add(i - 1);
+  }
+  selected.clear();
+  for (const i of shifted) selected.add(i);
+  items.splice(idx, 1);
+  tile.remove();
+  if (total != null) total--;
+  countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
+  updateBulkBar();
+  Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
+  log('Purged stale file', fileid);
+}
+
 async function loadThumb(tile, attempt = 0) {
   const { fileid } = tile._item;
   try {
     const src = await fetchThumbSrc(fileid, THUMB_SIZE);
     if (src) { tile._img.src = src; tile._img.classList.add('loaded'); return; }
-  } catch { /* falls through to retry below */ }
+  } catch (e) {
+    if (e.pcloudResult === 2009) { purgeStaleFile(tile); return; }
+  }
   if (attempt < THUMB_RETRY_DELAYS.length) {
     setTimeout(() => loadThumb(tile, attempt + 1), THUMB_RETRY_DELAYS[attempt]);
   }

@@ -448,7 +448,13 @@ async function navigate(dir) {
   busy = false;
 
   if (!curImg.style.display || curImg.style.display === 'none') {
-    const src = await fetchCached(photos[current].fileid, photos[current].name);
+    let src;
+    try {
+      src = await fetchCached(photos[current].fileid, photos[current].name);
+    } catch (e) {
+      if (e.pcloudResult === 2009) { await purgeAndAdvance(current); return; }
+      throw e;
+    }
     if (id !== reqId) return;
     loadingEl.style.display = 'none';
     if (src) { curImg.src = src; curImg.style.display = 'block'; }
@@ -473,13 +479,25 @@ async function fetchCached(fileid, name = '') {
   return src;
 }
 
+// Remove a photo whose pCloud file no longer exists: purge from DB, splice
+// from the in-memory list, then re-enter at the same position (or close).
+async function purgeAndAdvance(index) {
+  const { fileid } = photos[index];
+  imgCache.delete(fileid);
+  Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
+  log('Purged stale file from slideshow', fileid);
+  photos.splice(index, 1);
+  if (!photos.length) { close(); return; }
+  await go(Math.min(index, photos.length - 1));
+}
+
 function loadSidePanes() {
   const pIdx = (current - 1 + photos.length) % photos.length;
   const nIdx = (current + 1) % photos.length;
   prevImg.src = '';
   nextImg.src = '';
-  if (photos[pIdx]) fetchCached(photos[pIdx].fileid, photos[pIdx].name).then(s => { if (s) prevImg.src = s; });
-  if (photos[nIdx]) fetchCached(photos[nIdx].fileid, photos[nIdx].name).then(s => { if (s) nextImg.src = s; });
+  if (photos[pIdx]) fetchCached(photos[pIdx].fileid, photos[pIdx].name).then(s => { if (s) prevImg.src = s; }).catch(() => {});
+  if (photos[nIdx]) fetchCached(photos[nIdx].fileid, photos[nIdx].name).then(s => { if (s) nextImg.src = s; }).catch(() => {});
 }
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
@@ -558,7 +576,13 @@ async function go(index) {
   nextImg.src = '';
   centerTrack(false);
 
-  const src = await fetchCached(photos[current].fileid, photos[current].name);
+  let src;
+  try {
+    src = await fetchCached(photos[current].fileid, photos[current].name);
+  } catch (e) {
+    if (e.pcloudResult === 2009) { await purgeAndAdvance(current); return; }
+    throw e;
+  }
   if (id !== reqId) return;
 
   loadingEl.style.display = 'none';
