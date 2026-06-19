@@ -143,7 +143,7 @@ html, body {
 }
 #heatmap-btn { bottom: 24px; }
 #media-type-btn { bottom: 80px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.mf-all { font-size: 2rem; line-height: 1; letter-spacing: -3px; }
+.mf-all { line-height: 1; white-space: nowrap; }
 #heatmap-btn:hover, #media-type-btn:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 
