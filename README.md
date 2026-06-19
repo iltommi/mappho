@@ -60,6 +60,21 @@ Signing requires four env vars (or GitHub secrets for CI): `KEYSTORE_FILE`, `KEY
 
 ### Setting up signing secrets (one-time)
 
+Run the helper script — it generates the keystore and uploads all four secrets in one step:
+
+```bash
+python3 tools/setup_signing.py "Your Name" CC yourpassword
+# e.g.
+python3 tools/setup_signing.py "Jane Smith" DE hunter2
+```
+
+Requires `keytool` (bundled with any JDK) and `gh` logged in (`gh auth login`).
+
+Keep `mappho.keystore` safe — losing it means you can't publish updates to the same app identity.
+
+<details>
+<summary>Manual steps</summary>
+
 **1. Generate the keystore**
 ```bash
 keytool -genkeypair -v \
@@ -68,7 +83,6 @@ keytool -genkeypair -v \
   -keyalg RSA -keysize 2048 \
   -validity 10000
 ```
-Keep `mappho.keystore` safe — losing it means you can't publish updates to the same app identity.
 
 **2. Base64-encode the keystore**
 ```bash
@@ -85,5 +99,7 @@ Go to **repo → Settings → Secrets and variables → Actions → New reposito
 | `KEYSTORE_PASSWORD` | password chosen during keytool prompt |
 | `KEY_ALIAS` | `mappho` (or whatever alias you used) |
 | `KEY_PASSWORD` | key password (often the same as keystore password) |
+
+</details>
 
 The CI workflow decodes `KEYSTORE_BASE64` back to a file and passes the other three to Gradle for signing.
