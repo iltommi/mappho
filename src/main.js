@@ -295,7 +295,7 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   try {
     const resp = await CapacitorHttp.request({
       method: 'GET',
-      url: 'https://api.github.com/repos/iltommi/sharpho/releases?per_page=1',
+      url: 'https://api.github.com/repos/iltommi/mappho/releases?per_page=1',
       headers: { Accept: 'application/vnd.github+json' },
     });
     const releases = resp.data;
@@ -311,7 +311,7 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       : new Date(release.published_at) <= BUILD_TIME;
     if (!upToDate) {
       showBriefStatus(`Update available — downloading…`, 60000);
-      const apkUrl = 'https://github.com/iltommi/sharpho/releases/download/latest/SharPho.apk';
+      const apkUrl = 'https://github.com/iltommi/mappho/releases/download/latest/Mappho.apk';
       try {
         await Capacitor.Plugins.Downloader.downloadAndInstall({ url: apkUrl });
       } catch {
@@ -959,12 +959,12 @@ async function scan() {
 
   // Phase 1: BFS all selected folders to discover the full file list
   setStatus('Discovering files…');
-  const sharphoFolderId = await findSharphoRootIfExists();
+  const organizedFolderId = await findSharphoRootIfExists();
   const allFiles = [];
   outer: for (const { id: folderId, name: folderName } of folders) {
     if (scanCancelled) break;
     log('Discovering', `${folderName ?? '/'} (id=${folderId})`);
-    for await (const file of listImages(folderId, sharphoFolderId)) {
+    for await (const file of listImages(folderId, organizedFolderId)) {
       if (scanCancelled) break outer;
       allFiles.push(file);
       setStatus(`Discovering… ${allFiles.length} files found`);

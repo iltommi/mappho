@@ -47,13 +47,13 @@ jobs:
 
       - name: Publish latest release
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk SharPho.apk
+          cp android/app/build/outputs/apk/release/app-release.apk Mappho.apk
           gh release delete latest --cleanup-tag --yes 2>/dev/null || true
           git push --delete origin refs/tags/latest 2>/dev/null || true
           gh release create latest \
             --title "Latest" \
             --notes "Built from ${{ github.sha }}" \
             --latest \
-            SharPho.apk
+            Mappho.apk
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

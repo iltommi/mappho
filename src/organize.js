@@ -1,5 +1,5 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, copyFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
-import { clearSharphoIndex, bulkPutSharphoIndex, putSharphoIndexEntry, getSharphoIndexEntry, deleteSharphoIndexEntry, getAllSharphoIndex, UNDATED_TS } from './db.js';
+import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
@@ -21,7 +21,7 @@ const _nameCounters  = new Map(); // 'YYYY-MM-DD_HH-MM-SS' -> next N to try
 // ── Hash index ────────────────────────────────────────────────────────────────
 
 const HASH_INDEX_FILENAME   = 'hash-index.json';
-const HASH_INDEX_FILEID_KEY = 'sharpho_hash_index_fileid';
+const HASH_INDEX_FILEID_KEY = 'mappho_hash_index_fileid';
 
 const _hashMap    = new Map(); // hash → { fileid, folderid, name }
 const _takenNames = new Set(); // filenames currently in Photos/
@@ -110,7 +110,7 @@ function nextNameForUnknown(originalName, ext) {
 // Rebuilds the hash index from a fresh Photos/ listing.
 // Also populates the in-memory _hashMap and _takenNames.
 export async function buildHashIndex(rootFolderId, onProgress) {
-  await clearSharphoIndex();
+  await clearMapphoIndex();
   _hashMap.clear();
   _takenNames.clear();
   const entries = [];
@@ -124,7 +124,7 @@ export async function buildHashIndex(rootFolderId, onProgress) {
     count++;
     if (count % 50 === 0) onProgress?.(count);
   }
-  await bulkPutSharphoIndex(entries);
+  await bulkPutMapphoIndex(entries);
   onProgress?.(count);
   return { count, takenNames: _takenNames };
 }
@@ -141,7 +141,7 @@ export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild
 
   if (!forceRebuild) {
     // Fast path: IDB already has the index from a previous scan
-    const idbEntries = await getAllSharphoIndex();
+    const idbEntries = await getAllMapphoIndex();
     if (idbEntries.length > 0) {
       for (const e of idbEntries) {
         _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
@@ -167,8 +167,8 @@ export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild
             _hashMap.set(e.hash, { fileid: e.fileid, folderid: e.folderid, name: e.name });
             _takenNames.add(e.name);
           }
-          await clearSharphoIndex();
-          await bulkPutSharphoIndex(entries);
+          await clearMapphoIndex();
+          await bulkPutMapphoIndex(entries);
           _indexReady = true;
           log('HashIndex', `loaded ${_hashMap.size} entries from pCloud JSON`);
           onProgress?.(_hashMap.size);
@@ -246,7 +246,7 @@ export async function organizeFile(record, rootFolderId) {
   if (hash) {
     _hashMap.set(hash, { fileid: record.fileid, folderid: folderId, name });
     _hashDirty = true;
-    await putSharphoIndexEntry({ hash, fileid: record.fileid, folderid: folderId, name });
+    await putMapphoIndexEntry({ hash, fileid: record.fileid, folderid: folderId, name });
   }
   return name;
 }
@@ -263,7 +263,7 @@ export async function removeOrganizedEntry(fileid) {
   _hashMap.delete(foundHash);
   if (foundName) _takenNames.delete(foundName);
   _hashDirty = true;
-  await deleteSharphoIndexEntry(foundHash);
+  await deleteMapphoIndexEntry(foundHash);
   flushOrganizeIndex();
 }
 
@@ -274,7 +274,7 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
   oldHash = normHash(oldHash);
   newHash = normHash(newHash);
   if (!oldHash) return;
-  const existing = _hashMap.get(oldHash) ?? await getSharphoIndexEntry(oldHash);
+  const existing = _hashMap.get(oldHash) ?? await getMapphoIndexEntry(oldHash);
   if (!existing) return;
 
   try {
@@ -290,8 +290,8 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       // Same folder, content changed — replace file keeping the existing name.
       await deleteFile(existing.fileid);
       const refreshedFileid = await copyFile(newFileid, monthFolderId, existing.name);
-      await deleteSharphoIndexEntry(oldHash);
-      await putSharphoIndexEntry({ hash: newHash, fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
+      await deleteMapphoIndexEntry(oldHash);
+      await putMapphoIndexEntry({ hash: newHash, fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
     } else {
@@ -299,14 +299,14 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       const newName = hasDate ? nextName(ts, extOf(existing.name)) : existing.name;
       await renameFile(existing.fileid, { tofolderid: monthFolderId, toname: newName });
       _takenNames.add(newName);
-      await deleteSharphoIndexEntry(oldHash);
-      await putSharphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: newName });
+      await deleteMapphoIndexEntry(oldHash);
+      await putMapphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: newName });
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: newName });
     }
     _hashDirty = true;
     flushOrganizeIndex();
   } catch (e) {
-    log('SharPho sync error', e.message);
+    log('Mappho sync error', e.message);
   }
 }

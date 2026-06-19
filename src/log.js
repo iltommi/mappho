@@ -18,13 +18,13 @@ document.getElementById('log-save').addEventListener('click', async () => {
     lines.push(pre ? `${time} ${label}\n  ${pre.replace(/\n/g, '\n  ')}` : `${time} ${label}`);
   }
   const text     = lines.join('\n');
-  const filename = `sharpho-log-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+  const filename = `mappho-log-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
 
   // Try file share (shows Android share sheet with a .txt attachment)
   try {
     const file = new File([text], filename, { type: 'text/plain' });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: 'SharPho debug log' });
+      await navigator.share({ files: [file], title: 'Mappho debug log' });
       return;
     }
   } catch (e) {

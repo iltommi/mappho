@@ -223,7 +223,7 @@ export async function uploadFile(folderid, filename, arrayBuffer) {
     bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
   }
   const b64 = btoa(bin);
-  const boundary = 'SharPhoUpload' + crypto.randomUUID().replace(/-/g, '');
+  const boundary = 'MapphoUpload' + crypto.randomUUID().replace(/-/g, '');
   const crlf = '\r\n';
   const body = [
     '--' + boundary,
@@ -270,7 +270,7 @@ export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFi
   if (existingFileid) {
     try { await api('deletefile', { fileid: existingFileid }); } catch {}
   }
-  const boundary = 'SharPho' + crypto.randomUUID().replace(/-/g, '');
+  const boundary = 'Mappho' + crypto.randomUUID().replace(/-/g, '');
   const crlf = '\r\n';
   const body = `--${boundary}${crlf}Content-Disposition: form-data; name="file"; filename="${filename}"${crlf}Content-Type: application/json${crlf}${crlf}${jsonStr}${crlf}--${boundary}--`;
   const resp = await CapacitorHttp.request({

@@ -1,4 +1,4 @@
-package io.github.iltommi.sharpho;
+package io.github.iltommi.mappho;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
