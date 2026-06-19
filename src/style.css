@@ -142,7 +142,16 @@ html, body {
   z-index: 1000;
 }
 #heatmap-btn { bottom: 24px; }
-#media-type-btn { bottom: 80px; display: flex; align-items: center; justify-content: center; }
+#media-type-btn { bottom: 80px; }
+.mf-play-badge {
+  position: absolute;
+  bottom: 7px; right: 6px;
+  font-size: .55rem;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0,0,0,.8);
+  padding-left: 1px;
+}
 #heatmap-btn:hover, #media-type-btn:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 
