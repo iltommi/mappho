@@ -220,7 +220,7 @@ export async function countLocatedUndated() {
   let count = 0;
   while (cursor) {
     const v = cursor.value;
-    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0)) count++;
+    if (v.lat != null && v.ignored !== 1 && !(v.ts > 0 && v.ts < UNDATED_TS)) count++;
     cursor = await cursor.continue();
   }
   return count;

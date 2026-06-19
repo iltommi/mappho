@@ -1,5 +1,5 @@
 import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectExif } from './exif.js';
-import { deleteRecord, deleteOrphan, putCached } from './db.js';
+import { deleteRecord, deleteOrphan, putCached, UNDATED_TS } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker, findClosestMarker } from './map.js';
 import { syncSharphoOnEdit } from './organize.js';
@@ -132,7 +132,7 @@ export async function startBulkGeotagging(photos, callback) {
 // for MP4), syncs its SharPho copy if any, and updates the local cache/map.
 async function applyGeotagToPhoto(photo, lat, lng) {
   const { fileid, name, ts } = photo;
-  const realTs = (ts && ts > 0) ? ts : parseDateFromFilename(name);
+  const realTs = (ts && ts > 0 && ts < UNDATED_TS) ? ts : parseDateFromFilename(name);
   const isHeic = /\.heic$/i.test(name);
   const isMP4  = isVideo(name);
 
