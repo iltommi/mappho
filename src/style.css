@@ -1381,6 +1381,7 @@ body.filter-open #map { top: 40px; }
   width: 100%;
 }
 #info-actions button:hover { background: #334155; }
+.info-actions-sep { height: 1px; background: #334155; margin: 4px 0; }
 #auth-btn { color: #f87171 !important; }
 
 /* Hide FABs while action bars are active */
