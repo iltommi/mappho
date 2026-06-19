@@ -263,8 +263,9 @@ export function filterMarkers(fromTs, toTs) {
 
 const MEDIA_CYCLES = ['all', 'photos', 'videos'];
 
-// 📷 with a small ▶ badge in the corner — same language as video tiles in the grid
-export const MEDIA_ALL_ICON = '📷<span class="mf-play-badge">▶</span>';
+// Two emoji at 2rem side-by-side overflow the 48px button width slightly;
+// overflow:hidden on the button clips them to the circle, giving each emoji its own half.
+export const MEDIA_ALL_ICON = '<span class="mf-all">📷🎬</span>';
 
 const MEDIA_LABELS = { all: MEDIA_ALL_ICON, photos: '📷', videos: '🎬' };
 
