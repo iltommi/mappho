@@ -724,23 +724,28 @@ async function startScan() {
     const n = await loadPhotoIndex();
     if (n > 0) cached = await getAllCached();
   }
-  let cachedGeo = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
+  let cachedGeo = 0, cachedLocatedUndated = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
   const cacheTotal = cached.length;
   for (let i = 0; i < cacheTotal; i++) {
     const p = cached[i];
     if (p.ignored) { cachedIgnored++; }
-    else if (p.lat != null) { addMarker(p); cachedGeo++; }
+    else if (p.lat != null) {
+      addMarker(p);
+      cachedGeo++;
+      if (!(p.ts > 0 && p.ts < UNDATED_TS)) cachedLocatedUndated++;
+    }
     else { toMigrate.push(p); if (p.ts != null) cachedDated++; else cachedUnknown++; }
     if (i % 100 === 0) {
       setProgress(cacheTotal > 0 ? (i / cacheTotal) * 100 : 0);
       await new Promise(r => setTimeout(r, 0));
     }
   }
-  topbarGeotagged = cachedGeo;
-  topbarDated     = cachedDated;
-  topbarUnknown   = cachedUnknown;
-  topbarTotal     = cached.length - cachedIgnored;
+  topbarGeotagged      = cachedGeo;
+  topbarLocatedUndated = cachedLocatedUndated;
+  topbarDated          = cachedDated;
+  topbarUnknown        = cachedUnknown;
+  topbarTotal          = cached.length - cachedIgnored;
 
   // Populate orphan store in one transaction so the No-location / No-date buttons work immediately.
   if (toMigrate.length > 0) {
