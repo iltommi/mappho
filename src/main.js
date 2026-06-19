@@ -201,7 +201,7 @@ function startFixDate(photo, onDone) {
   fixDatePhoto  = photo;
   fixDatePhotos = null;
   fixDateOnDone = onDone;
-  const existing = (photo.ts && photo.ts > 0) ? new Date(photo.ts) : new Date();
+  const existing = (photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS) ? new Date(photo.ts) : new Date();
   fixDateInput.value = existing.toISOString().split('T')[0];
   fixDateTimeInput.value = existing.toTimeString().slice(0, 5);
   fixDateSaveBtn.textContent = '💾 Save';
