@@ -31,7 +31,7 @@ let _indexReady   = false;
 
 // ── Folder helpers ────────────────────────────────────────────────────────────
 
-export async function getSharphoMonthFolder(rootFolderId, ts) {
+export async function getMapphoMonthFolder(rootFolderId, ts) {
   const d    = new Date(ts);
   const yyyy = String(d.getFullYear());
   const mm   = String(d.getMonth() + 1).padStart(2, '0');
@@ -50,20 +50,20 @@ export async function getSharphoMonthFolder(rootFolderId, ts) {
   return monthId;
 }
 
-async function getSharphoUnknownFolder(rootFolderId) {
+async function getMapphoUnknownFolder(rootFolderId) {
   if (_unknownFolderId == null) {
     _unknownFolderId = await createFolderIfNotExists(rootFolderId, UNKNOWN_DATE_FOLDER);
   }
   return _unknownFolderId;
 }
 
-export async function getSharphoRoot() {
+export async function getMapphoRoot() {
   if (_rootFolderId != null) return _rootFolderId;
   _rootFolderId = await createFolderIfNotExists(0, ROOT_NAME);
   return _rootFolderId;
 }
 
-export async function findSharphoRootIfExists() {
+export async function findMapphoRootIfExists() {
   if (_rootFolderId != null) return _rootFolderId;
   try {
     const folders = await listFolders(0);
@@ -194,7 +194,7 @@ export async function loadOrganizeIndex(rootFolderId, onProgress, { forceRebuild
 export function flushOrganizeIndex() {
   if (!_hashDirty) return;
   scheduleUpload('hashindex', async () => {
-    const rootFolderId = await getSharphoRoot();
+    const rootFolderId = await getMapphoRoot();
     const entries = [..._hashMap.entries()].map(([hash, v]) => ({ hash, ...v }));
     const json = JSON.stringify({ version: 1, entries });
     const newFileid = await uploadJsonToFolder(rootFolderId, HASH_INDEX_FILENAME, json, _hashFileid);
@@ -233,8 +233,8 @@ export async function organizeFile(record, rootFolderId) {
   const hasGps  = record.lat != null;
 
   const folderId = hasDate
-    ? await getSharphoMonthFolder(rootFolderId, record.ts)
-    : await getSharphoUnknownFolder(rootFolderId);
+    ? await getMapphoMonthFolder(rootFolderId, record.ts)
+    : await getMapphoUnknownFolder(rootFolderId);
 
   const name = hasDate
     ? nextName(record.ts, extOf(record.name))
@@ -270,7 +270,7 @@ export async function removeOrganizedEntry(fileid) {
 // ── Edit-time sync ─────────────────────────────────────────────────────────────
 // Called after a content-mutating edit (geotag/fix-date). If the pre-edit hash
 // was already in Photos/, refresh that slot without waiting for the next scan.
-export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
+export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
   oldHash = normHash(oldHash);
   newHash = normHash(newHash);
   if (!oldHash) return;
@@ -278,11 +278,11 @@ export async function syncSharphoOnEdit({ oldHash, newFileid, newHash, ts }) {
   if (!existing) return;
 
   try {
-    const rootFolderId = await getSharphoRoot();
+    const rootFolderId = await getMapphoRoot();
     const hasDate      = ts != null && ts > 0 && ts < UNDATED_TS;
     const monthFolderId = hasDate
-      ? await getSharphoMonthFolder(rootFolderId, ts)
-      : await getSharphoUnknownFolder(rootFolderId);
+      ? await getMapphoMonthFolder(rootFolderId, ts)
+      : await getMapphoUnknownFolder(rootFolderId);
 
     if (monthFolderId === existing.folderid && newHash === oldHash) return;
 

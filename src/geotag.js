@@ -2,7 +2,7 @@ import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectEx
 import { deleteRecord, deleteOrphan, putCached, UNDATED_TS } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker, findClosestMarker } from './map.js';
-import { syncSharphoOnEdit } from './organize.js';
+import { syncMapphoOnEdit } from './organize.js';
 import { isVideo } from './mp4.js';
 import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
@@ -169,7 +169,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     await deleteFile(fileid);
 
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
-    await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
 
     removeMarker(fileid);
     await deleteRecord(fileid);
@@ -192,7 +192,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const newFileid = await overwriteFile(fileid, modified);
 
   const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
-  await syncSharphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+  await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
 
   removeMarker(fileid);
   await deleteRecord(fileid);
