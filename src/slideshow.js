@@ -591,7 +591,7 @@ function updateCaption() {
   ignoreBtn.style.display   = ignoreHandler ? '' : 'none';
   playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
-  shareBtn.style.display = isVideo(name) ? 'none' : '';
+  shareBtn.style.display = '';
 
   if (!isVideo(name)) {
     let folderName = '';
