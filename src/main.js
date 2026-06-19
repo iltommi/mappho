@@ -310,8 +310,13 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       ? releaseSha === APP_SHA
       : new Date(release.published_at) <= BUILD_TIME;
     if (!upToDate) {
-      showBriefStatus(`Update available — downloading…`, 30000);
-      window.open('https://github.com/iltommi/sharpho/releases/download/latest/SharPho.apk', '_system');
+      showBriefStatus(`Update available — downloading…`, 60000);
+      const apkUrl = 'https://github.com/iltommi/sharpho/releases/download/latest/SharPho.apk';
+      try {
+        await Capacitor.Plugins.Downloader.downloadAndInstall({ url: apkUrl });
+      } catch {
+        window.open(apkUrl, '_system');
+      }
     } else {
       showBriefStatus('Already up to date.');
     }
