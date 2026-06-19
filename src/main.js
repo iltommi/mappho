@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
+import { initMap, addMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
@@ -532,7 +532,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
   heatmapBtn.classList.remove('active');
-  mediaTypeBtn.textContent = '📷🎬';
+  mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   mediaTypeBtn.classList.remove('active');
   closeFilter();
   topbarGeotagged      = 0;
@@ -597,7 +597,7 @@ heatmapBtn.addEventListener('click', () => {
 const mediaTypeBtn = document.getElementById('media-type-btn');
 mediaTypeBtn.addEventListener('click', () => {
   const { label, active } = cycleMediaTypeFilter();
-  mediaTypeBtn.textContent = label;
+  mediaTypeBtn.innerHTML = label;
   mediaTypeBtn.classList.toggle('active', active);
 });
 
@@ -697,6 +697,7 @@ function showApp() {
   menuFab.style.display = '';
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
+  mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   authBtn.onclick = () => { infoPopup.style.display = 'none'; logout(); location.reload(); };
 }
 

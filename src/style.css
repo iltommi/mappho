@@ -142,7 +142,7 @@ html, body {
   z-index: 1000;
 }
 #heatmap-btn { bottom: 24px; }
-#media-type-btn { bottom: 80px; }
+#media-type-btn { bottom: 80px; display: flex; align-items: center; justify-content: center; }
 #heatmap-btn:hover, #media-type-btn:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 

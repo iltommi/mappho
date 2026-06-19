@@ -288,7 +288,28 @@ export function filterMarkers(fromTs, toTs) {
 }
 
 const MEDIA_CYCLES = ['all', 'photos', 'videos'];
-const MEDIA_LABELS = { all: '📷🎬', photos: '📷', videos: '🎬' };
+
+// SVG split diagonally: camera (top-left) / video camera (bottom-right)
+export const MEDIA_ALL_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">' +
+  '<defs>' +
+  '<clipPath id="mf-cam"><polygon points="0,0 24,0 0,24"/></clipPath>' +
+  '<clipPath id="mf-vid"><polygon points="24,0 24,24 0,24"/></clipPath>' +
+  '</defs>' +
+  '<g clip-path="url(#mf-cam)" fill="#e2e8f0">' +
+  '<rect x="1" y="7" width="14" height="10" rx="1.5"/>' +
+  '<rect x="5" y="5" width="4" height="3" rx="1"/>' +
+  '<circle cx="8" cy="12" r="3" fill="#334155"/>' +
+  '<circle cx="8" cy="12" r="1.2" fill="#94a3b8"/>' +
+  '</g>' +
+  '<g clip-path="url(#mf-vid)" fill="#e2e8f0">' +
+  '<rect x="1" y="7" width="13" height="10" rx="1.5"/>' +
+  '<polygon points="14,7 22,12 14,17"/>' +
+  '</g>' +
+  '<line x1="24" y1="0" x2="0" y2="24" stroke="#475569" stroke-width="1.5"/>' +
+  '</svg>';
+
+const MEDIA_LABELS = { all: MEDIA_ALL_ICON, photos: '📷', videos: '🎬' };
 
 export function cycleMediaTypeFilter() {
   _mediaType = MEDIA_CYCLES[(MEDIA_CYCLES.indexOf(_mediaType) + 1) % MEDIA_CYCLES.length];
