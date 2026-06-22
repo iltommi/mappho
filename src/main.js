@@ -779,8 +779,12 @@ async function startScan() {
   setProgress(0);
   let cached = await getAllCached();
   if (cached.length === 0) {
+    setStatus('Downloading index from pCloud…', 0);
     const n = await loadPhotoIndex();
-    if (n > 0) cached = await getAllCached();
+    if (n > 0) {
+      setStatus(`Index downloaded — ${n} entries. Loading…`, 0);
+      cached = await getAllCached();
+    }
   }
   let cachedGeo = 0, cachedLocatedUndated = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
