@@ -154,9 +154,10 @@ const fixDateTimeInput = document.getElementById('fix-date-time-input');
 const fixDateSaveBtn  = document.getElementById('fix-date-save');
 const fixDateCancelBtn = document.getElementById('fix-date-cancel');
 
-let fixDatePhoto  = null;
-let fixDatePhotos = null; // bulk mode
-let fixDateOnDone = null;
+let fixDatePhoto   = null;
+let fixDatePhotos  = null; // bulk mode
+let fixDateOnDone  = null;
+let _lastFixDateTs = null; // ts of the last successfully saved fix-date
 
 async function applyFixDateToPhoto(photo, ts) {
   const { fileid, name } = photo;
@@ -203,9 +204,10 @@ function startFixDate(photo, onDone) {
   fixDatePhoto  = photo;
   fixDatePhotos = null;
   fixDateOnDone = onDone;
-  const existing = (photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS) ? new Date(photo.ts) : new Date();
-  fixDateInput.value = existing.toISOString().split('T')[0];
-  fixDateTimeInput.value = existing.toTimeString().slice(0, 5);
+  const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+  const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
+  fixDateInput.value = seed.toISOString().split('T')[0];
+  fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateSaveBtn.textContent = '💾 Save';
   fixDateBar.style.display = 'flex';
   document.body.classList.add('action-bar-open');
@@ -215,9 +217,9 @@ function startBulkFixDate(photos, onDone) {
   fixDatePhoto  = null;
   fixDatePhotos = photos;
   fixDateOnDone = onDone;
-  const now = new Date();
-  fixDateInput.value = now.toISOString().split('T')[0];
-  fixDateTimeInput.value = now.toTimeString().slice(0, 5);
+  const seed = _lastFixDateTs ? new Date(_lastFixDateTs) : new Date();
+  fixDateInput.value = seed.toISOString().split('T')[0];
+  fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   fixDateBar.style.display = 'flex';
   document.body.classList.add('action-bar-open');
@@ -242,6 +244,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
         log('Bulk fix date error', `${list[i].name}: ${e.message}`);
       }
     }
+    if (ok > 0) _lastFixDateTs = ts;
     await reloadTopbarCounts();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     fixDateBar.style.display = 'none';
@@ -258,6 +261,7 @@ fixDateSaveBtn.addEventListener('click', async () => {
   try {
     fixDateSaveBtn.textContent = '⏳ Saving…';
     await applyFixDateToPhoto(fixDatePhoto, ts);
+    _lastFixDateTs = ts;
     await reloadTopbarCounts();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     fixDateBar.style.display = 'none';
