@@ -164,41 +164,61 @@ async function applyFixDateToPhoto(photo, ts) {
   const { fileid, name } = photo;
   const isHeic = /\.heic$/i.test(name);
   const isMP4  = isVideo(name);
+  log('Fix date', `start ${name} (${fileid})`);
 
   let newFileid = fileid;
   let newName   = name;
   let newHash   = null;
 
   if (isMP4) {
+    log('Fix date', 'stat (mp4)');
     const { hash } = await getFileStat(fileid).catch(() => ({}));
     newHash = hash ?? null;
+    log('Fix date', 'sync organize');
     await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
+    log('Fix date', 'extract HEIC meta');
     const meta = await extractHeicMeta(fileid);
+    log('Fix date', 'stat (heic)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+    log('Fix date', 'download HEIC');
     const heicBuf = await downloadFullFile(fileid);
+    log('Fix date', `convert to JPEG (${heicBuf.byteLength}B)`);
     const jpegBuf = await heicToJpeg(heicBuf);
     const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model });
     newName = name.replace(/\.heic$/i, '.jpg');
+    log('Fix date', 'stat for parent folder');
     const { parentfolderid } = await getFileStat(fileid);
+    log('Fix date', `upload JPEG ${newName}`);
     newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
+    log('Fix date', `delete original HEIC ${fileid}`);
     await deleteFile(fileid);
+    log('Fix date', 'stat new file');
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+    log('Fix date', 'sync organize');
     await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   } else {
+    log('Fix date', 'stat (jpeg)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
+    log('Fix date', 'download');
     const buffer = await downloadFullFile(fileid);
+    log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
     const modified = injectExif(buffer, { ts });
+    log('Fix date', 'overwrite');
     newFileid = await overwriteFile(fileid, modified);
+    log('Fix date', 'stat new file');
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+    log('Fix date', 'sync organize');
     await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   }
 
+  log('Fix date', 'update cache');
   const cached = await getCached(fileid);
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
   if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
   else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
+  log('Fix date', `done → newFileid=${newFileid}`);
   return { oldFileid: fileid, newFileid, newName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
 }
 
