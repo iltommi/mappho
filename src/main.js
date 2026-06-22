@@ -51,16 +51,18 @@ function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
 function clearScanStatus() { /* status bar stays; last message persists, then auto-hides */ }
 
 async function reloadTopbarCounts() {
-  const total   = await countCached();
-  const ignored = await countIgnored();
-  const orphans = await countOrphans();
-  const noDate  = await countOrphansInRange(UNDATED_TS, UNDATED_TS);
-  topbarTotal          = total - ignored;
-  topbarGeotagged      = total - ignored - orphans;
-  topbarDated          = orphans - noDate;
-  topbarUnknown        = noDate;
-  topbarLocatedUndated = await countLocatedUndated();
+  const [total, ignored, orphans, noDate] = await Promise.all([
+    countCached(), countIgnored(), countOrphans(), countOrphansInRange(UNDATED_TS, UNDATED_TS),
+  ]);
+  topbarTotal     = total - ignored;
+  topbarGeotagged = total - ignored - orphans;
+  topbarDated     = orphans - noDate;
+  topbarUnknown   = noDate;
   updateTopbar();
+  // Full cursor scan — runs without blocking the caller
+  countLocatedUndated()
+    .then(n => { topbarLocatedUndated = n; updateTopbar(); })
+    .catch(e => log('reloadTopbarCounts', `countLocatedUndated error: ${e.message}`));
 }
 
 function showBriefStatus(msg, timeoutMs = 4000) {
