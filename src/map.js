@@ -129,7 +129,22 @@ export function initMap() {
     maxZoom: 19,
   }).addTo(map);
 
-  cluster = L.markerClusterGroup({ chunkedLoading: true, zoomToBoundsOnClick: false, showCoverageOnHover: false });
+  cluster = L.markerClusterGroup({
+    chunkedLoading: true,
+    zoomToBoundsOnClick: false,
+    showCoverageOnHover: false,
+    iconCreateFunction(c) {
+      const n    = c.getChildCount();
+      const xl   = n > 9999;
+      const tier = n < 10 ? 'small' : n < 100 ? 'medium' : 'large';
+      const size = xl ? 56 : 40;
+      return L.divIcon({
+        html: `<div><span>${n}</span></div>`,
+        className: `marker-cluster marker-cluster-${tier}${xl ? ' marker-cluster-xl' : ''}`,
+        iconSize: L.point(size, size),
+      });
+    },
+  });
 
   let longPressTimer = null;
   let suppressNextClusterClick = false;

@@ -1273,6 +1273,16 @@ body.filter-open #map { top: 40px; }
   text-shadow: 0 0 3px #fff, 0 0 3px #fff;
 }
 
+/* XL cluster (>9999 markers) — bigger badge so the 5-digit number fits */
+.marker-cluster-xl { border-radius: 28px; }
+.marker-cluster-xl div {
+  width: 42px; height: 42px;
+  margin: 7px;
+  border-radius: 21px;
+  font-size: 11px;
+}
+.marker-cluster-xl span { line-height: 42px; }
+
 /* Popup */
 .photo-popup {
   text-align: center;
