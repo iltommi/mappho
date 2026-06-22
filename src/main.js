@@ -278,7 +278,7 @@ async function _runFixDate(photo, ts, onDone) {
       addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
     }
     _lastFixDateTs = ts;
-    await reloadTopbarCounts();
+    await reloadTopbarCounts().catch(e => log('Fix date', `reloadTopbarCounts error: ${e.message}`));
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
     onDone?.();
   } catch (e) {
@@ -307,7 +307,13 @@ async function _runBulkFixDate(list, ts, cb) {
     }
   }
   if (ok > 0) _lastFixDateTs = ts;
-  await reloadTopbarCounts();
+  try {
+    log('Fix date', 'reloading topbar counts');
+    await reloadTopbarCounts();
+    log('Fix date', 'topbar counts done');
+  } catch (e) {
+    log('Fix date', `reloadTopbarCounts error: ${e.message}`);
+  }
   flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
 
   if (failedItems.length > 0) {
