@@ -226,46 +226,32 @@ function startBulkFixDate(photos, onDone) {
   document.body.classList.add('action-bar-open');
 }
 
-fixDateSaveBtn.addEventListener('click', async () => {
+fixDateSaveBtn.addEventListener('click', () => {
   if (!fixDateInput.value) return;
-  const origText = fixDateSaveBtn.textContent;
-  fixDateSaveBtn.disabled = true;
   const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
 
   if (fixDatePhotos) {
     const list = fixDatePhotos;
-    let ok = 0, failed = 0;
-    for (let i = 0; i < list.length; i++) {
-      fixDateSaveBtn.textContent = `⏳ ${i + 1}/${list.length}…`;
-      try {
-        const r = await applyFixDateToPhoto(list[i], ts);
-        if (r.lat != null && r.newFileid !== r.oldFileid) {
-          removeMarker(r.oldFileid);
-          addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
-        }
-        ok++;
-      } catch (e) {
-        failed++;
-        log('Bulk fix date error', `${list[i].name}: ${e.message}`);
-      }
-    }
-    if (ok > 0) _lastFixDateTs = ts;
-    await reloadTopbarCounts();
-    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+    const cb   = fixDateOnDone;
     fixDateBar.style.display = 'none';
     document.body.classList.remove('action-bar-open');
-    const cb = fixDateOnDone;
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
-    fixDateSaveBtn.disabled = false;
-    fixDateSaveBtn.textContent = origText;
-    cb?.({ success: ok > 0, count: ok, failed });
+    _runBulkFixDate(list, ts, cb);
     return;
   }
 
-  if (!fixDatePhoto) { fixDateSaveBtn.disabled = false; return; }
+  if (!fixDatePhoto) return;
+  const photo = fixDatePhoto;
+  const cb    = fixDateOnDone;
+  fixDateBar.style.display = 'none';
+  document.body.classList.remove('action-bar-open');
+  fixDatePhoto = null; fixDateOnDone = null;
+  _runFixDate(photo, ts, cb);
+});
+
+async function _runFixDate(photo, ts, onDone) {
   try {
-    fixDateSaveBtn.textContent = '⏳ Saving…';
-    const r = await applyFixDateToPhoto(fixDatePhoto, ts);
+    const r = await applyFixDateToPhoto(photo, ts);
     if (r.lat != null && r.newFileid !== r.oldFileid) {
       removeMarker(r.oldFileid);
       addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
@@ -273,18 +259,35 @@ fixDateSaveBtn.addEventListener('click', async () => {
     _lastFixDateTs = ts;
     await reloadTopbarCounts();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-    fixDateBar.style.display = 'none';
-    document.body.classList.remove('action-bar-open');
-    fixDateOnDone?.();
+    onDone?.();
   } catch (e) {
     log('Fix date error', e.message);
-  } finally {
-    fixDateSaveBtn.disabled = false;
-    fixDateSaveBtn.textContent = origText;
-    fixDatePhoto = null;
-    fixDateOnDone = null;
+    showBriefStatus(`❌ Fix date failed: ${e.message}`);
   }
-});
+}
+
+async function _runBulkFixDate(list, ts, cb) {
+  let ok = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    setStatus(`📅 Fixing dates… ${i + 1}/${list.length}`, 0);
+    try {
+      const r = await applyFixDateToPhoto(list[i], ts);
+      if (r.lat != null && r.newFileid !== r.oldFileid) {
+        removeMarker(r.oldFileid);
+        addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
+      }
+      ok++;
+    } catch (e) {
+      failed++;
+      log('Bulk fix date error', `${list[i].name}: ${e.message}`);
+    }
+  }
+  if (ok > 0) _lastFixDateTs = ts;
+  await reloadTopbarCounts();
+  flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+  showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}${failed ? `, ${failed} failed` : ''}`);
+  cb?.({ success: ok > 0, count: ok, failed });
+}
 
 fixDateCancelBtn.addEventListener('click', () => {
   fixDateBar.style.display = 'none';
