@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
+import { initMap, addMarker, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
@@ -198,6 +198,7 @@ async function applyFixDateToPhoto(photo, ts) {
   await deleteOrphan(fileid);
   if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
   else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
+  return { oldFileid: fileid, newFileid, newName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
 }
 
 function startFixDate(photo, onDone) {
@@ -237,7 +238,11 @@ fixDateSaveBtn.addEventListener('click', async () => {
     for (let i = 0; i < list.length; i++) {
       fixDateSaveBtn.textContent = `⏳ ${i + 1}/${list.length}…`;
       try {
-        await applyFixDateToPhoto(list[i], ts);
+        const r = await applyFixDateToPhoto(list[i], ts);
+        if (r.lat != null && r.newFileid !== r.oldFileid) {
+          removeMarker(r.oldFileid);
+          addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
+        }
         ok++;
       } catch (e) {
         failed++;
@@ -260,7 +265,11 @@ fixDateSaveBtn.addEventListener('click', async () => {
   if (!fixDatePhoto) { fixDateSaveBtn.disabled = false; return; }
   try {
     fixDateSaveBtn.textContent = '⏳ Saving…';
-    await applyFixDateToPhoto(fixDatePhoto, ts);
+    const r = await applyFixDateToPhoto(fixDatePhoto, ts);
+    if (r.lat != null && r.newFileid !== r.oldFileid) {
+      removeMarker(r.oldFileid);
+      addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
+    }
     _lastFixDateTs = ts;
     await reloadTopbarCounts();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
