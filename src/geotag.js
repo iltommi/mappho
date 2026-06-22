@@ -8,6 +8,7 @@ import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
 import { searchLocation } from './geocode.js';
 import { log } from './log.js';
+import { askRetry } from './confirm.js';
 
 const bar        = document.getElementById('pin-drop-bar');
 const hintEl     = document.getElementById('pin-drop-hint');
@@ -249,17 +250,23 @@ function finish() {
 }
 
 async function _runBulkGeotag(list, lat, lng, cb) {
-  let ok = 0, failed = 0;
+  let ok = 0;
+  const failedItems = [];
   for (let i = 0; i < list.length; i++) {
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
     try {
       await applyGeotagToPhoto(list[i], lat, lng);
       ok++;
     } catch (e) {
-      failed++;
+      failedItems.push(list[i]);
       log('Bulk geotag error', `${list[i].name}: ${e.message}`);
     }
   }
   flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-  cb?.({ success: ok > 0, count: ok, failed });
+
+  if (failedItems.length > 0) {
+    const retry = await askRetry(failedItems.length, 'photo');
+    if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
+  }
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
 }

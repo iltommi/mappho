@@ -17,6 +17,7 @@ import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
+import { askRetry } from './confirm.js';
 import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
@@ -262,12 +263,15 @@ async function _runFixDate(photo, ts, onDone) {
     onDone?.();
   } catch (e) {
     log('Fix date error', e.message);
-    showBriefStatus(`❌ Fix date failed: ${e.message}`);
+    // Re-open the bar so the user can retry.
+    startFixDate(photo, onDone);
+    showBriefStatus(`❌ Fix date failed — try again`);
   }
 }
 
 async function _runBulkFixDate(list, ts, cb) {
-  let ok = 0, failed = 0;
+  let ok = 0;
+  const failedItems = [];
   for (let i = 0; i < list.length; i++) {
     setStatus(`📅 Fixing dates… ${i + 1}/${list.length}`, 0);
     try {
@@ -278,15 +282,22 @@ async function _runBulkFixDate(list, ts, cb) {
       }
       ok++;
     } catch (e) {
-      failed++;
+      failedItems.push(list[i]);
       log('Bulk fix date error', `${list[i].name}: ${e.message}`);
     }
   }
   if (ok > 0) _lastFixDateTs = ts;
   await reloadTopbarCounts();
   flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-  showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}${failed ? `, ${failed} failed` : ''}`);
-  cb?.({ success: ok > 0, count: ok, failed });
+
+  if (failedItems.length > 0) {
+    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed`, 0);
+    const retry = await askRetry(failedItems.length, 'photo');
+    if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
+  } else {
+    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}`);
+  }
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
 }
 
 fixDateCancelBtn.addEventListener('click', () => {
