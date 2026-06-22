@@ -1175,7 +1175,7 @@ body.filter-open #map { top: 40px; }
   bottom: 80px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2000;
+  z-index: 3600;
   background: #16213e;
   border: 1px solid #334155;
   border-radius: 12px;

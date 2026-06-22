@@ -148,7 +148,7 @@ geotagBtn.addEventListener('click', () => {
 fixDateBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !fixDateHandler) return;
-  close({ handoff: true });
+  close();
   fixDateHandler(photo);
 });
 
