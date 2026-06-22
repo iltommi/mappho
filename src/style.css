@@ -1266,6 +1266,13 @@ body.filter-open #map { top: 40px; }
 #ss-delete-btn  { color: #fca5a5; }
 #ss-delete-btn.confirm { background: #b91c1c; color: #fff; }
 
+/* Cluster counter */
+.marker-cluster span {
+  font-weight: 700;
+  color: #1a1a1a;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff;
+}
+
 /* Popup */
 .photo-popup {
   text-align: center;
