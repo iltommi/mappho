@@ -208,21 +208,9 @@ saveBtn.addEventListener('click', async () => {
 
   if (mode === 'bulk') {
     const list = pendingPhotos;
-    saveBtn.disabled = true;
-    let ok = 0, failed = 0;
-    for (let i = 0; i < list.length; i++) {
-      saveBtn.textContent = `⏳ ${i + 1}/${list.length}…`;
-      try {
-        await applyGeotagToPhoto(list[i], lat, lng);
-        ok++;
-      } catch (e) {
-        failed++;
-        log('Bulk geotag error', `${list[i].name}: ${e.message}`);
-      }
-    }
+    const cb   = onDone;
     finish();
-    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-    onDone?.({ success: ok > 0, count: ok, failed });
+    _runBulkGeotag(list, lat, lng, cb);
     return;
   }
 
@@ -258,4 +246,20 @@ function finish() {
   pendingPhoto  = null;
   pendingPhotos = null;
   pendingLatLng = null;
+}
+
+async function _runBulkGeotag(list, lat, lng, cb) {
+  let ok = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
+    try {
+      await applyGeotagToPhoto(list[i], lat, lng);
+      ok++;
+    } catch (e) {
+      failed++;
+      log('Bulk geotag error', `${list[i].name}: ${e.message}`);
+    }
+  }
+  flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+  cb?.({ success: ok > 0, count: ok, failed });
 }
