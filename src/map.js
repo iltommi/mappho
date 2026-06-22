@@ -147,7 +147,8 @@ export function initMap() {
       cluster._featureGroup.eachLayer(layer => {
         if (layer._icon !== pressedClusterEl) return;
         const children = layer.getAllChildMarkers();
-        const photos = children.map(m => markerData.get(m)).filter(Boolean);
+        const photos = children.map(m => markerData.get(m)).filter(Boolean)
+          .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
         if (!photos.length) return;
         log('cluster long-press', `${photos.length} photos`);
         setIgnoreHandler(null);
