@@ -228,22 +228,15 @@ export async function uploadFile(folderid, filename, arrayBuffer) {
     bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
   }
   const b64 = btoa(bin);
-  const boundary = 'MapphoUpload' + crypto.randomUUID().replace(/-/g, '');
-  const crlf = '\r\n';
-  const body = [
-    '--' + boundary,
-    `Content-Disposition: form-data; name="file"; filename="${filename}"`,
-    'Content-Type: image/jpeg',
-    'Content-Transfer-Encoding: base64',
-    '',
-    b64,
-    '--' + boundary + '--',
-  ].join(crlf);
+  // dataType:'formData' uses Capacitor's native multipart builder which base64-decodes
+  // the value to raw bytes before writing — the plain string path would store the
+  // base64 text literally on pCloud instead of the binary JPEG.
   const resp = await CapacitorHttp.request({
     method: 'POST',
     url: buildUrl('uploadfile', { folderid, nopartial: 1 }).toString(),
-    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-    data: body,
+    headers: { 'Content-Type': 'multipart/form-data' },
+    dataType: 'formData',
+    data: [{ type: 'base64File', key: 'file', fileName: filename, contentType: 'image/jpeg', value: b64 }],
     connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
   });
   if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
