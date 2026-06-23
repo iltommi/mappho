@@ -22,9 +22,11 @@ import argparse
 import io
 import json
 import os
+import queue
 import re
 import subprocess
 import sys
+import threading
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
@@ -475,21 +477,18 @@ def main():
     if reviewed:
         print(f"Resuming — {len(reviewed)} pair(s) already reviewed.\n")
 
-    deleted = 0
-    kept    = 0
-    window  = None
+    deleted   = 0
+    kept      = 0
+    window    = None
+    cancel    = threading.Event()
+    # Queue holds (i, a, b, diff_s, key, result_dict | None-if-prereview | "skip")
+    fetch_q   = queue.Queue(maxsize=3)
 
-    for i, (a, b, diff_s) in enumerate(candidates, 1):
-        key = pair_key(a, b)
-        if key in reviewed:
-            print(f"[{i}/{len(candidates)}] Skipping (already reviewed): {PurePosixPath(a['Path']).name}")
-            continue
-
+    def _fetch_pair(i, a, b, diff_s, key):
         name_a = PurePosixPath(a["Path"]).name
         name_b = PurePosixPath(b["Path"]).name
-        print(f"[{i}/{len(candidates)}] {name_a} & {name_b}", flush=True)
+        print(f"[{i}/{len(candidates)}] {name_a} & {name_b}")
 
-        print(f"  Fetching thumbnails …", end="", flush=True)
         data_a = fetch_pcloud_thumb(hostname, token, a["ID"])
         data_b = fetch_pcloud_thumb(hostname, token, b["ID"])
         img_a  = load_image(data_a)
@@ -498,24 +497,58 @@ def main():
         h_a  = phash(img_a) if img_a else None
         h_b  = phash(img_b) if img_b else None
         dist = (h_a - h_b) if (h_a is not None and h_b is not None) else None
-        print(f" dist={dist}" if dist is not None else " (hash unavailable)")
+        print(f"  dist={dist}" if dist is not None else "  hash unavailable")
 
-        # Skip pairs that don't meet the distance threshold
         if dist is not None and dist > args.hash_distance:
             print(f"  Skipping — dist={dist} > {args.hash_distance}")
+            return "skip_dist"
+
+        gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
+        gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
+        print(f"  GPS  A:{'yes' if gps_a else 'no'}  B:{'yes' if gps_b else 'no'}")
+
+        return {"dist": dist, "img_a": img_a, "img_b": img_b, "gps_a": gps_a, "gps_b": gps_b}
+
+    def prefetch_worker():
+        for i, (a, b, diff_s) in enumerate(candidates, 1):
+            if cancel.is_set():
+                break
+            key = pair_key(a, b)
+            if key in reviewed:
+                fetch_q.put((i, a, b, diff_s, key, None))
+                continue
+            result = _fetch_pair(i, a, b, diff_s, key)
+            fetch_q.put((i, a, b, diff_s, key, result))
+        fetch_q.put(None)  # sentinel
+
+    t = threading.Thread(target=prefetch_worker, daemon=True)
+    t.start()
+
+    while True:
+        item = fetch_q.get()
+        if item is None:
+            break
+        i, a, b, diff_s, key, result = item
+
+        if result is None:
+            print(f"[{i}/{len(candidates)}] Already reviewed — skipping.")
+            continue
+
+        if result == "skip_dist":
             reviewed.add(key)
             save_state(reviewed)
             continue
 
-        print(f"  Reading GPS …", end="", flush=True)
-        gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
-        gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
-        print(f" A:{'GPS' if gps_a else 'none'}  B:{'GPS' if gps_b else 'none'}")
+        dist  = result["dist"]
+        img_a = result["img_a"]
+        img_b = result["img_b"]
+        gps_a = result["gps_a"]
+        gps_b = result["gps_b"]
 
-        # Identical images (dist=0): auto-delete the smallest, no window needed
+        # Identical images: auto-delete smallest without opening window
         if dist == 0:
             action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
-            print(f"  dist=0 → auto-deleting smallest: {(a if action == 'delete_a' else b)['Path']}")
+            print(f"  dist=0 → auto-deleting smallest")
         else:
             if window is None:
                 window = ReviewWindow(args.hash_distance)
@@ -526,6 +559,7 @@ def main():
 
         if action == "quit":
             print("Review stopped by user.")
+            cancel.set()
             break
         elif action == "delete_smallest":
             action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
