@@ -574,6 +574,9 @@ function updateCounter() {
   const dateStr = ts ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
   const parts = [`${current + 1} / ${total}`, dateStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
+  const single = total === 1;
+  prevBtn.style.display = single ? 'none' : '';
+  nextBtn.style.display = single ? 'none' : '';
 }
 
 function updateCaption() {
