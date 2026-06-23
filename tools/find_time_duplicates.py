@@ -396,8 +396,24 @@ class ReviewWindow:
         self.root.deiconify()
         self.root.lift()
         self.root.wait_variable(self._decision)
-        self.root.withdraw()
+        self._clear()
         return self._decision.get()
+
+    def _clear(self):
+        from PIL import Image, ImageTk
+        blank = ImageTk.PhotoImage(Image.new("RGB", (THUMB_W, THUMB_H), "#000000"))
+        for lbl in (self._img_lbl_a, self._img_lbl_b):
+            lbl.configure(image=blank)
+            lbl.image = blank
+        for lbl in (self._name_a, self._name_b):
+            lbl.configure(text="")
+        for lbl in (self._size_a, self._size_b, self._dir_a, self._dir_b,
+                    self._gps_a, self._gps_b):
+            lbl.configure(text="")
+        self._badge.configure(text="", bg=BG)
+        self._delta.configure(text="")
+        self._counter.set("")
+        self.root.update_idletasks()
 
     def close(self):
         self.root.destroy()
