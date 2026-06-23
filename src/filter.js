@@ -9,6 +9,7 @@ const resetBtn    = document.getElementById('filter-reset-btn');
 
 let minTs = 0, maxTs = 0;
 let fromTs = 0, toTs = 0;
+let _savedFromTs = null, _savedToTs = null;
 
 function fmt(ts) {
   return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
@@ -40,6 +41,8 @@ function scheduleRangeInfo() {
 }
 
 function apply() {
+  _savedFromTs = fromTs;
+  _savedToTs   = toTs;
   fromDisplay.textContent = fmt(fromTs);
   toDisplay.textContent   = fmt(toTs);
   resetBtn.style.display  = (fromTs === minTs && toTs === maxTs) ? 'none' : '';
@@ -114,8 +117,13 @@ async function init() {
   minTs = Math.max(range.min, 0);
   maxTs = Math.min(range.max, saneMax);
 
-  fromTs = minTs;
-  toTs   = maxTs;
+  if (_savedFromTs !== null && _savedToTs !== null) {
+    fromTs = Math.max(minTs, Math.min(maxTs, _savedFromTs));
+    toTs   = Math.max(minTs, Math.min(maxTs, _savedToTs));
+  } else {
+    fromTs = minTs;
+    toTs   = maxTs;
+  }
 
   if (!_pickersMade) {
     _pickersMade = true;
@@ -138,9 +146,14 @@ export function closeFilter() {
   panel.classList.remove('open');
   document.body.classList.remove('filter-open');
   minTs = 0; maxTs = 0;
+  _savedFromTs = null; _savedToTs = null;
 }
 
 export function getActiveFilterRange() {
-  if (!panel.classList.contains('open') || minTs === maxTs) return null;
-  return { from: fromTs, to: toTs };
+  if (minTs >= maxTs) return null; // no valid range (never opened, or full reset)
+  const f = panel.classList.contains('open') ? fromTs : _savedFromTs;
+  const t = panel.classList.contains('open') ? toTs   : _savedToTs;
+  if (f == null || t == null) return null;
+  if (f === minTs && t === maxTs) return null; // full range = no filter
+  return { from: f, to: t };
 }
