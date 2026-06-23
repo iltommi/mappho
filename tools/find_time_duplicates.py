@@ -210,7 +210,6 @@ class ReviewWindow:
         self._tk = tk
         self._ImageTk = ImageTk
         self.max_dist = max_dist
-        self._decision = tk.StringVar()
 
         root = tk.Tk()
         root.configure(bg=BG)
@@ -219,8 +218,9 @@ class ReviewWindow:
         root.bind("<Escape>", lambda e: self._decide("keep_both"))
         self.root = root
 
-        # ── counter label ──
-        self._counter = tk.StringVar()
+        # StringVar requires an existing root — create after tk.Tk()
+        self._decision = tk.StringVar()
+        self._counter  = tk.StringVar()
         tk.Label(root, textvariable=self._counter, bg=BG, fg=FG_DIM,
                  font=("Helvetica", 10)).pack(pady=(10, 2))
 
