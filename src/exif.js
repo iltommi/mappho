@@ -1,6 +1,6 @@
 import exifr from 'exifr';
 import piexif from 'piexifjs';
-import { fetchFileHead, fetchFileRange } from './pcloud.js';
+import { fetchFileHead, fetchFileRange, getFileFullPath } from './pcloud.js';
 
 // Returns { lat, lng, ts } — any field may be absent if not in EXIF.
 // Pass fileid + name for HEIC files so multi-pass fetching can be used when needed.
@@ -361,48 +361,65 @@ export async function showExif(fileid, name) {
   exifPanel.classList.add('open', 'loading');
 
   try {
-    let data;
-    const isHeic = /\.heic$/i.test(name ?? '');
-
-    if (isHeic) {
-      const tiff = await fetchHeicExifTiff(fileid);
-      if (tiff) {
-        data = await exifr.parse(new Uint8Array(tiff), {
-          ifd0: true, ifd1: true, exif: true, gps: true, interop: true,
-          translateKeys: true, translateValues: true, reviveValues: true,
-          mergeOutput: true, unknown: true,
-        });
-      }
-    } else {
-      const buf = await fetchFileHead(fileid, 131072);
-      data = await exifr.parse(new Uint8Array(buf), { all: true });
-    }
+    const [pathResult, exifData] = await Promise.allSettled([
+      getFileFullPath(fileid),
+      (async () => {
+        const isHeic = /\.heic$/i.test(name ?? '');
+        if (isHeic) {
+          const tiff = await fetchHeicExifTiff(fileid);
+          if (!tiff) return null;
+          return exifr.parse(new Uint8Array(tiff), {
+            ifd0: true, ifd1: true, exif: true, gps: true, interop: true,
+            translateKeys: true, translateValues: true, reviveValues: true,
+            mergeOutput: true, unknown: true,
+          });
+        }
+        const buf = await fetchFileHead(fileid, 131072);
+        return exifr.parse(new Uint8Array(buf), { all: true });
+      })(),
+    ]);
 
     exifPanel.classList.remove('loading');
 
-    const entries = data
-      ? Object.entries(data).filter(([k]) => k !== 'errors')
-      : [];
+    const frag = document.createDocumentFragment();
+
+    // Path row — always shown at the top.
+    const pathRow = document.createElement('div');
+    pathRow.className = 'exif-row exif-path-row';
+    const pathKey = document.createElement('span');
+    pathKey.className = 'exif-key';
+    pathKey.textContent = 'pCloud path';
+    const pathVal = document.createElement('span');
+    pathVal.className = 'exif-val';
+    pathVal.textContent = pathResult.status === 'fulfilled' ? pathResult.value : '—';
+    pathRow.appendChild(pathKey);
+    pathRow.appendChild(pathVal);
+    frag.appendChild(pathRow);
+
+    const data = exifData.status === 'fulfilled' ? exifData.value : null;
+    const entries = data ? Object.entries(data).filter(([k]) => k !== 'errors') : [];
 
     if (!entries.length) {
-      exifListEl.innerHTML = '<p class="exif-empty">No EXIF data found.</p>';
-      return;
+      const empty = document.createElement('p');
+      empty.className = 'exif-empty';
+      empty.textContent = 'No EXIF data found.';
+      frag.appendChild(empty);
+    } else {
+      for (const [key, val] of entries) {
+        const row = document.createElement('div');
+        row.className = 'exif-row';
+        const k = document.createElement('span');
+        k.className = 'exif-key';
+        k.textContent = key;
+        const v = document.createElement('span');
+        v.className = 'exif-val';
+        v.textContent = fmtVal(val);
+        row.appendChild(k);
+        row.appendChild(v);
+        frag.appendChild(row);
+      }
     }
 
-    const frag = document.createDocumentFragment();
-    for (const [key, val] of entries) {
-      const row = document.createElement('div');
-      row.className = 'exif-row';
-      const k = document.createElement('span');
-      k.className = 'exif-key';
-      k.textContent = key;
-      const v = document.createElement('span');
-      v.className = 'exif-val';
-      v.textContent = fmtVal(val);
-      row.appendChild(k);
-      row.appendChild(v);
-      frag.appendChild(row);
-    }
     exifListEl.appendChild(frag);
   } catch (e) {
     exifPanel.classList.remove('loading');

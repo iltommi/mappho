@@ -148,6 +148,20 @@ export async function getFileStat(fileid) {
   return data.metadata;
 }
 
+// Returns the full pCloud path for a file (e.g. /Photos/2023/06/photo.jpg).
+export async function getFileFullPath(fileid) {
+  const meta = await getFileStat(fileid);
+  const parts = [meta.name];
+  let fid = meta.parentfolderid;
+  while (fid) {
+    const folder = await _statFolder(fid);
+    if (!folder.name) break;
+    parts.unshift(folder.name);
+    fid = folder.parentfolderid;
+  }
+  return '/' + parts.join('/');
+}
+
 export async function getPublicLink(fileid) {
   const data = await api('getfilepublink', { fileid });
   return data.link;
