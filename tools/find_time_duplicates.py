@@ -104,11 +104,81 @@ def fetch_head(remote, path, rel_path, nbytes=131072):
     return r.stdout if r.returncode == 0 else None
 
 
+def _exif_thumbnail(data):
+    """
+    Extract the embedded JPEG thumbnail from a JPEG's EXIF APP1 segment.
+    Returns raw JPEG bytes or None. Pure stdlib, no extra dependencies.
+    """
+    import struct
+
+    if len(data) < 12 or data[:2] != b'\xff\xd8':
+        return None
+
+    i = 2
+    while i + 4 <= len(data):
+        if data[i] != 0xFF:
+            break
+        marker = data[i + 1]
+        if marker in (0x00, 0xFF):   # padding
+            i += 1
+            continue
+        seg_len = struct.unpack('>H', data[i + 2: i + 4])[0]
+        seg_end = i + 2 + seg_len
+
+        if marker == 0xE1 and data[i + 4: i + 10] == b'Exif\x00\x00':
+            tiff = data[i + 10: seg_end]
+            if len(tiff) < 8:
+                break
+            endian = '<' if tiff[:2] == b'II' else '>'
+            ifd0_off = struct.unpack(endian + 'I', tiff[4:8])[0]
+            if ifd0_off + 2 > len(tiff):
+                break
+            n0 = struct.unpack(endian + 'H', tiff[ifd0_off: ifd0_off + 2])[0]
+            ifd1_ptr = ifd0_off + 2 + n0 * 12
+            if ifd1_ptr + 4 > len(tiff):
+                break
+            ifd1_off = struct.unpack(endian + 'I', tiff[ifd1_ptr: ifd1_ptr + 4])[0]
+            if not ifd1_off or ifd1_off + 2 > len(tiff):
+                break
+            n1 = struct.unpack(endian + 'H', tiff[ifd1_off: ifd1_off + 2])[0]
+            t_offset = t_length = None
+            for k in range(n1):
+                e = ifd1_off + 2 + k * 12
+                if e + 12 > len(tiff):
+                    break
+                tag = struct.unpack(endian + 'H', tiff[e: e + 2])[0]
+                val = struct.unpack(endian + 'I', tiff[e + 8: e + 12])[0]
+                if tag == 0x0201:
+                    t_offset = val
+                elif tag == 0x0202:
+                    t_length = val
+            if t_offset and t_length and t_offset + t_length <= len(tiff):
+                return tiff[t_offset: t_offset + t_length]
+            break
+        i = seg_end
+
+    return None
+
+
 def load_image(data):
-    """Return a PIL Image from raw (possibly truncated) bytes, or None."""
+    """
+    Return a PIL Image from raw bytes.
+    Tries the embedded EXIF thumbnail first (fast, complete small JPEG).
+    Falls back to PIL with truncation tolerance for the partial file.
+    """
     if not data:
         return None
-    from PIL import Image
+    from PIL import Image, ImageFile
+
+    thumb_bytes = _exif_thumbnail(data)
+    if thumb_bytes:
+        try:
+            return Image.open(io.BytesIO(thumb_bytes))
+        except Exception:
+            pass
+
+    # Fallback: decode whatever PIL can from the truncated head
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
