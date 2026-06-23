@@ -477,82 +477,114 @@ def main():
     if reviewed:
         print(f"Resuming — {len(reviewed)} pair(s) already reviewed.\n")
 
-    deleted   = 0
-    kept      = 0
-    window    = None
-    cancel    = threading.Event()
-    # Queue holds (i, a, b, diff_s, key, result_dict | None-if-prereview | "skip")
-    fetch_q   = queue.Queue(maxsize=3)
+    deleted = 0
+    kept    = 0
+    window  = None
+    cancel  = threading.Event()
+    # Unbounded queue; items are tagged tuples (kind, ...)
+    # Kinds: "prereview", "skip", "auto", "review"
+    result_q = queue.Queue()
 
-    def _fetch_pair(i, a, b, diff_s, key):
-        name_a = PurePosixPath(a["Path"]).name
-        name_b = PurePosixPath(b["Path"]).name
-        print(f"[{i}/{len(candidates)}] {name_a} & {name_b}")
-
-        data_a = fetch_pcloud_thumb(hostname, token, a["ID"])
-        data_b = fetch_pcloud_thumb(hostname, token, b["ID"])
-        img_a  = load_image(data_a)
-        img_b  = load_image(data_b)
-
-        h_a  = phash(img_a) if img_a else None
-        h_b  = phash(img_b) if img_b else None
-        dist = (h_a - h_b) if (h_a is not None and h_b is not None) else None
-        print(f"  dist={dist}" if dist is not None else "  hash unavailable")
-
-        if dist is not None and dist > args.hash_distance:
-            print(f"  Skipping — dist={dist} > {args.hash_distance}")
-            return "skip_dist"
-
-        gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
-        gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
-        print(f"  GPS  A:{'yes' if gps_a else 'no'}  B:{'yes' if gps_b else 'no'}")
-
-        return {"dist": dist, "img_a": img_a, "img_b": img_b, "gps_a": gps_a, "gps_b": gps_b}
-
-    def prefetch_worker():
+    def scanner():
         for i, (a, b, diff_s) in enumerate(candidates, 1):
             if cancel.is_set():
                 break
             key = pair_key(a, b)
             if key in reviewed:
-                fetch_q.put((i, a, b, diff_s, key, None))
+                result_q.put(("prereview", i, key))
                 continue
-            result = _fetch_pair(i, a, b, diff_s, key)
-            fetch_q.put((i, a, b, diff_s, key, result))
-        fetch_q.put(None)  # sentinel
 
-    t = threading.Thread(target=prefetch_worker, daemon=True)
-    t.start()
+            name_a = PurePosixPath(a["Path"]).name
+            name_b = PurePosixPath(b["Path"]).name
+
+            # Fetch thumbnails only to compute hash, then discard
+            img_a = load_image(fetch_pcloud_thumb(hostname, token, a["ID"]))
+            img_b = load_image(fetch_pcloud_thumb(hostname, token, b["ID"]))
+            h_a   = phash(img_a) if img_a else None
+            h_b   = phash(img_b) if img_b else None
+            dist  = (h_a - h_b) if (h_a is not None and h_b is not None) else None
+            del img_a, img_b
+
+            dist_s = f"dist={dist}" if dist is not None else "hash unavailable"
+            print(f"[scan {i}/{len(candidates)}] {name_a} & {name_b}  {dist_s}")
+
+            if dist is not None and dist > args.hash_distance:
+                result_q.put(("skip", i, key))
+                continue
+
+            gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
+            gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
+            print(f"  GPS  A:{'yes' if gps_a else 'no'}  B:{'yes' if gps_b else 'no'}")
+
+            if dist == 0:
+                result_q.put(("auto", i, a, b, diff_s, key, gps_a, gps_b))
+            else:
+                result_q.put(("review", i, a, b, diff_s, dist, key, gps_a, gps_b))
+
+        result_q.put(None)  # sentinel
+
+    threading.Thread(target=scanner, daemon=True).start()
+
+    def do_delete(action, a, b, gps_a, gps_b):
+        nonlocal deleted, kept
+        if action == "delete_smallest":
+            action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
+        if action in ("delete_a", "delete_b"):
+            to_delete = a if action == "delete_a" else b
+            to_keep   = b if action == "delete_a" else a
+            gps_del   = gps_a if action == "delete_a" else gps_b
+            gps_keep  = gps_b if action == "delete_a" else gps_a
+            if gps_del and not gps_keep:
+                ok = inject_gps_and_upload(
+                    args.remote, args.path, hostname, token, to_keep, gps_del
+                )
+                if not ok:
+                    print("  GPS injection failed — skipping deletion to preserve GPS data.")
+                    return
+            print(f"  Deleting {to_delete['Path']} … ", end="", flush=True)
+            ok, err = delete_file(args.remote, args.path, to_delete["Path"])
+            print("done." if ok else f"FAILED: {err}")
+            deleted += 1
+        else:
+            print("  Kept both.")
+            kept += 1
 
     while True:
-        item = fetch_q.get()
+        item = result_q.get()
         if item is None:
             break
-        i, a, b, diff_s, key, result = item
 
-        if result is None:
+        kind = item[0]
+
+        if kind == "prereview":
+            _, i, key = item
             print(f"[{i}/{len(candidates)}] Already reviewed — skipping.")
             continue
 
-        if result == "skip_dist":
+        if kind == "skip":
+            _, i, key = item
             reviewed.add(key)
             save_state(reviewed)
             continue
 
-        dist  = result["dist"]
-        img_a = result["img_a"]
-        img_b = result["img_b"]
-        gps_a = result["gps_a"]
-        gps_b = result["gps_b"]
-
-        # Identical images: auto-delete smallest without opening window
-        if dist == 0:
+        if kind == "auto":
+            _, i, a, b, diff_s, key, gps_a, gps_b = item
             action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
-            print(f"  dist=0 → auto-deleting smallest")
-        else:
-            if window is None:
-                window = ReviewWindow(args.hash_distance)
-            action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b, gps_a, gps_b)
+            print(f"[{i}/{len(candidates)}] dist=0 → auto-deleting smallest")
+            do_delete(action, a, b, gps_a, gps_b)
+            reviewed.add(key)
+            save_state(reviewed)
+            continue
+
+        # kind == "review"
+        _, i, a, b, diff_s, dist, key, gps_a, gps_b = item
+        print(f"[{i}/{len(candidates)}] Needs review (dist={dist}) — fetching thumbnails …")
+        img_a = load_image(fetch_pcloud_thumb(hostname, token, a["ID"]))
+        img_b = load_image(fetch_pcloud_thumb(hostname, token, b["ID"]))
+
+        if window is None:
+            window = ReviewWindow(args.hash_distance)
+        action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b, gps_a, gps_b)
 
         reviewed.add(key)
         save_state(reviewed)
@@ -561,30 +593,8 @@ def main():
             print("Review stopped by user.")
             cancel.set()
             break
-        elif action == "delete_smallest":
-            action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
 
-        if action in ("delete_a", "delete_b"):
-            to_delete = a if action == "delete_a" else b
-            to_keep   = b if action == "delete_a" else a
-            gps_del   = gps_a if action == "delete_a" else gps_b
-            gps_keep  = gps_b if action == "delete_a" else gps_a
-
-            if gps_del and not gps_keep:
-                ok = inject_gps_and_upload(
-                    args.remote, args.path, hostname, token, to_keep, gps_del
-                )
-                if not ok:
-                    print("  GPS injection failed — skipping deletion to preserve GPS data.")
-                    continue
-
-            print(f"  Deleting {to_delete['Path']} … ", end="", flush=True)
-            ok, err = delete_file(args.remote, args.path, to_delete["Path"])
-            print("done." if ok else f"FAILED: {err}")
-            deleted += 1
-        else:
-            print(f"  Kept both.")
-            kept += 1
+        do_delete(action, a, b, gps_a, gps_b)
 
     if window:
         window.close()
