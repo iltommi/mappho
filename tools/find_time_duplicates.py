@@ -32,6 +32,10 @@ from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 
+# Sentinel: GPS status could not be read (network error). Distinct from None = confirmed no GPS.
+GPS_UNKNOWN = object()
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def parse_args():
@@ -190,16 +194,16 @@ def fetch_raw_head(remote, path, rel_path, nbytes=65536):
 
 
 def read_gps(raw):
-    """Return piexif GPS IFD dict from raw JPEG bytes, or None."""
-    if not raw:
-        return None
+    """Return GPS IFD dict if present, None if confirmed absent, GPS_UNKNOWN if fetch failed."""
+    if raw is None:
+        return GPS_UNKNOWN
     try:
         import piexif
         exif = piexif.load(raw)
         gps = exif.get("GPS", {})
         return gps if piexif.GPSIFD.GPSLatitude in gps else None
     except Exception:
-        return None
+        return GPS_UNKNOWN
 
 
 def inject_gps_and_upload(remote, path, hostname, token, file_entry, gps_dict):
@@ -379,7 +383,9 @@ class ReviewWindow:
             name_lbl.configure(text=PurePosixPath(file["Path"]).name)
             size_lbl.configure(text=fmt_size(file["Size"]))
             dir_lbl.configure(text=file["Path"].rsplit("/", 1)[0])
-            if gps is not None:
+            if gps is GPS_UNKNOWN:
+                gps_lbl.configure(text="GPS ?", fg="#f59e0b")
+            elif gps:
                 gps_lbl.configure(text="GPS ✓", fg="#4ade80")
             else:
                 gps_lbl.configure(text="no GPS", fg="#64748b")
@@ -515,11 +521,15 @@ def main():
 
             gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
             gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
-            print(f"  GPS  A:{'yes' if gps_a else 'no'}  B:{'yes' if gps_b else 'no'}")
+            gps_label = lambda g: "yes" if (g and g is not GPS_UNKNOWN) else ("?" if g is GPS_UNKNOWN else "no")
+            print(f"  GPS  A:{gps_label(gps_a)}  B:{gps_label(gps_b)}")
 
-            if dist == 0:
+            gps_uncertain = gps_a is GPS_UNKNOWN or gps_b is GPS_UNKNOWN
+            if dist == 0 and not gps_uncertain:
                 result_q.put(("auto", i, a, b, diff_s, key, gps_a, gps_b))
             elif args.auto_only:
+                if dist == 0 and gps_uncertain:
+                    print("  GPS read failed — deferring (can't safely auto-delete)")
                 result_q.put(("defer", i))
             else:
                 result_q.put(("review", i, a, b, diff_s, dist, key, gps_a, gps_b))
@@ -537,17 +547,24 @@ def main():
             to_keep   = b if action == "delete_a" else a
             gps_del   = gps_a if action == "delete_a" else gps_b
             gps_keep  = gps_b if action == "delete_a" else gps_a
-            if gps_del and not gps_keep:
+
+            # GPS_UNKNOWN means the read failed — treat as possibly present to avoid data loss
+            if gps_del is GPS_UNKNOWN:
+                print("  GPS status of file-to-delete is unknown (network error) — skipping deletion.")
+                return
+            if gps_del and gps_keep is not GPS_UNKNOWN and not gps_keep:
                 ok = inject_gps_and_upload(
                     args.remote, args.path, hostname, token, to_keep, gps_del
                 )
                 if not ok:
                     print("  GPS injection failed — skipping deletion to preserve GPS data.")
                     return
+
             print(f"  Deleting {to_delete['Path']} … ", end="", flush=True)
             ok, err = delete_file(args.remote, args.path, to_delete["Path"])
             print("done." if ok else f"FAILED: {err}")
-            deleted += 1
+            if ok:
+                deleted += 1
         else:
             print("  Kept both.")
             kept += 1
