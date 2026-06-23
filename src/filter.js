@@ -150,10 +150,6 @@ export function closeFilter() {
 }
 
 export function getActiveFilterRange() {
-  if (minTs >= maxTs) return null; // no valid range (never opened, or full reset)
-  const f = panel.classList.contains('open') ? fromTs : _savedFromTs;
-  const t = panel.classList.contains('open') ? toTs   : _savedToTs;
-  if (f == null || t == null) return null;
-  if (f === minTs && t === maxTs) return null; // full range = no filter
-  return { from: f, to: t };
+  if (!panel.classList.contains('open') || minTs >= maxTs) return null;
+  return { from: fromTs, to: toTs };
 }
