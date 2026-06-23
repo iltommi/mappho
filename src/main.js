@@ -34,6 +34,7 @@ const scanStatusEl = document.getElementById('scan-status');
 
 let sessionGeotagged = 0;
 let scanCancelled = false;
+let _rebuildSeenHashes = null; // Set<string> — active only during rebuildScan, deduplicates Photos/ by content hash
 let retryQueue = [];
 let retryContext = null; // { prevStats, prevTotal } from the scan that produced the queue
 let topbarGeotagged      = 0;
@@ -943,10 +944,17 @@ async function rebuildScan() {
   // Process files for EXIF — already in Photos/, do not re-organise.
   _organizeRoot = null;
   _organizeLock = Promise.resolve();
+  _rebuildSeenHashes = new Set();
   const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
   const pool = new Set(), inFlight = new Map(), failedFiles = [];
-  await processFiles(allFiles, total, stats, pool, inFlight, failedFiles);
-  await Promise.all(pool);
+  try {
+    await processFiles(allFiles, total, stats, pool, inFlight, failedFiles);
+    await Promise.all(pool);
+  } finally {
+    _rebuildSeenHashes = null;
+  }
+  // stats.cached during rebuild = files skipped by the hash-dedup check (Photos/ content duplicates).
+  const dupCount = stats.cached;
 
   // Rebuild hash index from scratch (ignore any stale JSON).
   resetOrganizeState();
@@ -965,11 +973,12 @@ async function rebuildScan() {
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   applyIgnored().catch(e => log('Ignored apply error', e.message));
   const manualNote = sessionGeotagged > 0 ? ` + ${sessionGeotagged} manually tagged` : '';
+  const dupNote = dupCount > 0 ? ` (${dupCount} content-duplicate file${dupCount === 1 ? '' : 's'} in Photos/ skipped)` : '';
   if (scanCancelled) {
-    setStatus(`Rebuild stopped — ${stats.geotagged + sessionGeotagged} geotagged, ${stats.completed} processed${manualNote}.`);
+    setStatus(`Rebuild stopped — ${stats.geotagged + sessionGeotagged} geotagged, ${stats.completed} processed${manualNote}${dupNote}.`);
     setProgress(0);
   } else {
-    setStatus(`Rebuild done — ${stats.geotagged + sessionGeotagged} geotagged, ${total} total${manualNote}.`);
+    setStatus(`Rebuild done — ${stats.geotagged + sessionGeotagged} geotagged, ${total} total${manualNote}${dupNote}.`);
     setProgress(100);
     setTimeout(() => setProgress(0), 1000);
   }
@@ -990,6 +999,21 @@ async function processFile(file, stats) {
     stats.cached++;
     log(`${file.name} [organized duplicate]`, 'skipped');
     return true;
+  }
+
+  // During rebuild (_organizeRoot=null, _rebuildSeenHashes active), skip content-duplicate files
+  // in Photos/ (same hash = same bytes). Photos/ should never have two files with the same content,
+  // but it can happen when the repair tool creates conflict-renamed copies alongside originals.
+  if (_organizeRoot === null && _rebuildSeenHashes !== null && file.hash) {
+    const h = normHash(file.hash);
+    if (h) {
+      if (_rebuildSeenHashes.has(h)) {
+        stats.cached++;
+        log(`${file.name} [rebuild hash duplicate]`, 'skipped — same content as a previously processed Photos/ file');
+        return true;
+      }
+      _rebuildSeenHashes.add(h);
+    }
   }
 
   const hit = await getCached(file.fileid);
