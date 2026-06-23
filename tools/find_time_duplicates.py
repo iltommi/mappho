@@ -246,14 +246,15 @@ class ReviewWindow:
         # ── action buttons ──
         row1 = tk.Frame(root, bg=BG)
         row1.pack(pady=(10, 2))
-        self._mkbtn(row1, "Delete A ←",  BTN_DEL, "delete_a",  0)
-        self._mkbtn(row1, "Keep both",   BTN_NEU, "keep_both", 1)
-        self._mkbtn(row1, "→ Delete B",  BTN_DEL, "delete_b",  2)
+        self._mkbtn(row1, "Delete A ←",     BTN_DEL,   "delete_a",       0)
+        self._mkbtn(row1, "Delete smallest", "#b45309", "delete_smallest", 1)
+        self._mkbtn(row1, "→ Delete B",     BTN_DEL,   "delete_b",        2)
 
         row2 = tk.Frame(root, bg=BG)
         row2.pack(pady=(2, 12))
-        self._mkbtn(row2, "Skip",         BTN_NEU,   "keep_both", 0)
-        self._mkbtn(row2, "Quit review",  "#7f1d1d", "quit",      1)
+        self._mkbtn(row2, "Keep both",    BTN_NEU,   "keep_both", 0)
+        self._mkbtn(row2, "Skip",         BTN_NEU,   "keep_both", 1)
+        self._mkbtn(row2, "Quit review",  "#7f1d1d", "quit",      2)
 
     def _info_col(self, parent, col):
         f = self._tk.Frame(parent, bg=BG)
@@ -413,7 +414,10 @@ def main():
         if action == "quit":
             print("Review stopped by user.")
             break
-        elif action in ("delete_a", "delete_b"):
+        elif action == "delete_smallest":
+            action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
+
+        if action in ("delete_a", "delete_b"):
             target = a if action == "delete_a" else b
             print(f"  Deleting {target['Path']} … ", end="", flush=True)
             ok, err = delete_file(args.remote, args.path, target["Path"])
