@@ -333,7 +333,16 @@ document.addEventListener('keydown', e => {
 prevBtn.addEventListener('click', () => navigate(-1));
 nextBtn.addEventListener('click', () => navigate(1));
 
+// Track whether the pointer actually went down on curImg.
+// A synthesized click from a lightbox tap never sets this, so it won't
+// accidentally reopen the lightbox.
+let _imgPtrDown = false;
+curImg.addEventListener('pointerdown', () => { _imgPtrDown = true; });
+curImg.addEventListener('pointerup',   () => { setTimeout(() => { _imgPtrDown = false; }, 0); });
+curImg.addEventListener('pointercancel', () => { _imgPtrDown = false; });
+
 curImg.addEventListener('click', () => {
+  if (!_imgPtrDown) return;
   const photo = photos[current];
   if (!photo || imgScale !== 1) return;
   if (isVideo(photo.name)) openVideoPlayer(photo.fileid, photo.name);
