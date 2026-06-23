@@ -1,4 +1,4 @@
-import { fetchThumbSrc, getFileDimensions, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
+import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -566,21 +566,18 @@ function loadSidePanes() {
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
 
-let currentDimStr = '';
-
 function updateCounter() {
   const total = lazyTotal != null
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts } = photos[current];
   const dateStr = ts ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
-  const parts = [`${current + 1} / ${total}`, currentDimStr, dateStr].filter(Boolean);
+  const parts = [`${current + 1} / ${total}`, dateStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
 }
 
 function updateCaption() {
   const { name, fileid } = photos[current];
-  currentDimStr = '';
   updateCounter();
 
   const buildCaption = folder => folder ? `${folder} / ${name}` : name;
@@ -597,12 +594,8 @@ function updateCaption() {
     let folderName = '';
     const refresh = () => {
       if (photos[current]?.fileid !== fileid) return;
-      updateCounter();
       captionEl.textContent = buildCaption(folderName);
     };
-    getFileDimensions(fileid).then(dim => {
-      if (dim) { currentDimStr = `${dim.w}×${dim.h}`; refresh(); }
-    }).catch(() => {});
     getFileFolderName(fileid).then(folder => {
       if (folder) { folderName = folder; refresh(); }
     }).catch(() => {});

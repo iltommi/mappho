@@ -1012,6 +1012,10 @@ body.filter-open #map { top: 40px; }
   word-break: break-all;
   flex: 1;
 }
+.exif-path-row {
+  background: rgba(125, 211, 252, .07);
+  border-bottom: 2px solid #1a3a5c;
+}
 .exif-empty {
   padding: 20px;
   color: #94a3b8;
