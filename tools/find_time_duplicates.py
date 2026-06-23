@@ -24,6 +24,7 @@ import json
 import re
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
@@ -94,91 +95,54 @@ def find_candidates(files, offset_s, tolerance_s):
     return candidates
 
 
+# ── pCloud thumbnail API ──────────────────────────────────────────────────────
+
+def get_pcloud_creds(remote):
+    """Read hostname and access token from rclone config."""
+    r = subprocess.run(["rclone", "config", "show", remote], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, None
+    hostname = token = None
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition("=")
+        k, v = k.strip(), v.strip()
+        if k == "hostname":
+            hostname = v
+        elif k == "token":
+            try:
+                token = json.loads(v).get("access_token")
+            except Exception:
+                pass
+    return hostname or "api.pcloud.com", token
+
+
+def fetch_pcloud_thumb(hostname, token, file_id, size="512x512"):
+    """
+    Download a thumbnail directly from the pCloud API.
+    file_id is the numeric pCloud file id (rclone lsjson 'ID' field, strip leading 'f').
+    Returns raw image bytes or None.
+    """
+    fid = file_id.lstrip("f") if isinstance(file_id, str) else file_id
+    url = (f"https://{hostname}/getthumb"
+           f"?fileid={fid}&size={size}&crop=0&auth={token}")
+    try:
+        with urllib.request.urlopen(url, timeout=20) as resp:
+            data = resp.read()
+        # pCloud returns a JSON error object if the file has no thumbnail
+        if data[:1] == b'{':
+            return None
+        return data
+    except Exception:
+        return None
+
+
 # ── Image loading ─────────────────────────────────────────────────────────────
 
-def fetch_head(remote, path, rel_path, nbytes=131072):
-    r = subprocess.run(
-        ["rclone", "cat", "--count", str(nbytes), f"{remote}:{path}/{rel_path}"],
-        capture_output=True,
-    )
-    return r.stdout if r.returncode == 0 else None
-
-
-def _exif_thumbnail(data):
-    """
-    Extract the embedded JPEG thumbnail from a JPEG's EXIF APP1 segment.
-    Returns raw JPEG bytes or None. Pure stdlib, no extra dependencies.
-    """
-    import struct
-
-    if len(data) < 12 or data[:2] != b'\xff\xd8':
-        return None
-
-    i = 2
-    while i + 4 <= len(data):
-        if data[i] != 0xFF:
-            break
-        marker = data[i + 1]
-        if marker in (0x00, 0xFF):   # padding
-            i += 1
-            continue
-        seg_len = struct.unpack('>H', data[i + 2: i + 4])[0]
-        seg_end = i + 2 + seg_len
-
-        if marker == 0xE1 and data[i + 4: i + 10] == b'Exif\x00\x00':
-            tiff = data[i + 10: seg_end]
-            if len(tiff) < 8:
-                break
-            endian = '<' if tiff[:2] == b'II' else '>'
-            ifd0_off = struct.unpack(endian + 'I', tiff[4:8])[0]
-            if ifd0_off + 2 > len(tiff):
-                break
-            n0 = struct.unpack(endian + 'H', tiff[ifd0_off: ifd0_off + 2])[0]
-            ifd1_ptr = ifd0_off + 2 + n0 * 12
-            if ifd1_ptr + 4 > len(tiff):
-                break
-            ifd1_off = struct.unpack(endian + 'I', tiff[ifd1_ptr: ifd1_ptr + 4])[0]
-            if not ifd1_off or ifd1_off + 2 > len(tiff):
-                break
-            n1 = struct.unpack(endian + 'H', tiff[ifd1_off: ifd1_off + 2])[0]
-            t_offset = t_length = None
-            for k in range(n1):
-                e = ifd1_off + 2 + k * 12
-                if e + 12 > len(tiff):
-                    break
-                tag = struct.unpack(endian + 'H', tiff[e: e + 2])[0]
-                val = struct.unpack(endian + 'I', tiff[e + 8: e + 12])[0]
-                if tag == 0x0201:
-                    t_offset = val
-                elif tag == 0x0202:
-                    t_length = val
-            if t_offset and t_length and t_offset + t_length <= len(tiff):
-                return tiff[t_offset: t_offset + t_length]
-            break
-        i = seg_end
-
-    return None
-
-
 def load_image(data):
-    """
-    Return a PIL Image from raw bytes.
-    Tries the embedded EXIF thumbnail first (fast, complete small JPEG).
-    Falls back to PIL with truncation tolerance for the partial file.
-    """
+    """Return a PIL Image from raw bytes, or None."""
     if not data:
         return None
-    from PIL import Image, ImageFile
-
-    thumb_bytes = _exif_thumbnail(data)
-    if thumb_bytes:
-        try:
-            return Image.open(io.BytesIO(thumb_bytes))
-        except Exception:
-            pass
-
-    # Fallback: decode whatever PIL can from the truncated head
-    ImageFile.LOAD_TRUNCATED_IMAGES = True
+    from PIL import Image
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
@@ -347,13 +311,17 @@ def main():
     deleted = 0
     kept    = 0
 
+    hostname, token = get_pcloud_creds(args.remote)
+    if not token:
+        sys.exit(f"Could not read pCloud token from rclone config for remote '{args.remote}'.")
+
     for i, (a, b, diff_s) in enumerate(candidates, 1):
         name_a = PurePosixPath(a["Path"]).name
         name_b = PurePosixPath(b["Path"]).name
-        print(f"[{i}/{len(candidates)}] Downloading {name_a} & {name_b} …", end="", flush=True)
+        print(f"[{i}/{len(candidates)}] Fetching thumbnails for {name_a} & {name_b} …", end="", flush=True)
 
-        data_a = fetch_head(args.remote, args.path, a["Path"])
-        data_b = fetch_head(args.remote, args.path, b["Path"])
+        data_a = fetch_pcloud_thumb(hostname, token, a["ID"])
+        data_b = fetch_pcloud_thumb(hostname, token, b["ID"])
         img_a  = load_image(data_a)
         img_b  = load_image(data_b)
 
