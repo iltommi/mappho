@@ -1,17 +1,12 @@
 import Panzoom from '@panzoom/panzoom';
-import { fetchThumbSrc, getFileDimensions } from './pcloud.js';
-import { showExif } from './exif.js';
+import { fetchThumbSrc } from './pcloud.js';
 
-const el       = document.getElementById('lightbox');
-const img      = document.getElementById('lightbox-img');
-const dimsEl   = document.getElementById('lightbox-dims');
-const closeBtn = document.getElementById('lightbox-close');
-const exifBtn  = document.getElementById('lightbox-exif-btn');
+const el  = document.getElementById('lightbox');
+const img = document.getElementById('lightbox-img');
 
 let pz = null;
 let wheelHandler = null;
 let currentFileid = null;
-let currentName   = null;
 
 function destroyPanzoom() {
   if (pz) {
@@ -32,25 +27,42 @@ function close() {
   el.classList.remove('open', 'loading');
   img.onload = null;
   img.src = '';
-  dimsEl.textContent = '';
   currentFileid = null;
-  currentName   = null;
+  _tapN = 0; _tapT = 0;
   destroyPanzoom();
 }
 
-closeBtn.addEventListener('click', close);
-exifBtn.addEventListener('click', () => { if (currentFileid) showExif(currentFileid, currentName); });
+// Tap-to-close: single finger, short duration, minimal movement, not zoomed in.
+let _tapT = 0, _tapN = 0, _tapX = 0, _tapY = 0;
+
+img.addEventListener('pointerdown', e => {
+  _tapN++;
+  if (_tapN === 1) { _tapT = Date.now(); _tapX = e.clientX; _tapY = e.clientY; }
+  else _tapT = 0;
+});
+
+img.addEventListener('pointerup', e => {
+  _tapN = Math.max(0, _tapN - 1);
+  if (_tapN === 0 && _tapT) {
+    const dx = e.clientX - _tapX, dy = e.clientY - _tapY;
+    if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && (pz?.getScale() ?? 1) <= 1.01) close();
+    _tapT = 0;
+  }
+});
+
+img.addEventListener('pointercancel', () => { _tapN = 0; _tapT = 0; });
+
+// Tapping the dark background also closes.
 el.addEventListener('pointerup', e => { if (e.target === el) close(); });
+
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classList.contains('open')) close(); });
 
 export function openLightbox(fileid, name) {
   currentFileid = fileid;
-  currentName   = name;
   el.classList.add('open', 'loading');
   img.alt = name;
   img.onload = null;
   img.src = '';
-  dimsEl.textContent = '';
   destroyPanzoom();
 
   fetchThumbSrc(fileid, '2048x2048').then(src => {
@@ -62,10 +74,4 @@ export function openLightbox(fileid, name) {
   }).catch(() => {
     el.classList.remove('loading');
   });
-
-  getFileDimensions(fileid).then(dim => {
-    if (dim && currentFileid === fileid) {
-      dimsEl.textContent = `${dim.w} × ${dim.h}`;
-    }
-  }).catch(() => {});
 }
