@@ -42,6 +42,7 @@ def parse_args():
     p.add_argument("--tolerance",      type=int, default=90,   help="± tolerance in seconds (default 90)")
     p.add_argument("--compare-images", action="store_true",    help="show side-by-side thumbnail window for each pair")
     p.add_argument("--hash-distance",  type=int, default=8,    help="max perceptual hash distance to flag as same image (default 8)")
+    p.add_argument("--auto-only",      action="store_true",    help="only auto-delete identical pairs (dist=0); skip pairs that need review for a later run")
     return p.parse_args()
 
 
@@ -518,6 +519,8 @@ def main():
 
             if dist == 0:
                 result_q.put(("auto", i, a, b, diff_s, key, gps_a, gps_b))
+            elif args.auto_only:
+                result_q.put(("defer", i))
             else:
                 result_q.put(("review", i, a, b, diff_s, dist, key, gps_a, gps_b))
 
@@ -559,6 +562,11 @@ def main():
         if kind == "prereview":
             _, i, key = item
             print(f"[{i}/{len(candidates)}] Already reviewed — skipping.")
+            continue
+
+        if kind == "defer":
+            _, i = item
+            print(f"[{i}/{len(candidates)}] Deferred for manual review.")
             continue
 
         if kind == "skip":
