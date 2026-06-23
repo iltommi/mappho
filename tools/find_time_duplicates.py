@@ -124,7 +124,7 @@ def fetch_pcloud_thumb(hostname, token, file_id, size="512x512"):
     """
     fid = file_id.lstrip("f") if isinstance(file_id, str) else file_id
     url = (f"https://{hostname}/getthumb"
-           f"?fileid={fid}&size={size}&crop=0&auth={token}")
+           f"?fileid={fid}&size={size}&crop=0&access_token={token}")
     try:
         with urllib.request.urlopen(url, timeout=20) as resp:
             data = resp.read()
@@ -194,8 +194,9 @@ def _make_thumb(img, tk_module):
     if img is None:
         placeholder = Image.new("RGB", (THUMB_W, THUMB_H), "#1e293b")
         return ImageTk.PhotoImage(placeholder)
+    LANCZOS = getattr(Image, "Resampling", Image).LANCZOS
     thumb = img.copy()
-    thumb.thumbnail((THUMB_W, THUMB_H), Image.LANCZOS)
+    thumb.thumbnail((THUMB_W, THUMB_H), LANCZOS)
     canvas = Image.new("RGB", (THUMB_W, THUMB_H), "#0f172a")
     canvas.paste(thumb, ((THUMB_W - thumb.width) // 2, (THUMB_H - thumb.height) // 2))
     return ImageTk.PhotoImage(canvas)
