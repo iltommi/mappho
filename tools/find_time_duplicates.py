@@ -396,6 +396,7 @@ class ReviewWindow:
         self.root.deiconify()
         self.root.lift()
         self.root.wait_variable(self._decision)
+        self.root.withdraw()
         return self._decision.get()
 
     def close(self):
