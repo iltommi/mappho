@@ -125,7 +125,7 @@ async function openOrphanGrid() {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     openOrphanGrid();
   }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setFixDateHandler(photo => startFixDate(photo, openOrphanGrid));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid(fetcher, total, { reopen: openOrphanGrid });
 }
@@ -144,7 +144,7 @@ async function openNodatetimeGrid() {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     openNodatetimeGrid();
   }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setFixDateHandler(photo => startFixDate(photo, openNodatetimeGrid));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS), total, { reopen: openNodatetimeGrid });
 }
