@@ -21,6 +21,7 @@ Requirements for --compare-images:
 import argparse
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -345,16 +346,41 @@ def main():
     except ImportError:
         sys.exit("Install dependencies first:  pip install Pillow imagehash")
 
-    deleted = 0
-    kept    = 0
-
     hostname, token = get_pcloud_creds(args.remote)
     if not token:
         sys.exit(f"Could not read pCloud token from rclone config for remote '{args.remote}'.")
 
-    window = ReviewWindow(args.hash_distance)
+    # ── Resume state ──────────────────────────────────────────────────────────
+    STATE_FILE = "dup_review_state.json"
+
+    def pair_key(a, b):
+        return tuple(sorted([a["Path"], b["Path"]]))
+
+    def load_state():
+        if not os.path.exists(STATE_FILE):
+            return set()
+        with open(STATE_FILE) as f:
+            data = json.load(f)
+        return {tuple(k) for k in data.get("reviewed", [])}
+
+    def save_state(reviewed):
+        with open(STATE_FILE, "w") as f:
+            json.dump({"reviewed": [list(k) for k in reviewed]}, f, indent=2)
+
+    reviewed = load_state()
+    if reviewed:
+        print(f"Resuming — {len(reviewed)} pair(s) already reviewed.\n")
+
+    deleted = 0
+    kept    = 0
+    window  = None
 
     for i, (a, b, diff_s) in enumerate(candidates, 1):
+        key = pair_key(a, b)
+        if key in reviewed:
+            print(f"[{i}/{len(candidates)}] Skipping (already reviewed): {PurePosixPath(a['Path']).name}")
+            continue
+
         name_a = PurePosixPath(a["Path"]).name
         name_b = PurePosixPath(b["Path"]).name
         print(f"[{i}/{len(candidates)}] Fetching thumbnails for {name_a} & {name_b} …", end="", flush=True)
@@ -369,7 +395,20 @@ def main():
         dist = (h_a - h_b) if (h_a is not None and h_b is not None) else None
         print(f" dist={dist}" if dist is not None else " (hash unavailable)")
 
+        # Skip pairs that don't meet the distance threshold
+        if dist is not None and dist > args.hash_distance:
+            print(f"  Skipping — dist={dist} > {args.hash_distance}")
+            reviewed.add(key)
+            save_state(reviewed)
+            continue
+
+        if window is None:
+            window = ReviewWindow(args.hash_distance)
+
         action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b)
+
+        reviewed.add(key)
+        save_state(reviewed)
 
         if action == "quit":
             print("Review stopped by user.")
@@ -384,8 +423,15 @@ def main():
             print(f"  Kept both.")
             kept += 1
 
-    window.close()
-    print(f"\nDone — {deleted} deleted, {kept} kept.")
+    if window:
+        window.close()
+
+    if len(reviewed) >= len(candidates):
+        if os.path.exists(STATE_FILE):
+            os.remove(STATE_FILE)
+        print(f"\nAll pairs reviewed — state file removed.")
+
+    print(f"Done — {deleted} deleted, {kept} kept.")
 
 
 if __name__ == "__main__":
