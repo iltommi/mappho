@@ -657,6 +657,35 @@ body.filter-open #map { top: 40px; }
   height: 1px;
 }
 
+#grid-scrubber {
+  position: absolute;
+  right: 3px;
+  width: 16px;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s;
+  border-radius: 8px;
+}
+#grid-scrubber.scrub-visible {
+  pointer-events: auto;
+  opacity: 1;
+}
+#grid-scrubber-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 2px;
+  transition: width 0.15s, background 0.15s;
+}
+#grid-scrubber.scrub-dragging #grid-scrubber-thumb,
+#grid-scrubber-thumb:hover {
+  width: 6px;
+  background: rgba(148, 163, 184, 0.9);
+}
+
 #grid-bulk-bar {
   flex-shrink: 0;
   display: flex;

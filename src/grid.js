@@ -25,6 +25,79 @@ const bulkFixDateBtn  = document.getElementById('grid-bulk-fixdate');
 const bulkShareBtn    = document.getElementById('grid-bulk-share');
 const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
 const bulkCancelBtn   = document.getElementById('grid-bulk-cancel');
+const scrubberEl = document.getElementById('grid-scrubber');
+const scrubThumb = document.getElementById('grid-scrubber-thumb');
+
+// ── Scroll scrubber ───────────────────────────────────────────────────────────
+
+let scrubHideTimer = null;
+let scrubDragging  = false;
+
+function positionScrubber() {
+  scrubberEl.style.top    = scrollEl.offsetTop + 'px';
+  scrubberEl.style.height = scrollEl.offsetHeight + 'px';
+}
+
+function updateScrubber() {
+  const sh = scrollEl.scrollHeight, ch = scrollEl.clientHeight;
+  if (sh <= ch + 2) { scrubberEl.classList.remove('scrub-visible'); return; }
+  const trackH = scrubberEl.clientHeight;
+  const thumbH = Math.max(32, (ch / sh) * trackH);
+  const thumbTop = (scrollEl.scrollTop / (sh - ch)) * (trackH - thumbH);
+  scrubThumb.style.height = thumbH + 'px';
+  scrubThumb.style.top    = thumbTop + 'px';
+  if (!scrubDragging) {
+    scrubberEl.classList.add('scrub-visible');
+    clearTimeout(scrubHideTimer);
+    scrubHideTimer = setTimeout(() => { if (!scrubDragging) scrubberEl.classList.remove('scrub-visible'); }, 1500);
+  }
+}
+
+{
+  let dragStartY = 0, dragStartThumbTop = 0;
+
+  scrubberEl.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    scrubDragging = true;
+    scrubberEl.classList.add('scrub-dragging', 'scrub-visible');
+    clearTimeout(scrubHideTimer);
+    scrubberEl.setPointerCapture(e.pointerId);
+    const thumbH = parseFloat(scrubThumb.style.height) || 32;
+    const thumbTop = parseFloat(scrubThumb.style.top) || 0;
+    const clickY  = e.clientY - scrubberEl.getBoundingClientRect().top;
+    // Jump to clicked position if outside the thumb
+    if (clickY < thumbTop || clickY > thumbTop + thumbH) {
+      const newTop = Math.max(0, Math.min(scrubberEl.clientHeight - thumbH, clickY - thumbH / 2));
+      scrubThumb.style.top = newTop + 'px';
+      scrollEl.scrollTop = (newTop / (scrubberEl.clientHeight - thumbH)) * (scrollEl.scrollHeight - scrollEl.clientHeight);
+      dragStartThumbTop = newTop;
+    } else {
+      dragStartThumbTop = thumbTop;
+    }
+    dragStartY = e.clientY;
+  });
+
+  scrubberEl.addEventListener('pointermove', e => {
+    if (!scrubDragging) return;
+    const thumbH = parseFloat(scrubThumb.style.height) || 32;
+    const newTop = Math.max(0, Math.min(scrubberEl.clientHeight - thumbH, dragStartThumbTop + e.clientY - dragStartY));
+    scrubThumb.style.top  = newTop + 'px';
+    scrollEl.scrollTop    = (newTop / (scrubberEl.clientHeight - thumbH)) * (scrollEl.scrollHeight - scrollEl.clientHeight);
+  });
+
+  scrubberEl.addEventListener('pointerup', () => {
+    scrubDragging = false;
+    scrubberEl.classList.remove('scrub-dragging');
+    scrubHideTimer = setTimeout(() => scrubberEl.classList.remove('scrub-visible'), 1500);
+  });
+
+  scrubberEl.addEventListener('pointercancel', () => {
+    scrubDragging = false;
+    scrubberEl.classList.remove('scrub-dragging', 'scrub-visible');
+  });
+}
+
+scrollEl.addEventListener('scroll', updateScrubber, { passive: true });
 
 let bulkFixDateHandler = null;
 export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
@@ -55,6 +128,8 @@ function close() {
   pageObserver?.disconnect();
   thumbObserver?.disconnect();
   exitSelectMode();
+  clearTimeout(scrubHideTimer);
+  scrubberEl.classList.remove('scrub-visible', 'scrub-dragging');
 }
 closeBtn.addEventListener('click', close);
 
@@ -76,6 +151,7 @@ function setSelectMode(on) {
   selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
   bulkBar.style.display = on ? 'flex' : 'none';
   el.classList.toggle('select-mode', on);
+  positionScrubber();
   if (!on) {
     for (const idx of selected) tileAt(idx)?.classList.remove('selected');
     selected.clear();
@@ -329,6 +405,7 @@ async function loadNextPage() {
     countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
   } finally {
     loadingPage = false;
+    updateScrubber();
   }
 }
 
@@ -357,6 +434,8 @@ export async function openGrid(fetchPage, totalCount, { reopen = null } = {}) {
   }, { root: scrollEl, rootMargin: '400px' });
   pageObserver.observe(sentinel);
 
+  scrollEl.scrollTop = 0;
   el.classList.add('open');
+  positionScrubber();
   await loadNextPage();
 }
