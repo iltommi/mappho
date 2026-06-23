@@ -495,10 +495,14 @@ def main():
         gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
         print(f" A:{'GPS' if gps_a else 'none'}  B:{'GPS' if gps_b else 'none'}")
 
-        if window is None:
-            window = ReviewWindow(args.hash_distance)
-
-        action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b, gps_a, gps_b)
+        # Identical images (dist=0): auto-delete the smallest, no window needed
+        if dist == 0:
+            action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
+            print(f"  dist=0 → auto-deleting smallest: {(a if action == 'delete_a' else b)['Path']}")
+        else:
+            if window is None:
+                window = ReviewWindow(args.hash_distance)
+            action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b, gps_a, gps_b)
 
         reviewed.add(key)
         save_state(reviewed)
