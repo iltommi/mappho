@@ -45,7 +45,9 @@ img.addEventListener('pointerup', e => {
   _tapN = Math.max(0, _tapN - 1);
   if (_tapN === 0 && _tapT) {
     const dx = e.clientX - _tapX, dy = e.clientY - _tapY;
-    if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && (pz?.getScale() ?? 1) <= 1.01) close();
+    // Defer close so the browser's synthetic click fires on the lightbox (still
+    // visible) rather than on #ss-img underneath, which would reopen it.
+    if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && (pz?.getScale() ?? 1) <= 1.01) setTimeout(close, 0);
     _tapT = 0;
   }
 });
