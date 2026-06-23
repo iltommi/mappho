@@ -178,6 +178,86 @@ def delete_file(remote, path, rel_path):
     return r.returncode == 0, r.stderr.decode().strip()
 
 
+def fetch_raw_head(remote, path, rel_path, nbytes=65536):
+    r = subprocess.run(
+        ["rclone", "cat", "--count", str(nbytes), f"{remote}:{path}/{rel_path}"],
+        capture_output=True,
+    )
+    return r.stdout if r.returncode == 0 and r.stdout else None
+
+
+def read_gps(raw):
+    """Return piexif GPS IFD dict from raw JPEG bytes, or None."""
+    if not raw:
+        return None
+    try:
+        import piexif
+        exif = piexif.load(raw)
+        gps = exif.get("GPS", {})
+        return gps if piexif.GPSIFD.GPSLatitude in gps else None
+    except Exception:
+        return None
+
+
+def inject_gps_and_upload(remote, path, hostname, token, file_entry, gps_dict):
+    """Download file_entry, inject GPS, re-upload in-place. Returns True on success."""
+    try:
+        import piexif
+    except ImportError:
+        print("  piexif not installed — GPS injection skipped. pip install piexif")
+        return True  # non-fatal: don't block deletion
+
+    rel  = file_entry["Path"]
+    name = PurePosixPath(rel).name
+    print(f"  GPS transfer: downloading {name} …", end="", flush=True)
+
+    r = subprocess.run(["rclone", "cat", f"{remote}:{path}/{rel}"], capture_output=True)
+    if r.returncode != 0 or not r.stdout:
+        print(" FAILED (download)")
+        return False
+    file_data = r.stdout
+    print(f" {len(file_data)//1024} KB, injecting …", end="", flush=True)
+
+    try:
+        exif = piexif.load(file_data)
+        exif["GPS"] = gps_dict
+        exif_bytes = piexif.dump(exif)
+        buf = io.BytesIO()
+        piexif.insert(exif_bytes, file_data, buf)
+        modified = buf.getvalue()
+    except Exception as e:
+        print(f" FAILED ({e})")
+        return False
+
+    fid      = file_entry["ID"].lstrip("f")
+    boundary = b"PythonBoundary7MA4YWxkTrZu0gW"
+    body = (
+        b"--" + boundary + b"\r\n"
+        b'Content-Disposition: form-data; name="file"; filename="'
+        + name.encode() + b'"\r\nContent-Type: image/jpeg\r\n\r\n'
+        + modified
+        + b"\r\n--" + boundary + b"--\r\n"
+    )
+    url = f"https://{hostname}/uploadfile?fileid={fid}&access_token={token}&nopartial=1"
+    print(" uploading …", end="", flush=True)
+    try:
+        req = urllib.request.Request(
+            url, data=body, method="POST",
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary.decode()}"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read())
+        if result.get("result") == 0:
+            print(" done.")
+            return True
+        else:
+            print(f" FAILED: {result.get('error', result)}")
+            return False
+    except Exception as e:
+        print(f" FAILED: {e}")
+        return False
+
+
 # ── Interactive comparison window ─────────────────────────────────────────────
 
 THUMB_W, THUMB_H = 380, 320
@@ -234,8 +314,8 @@ class ReviewWindow:
         self._img_lbl_b = tk.Label(frame, bg=BG)
         self._img_lbl_b.grid(row=0, column=1, padx=6)
 
-        self._name_a, self._size_a, self._dir_a = self._info_col(frame, 0)
-        self._name_b, self._size_b, self._dir_b = self._info_col(frame, 1)
+        self._name_a, self._size_a, self._dir_a, self._gps_a = self._info_col(frame, 0)
+        self._name_b, self._size_b, self._dir_b, self._gps_b = self._info_col(frame, 1)
 
         # ── badge + delta ──
         self._badge = tk.Label(root, fg="#fff", font=("Helvetica", 10), padx=8, pady=3)
@@ -262,8 +342,9 @@ class ReviewWindow:
         name = self._tk.Label(f, bg=BG, fg=FG,     font=("Helvetica", 10, "bold"), wraplength=THUMB_W)
         size = self._tk.Label(f, bg=BG, fg=FG_DIM, font=("Helvetica",  9))
         d    = self._tk.Label(f, bg=BG, fg=FG_DIM, font=("Helvetica",  8), wraplength=THUMB_W)
-        name.pack(); size.pack(); d.pack()
-        return name, size, d
+        gps  = self._tk.Label(f, bg=BG,            font=("Helvetica",  9, "bold"))
+        name.pack(); size.pack(); d.pack(); gps.pack(pady=(3, 0))
+        return name, size, d, gps
 
     def _mkbtn(self, parent, text, color, action, col):
         self._tk.Button(
@@ -275,7 +356,7 @@ class ReviewWindow:
     def _decide(self, action):
         self._decision.set(action)
 
-    def show(self, idx, total, a, b, diff_s, dist, img_a, img_b):
+    def show(self, idx, total, a, b, diff_s, dist, img_a, img_b, gps_a=None, gps_b=None):
         from PIL import ImageTk
         self._decision.set("")
         self.root.title(f"Duplicate review  {idx} / {total}")
@@ -287,13 +368,18 @@ class ReviewWindow:
             lbl.configure(image=ph)
             lbl.image = ph  # prevent GC
 
-        # Update info
-        self._name_a.configure(text=PurePosixPath(a["Path"]).name)
-        self._size_a.configure(text=fmt_size(a["Size"]))
-        self._dir_a.configure(text=a["Path"].rsplit("/", 1)[0])
-        self._name_b.configure(text=PurePosixPath(b["Path"]).name)
-        self._size_b.configure(text=fmt_size(b["Size"]))
-        self._dir_b.configure(text=b["Path"].rsplit("/", 1)[0])
+        # Update info + GPS indicators
+        for (name_lbl, size_lbl, dir_lbl, gps_lbl), file, gps in (
+            ((self._name_a, self._size_a, self._dir_a, self._gps_a), a, gps_a),
+            ((self._name_b, self._size_b, self._dir_b, self._gps_b), b, gps_b),
+        ):
+            name_lbl.configure(text=PurePosixPath(file["Path"]).name)
+            size_lbl.configure(text=fmt_size(file["Size"]))
+            dir_lbl.configure(text=file["Path"].rsplit("/", 1)[0])
+            if gps is not None:
+                gps_lbl.configure(text="GPS ✓", fg="#4ade80")
+            else:
+                gps_lbl.configure(text="no GPS", fg="#64748b")
 
         # Update badge
         if dist is not None:
@@ -384,8 +470,9 @@ def main():
 
         name_a = PurePosixPath(a["Path"]).name
         name_b = PurePosixPath(b["Path"]).name
-        print(f"[{i}/{len(candidates)}] Fetching thumbnails for {name_a} & {name_b} …", end="", flush=True)
+        print(f"[{i}/{len(candidates)}] {name_a} & {name_b}", flush=True)
 
+        print(f"  Fetching thumbnails …", end="", flush=True)
         data_a = fetch_pcloud_thumb(hostname, token, a["ID"])
         data_b = fetch_pcloud_thumb(hostname, token, b["ID"])
         img_a  = load_image(data_a)
@@ -403,10 +490,15 @@ def main():
             save_state(reviewed)
             continue
 
+        print(f"  Reading GPS …", end="", flush=True)
+        gps_a = read_gps(fetch_raw_head(args.remote, args.path, a["Path"]))
+        gps_b = read_gps(fetch_raw_head(args.remote, args.path, b["Path"]))
+        print(f" A:{'GPS' if gps_a else 'none'}  B:{'GPS' if gps_b else 'none'}")
+
         if window is None:
             window = ReviewWindow(args.hash_distance)
 
-        action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b)
+        action = window.show(i, len(candidates), a, b, diff_s, dist, img_a, img_b, gps_a, gps_b)
 
         reviewed.add(key)
         save_state(reviewed)
@@ -418,9 +510,21 @@ def main():
             action = "delete_a" if a["Size"] <= b["Size"] else "delete_b"
 
         if action in ("delete_a", "delete_b"):
-            target = a if action == "delete_a" else b
-            print(f"  Deleting {target['Path']} … ", end="", flush=True)
-            ok, err = delete_file(args.remote, args.path, target["Path"])
+            to_delete = a if action == "delete_a" else b
+            to_keep   = b if action == "delete_a" else a
+            gps_del   = gps_a if action == "delete_a" else gps_b
+            gps_keep  = gps_b if action == "delete_a" else gps_a
+
+            if gps_del and not gps_keep:
+                ok = inject_gps_and_upload(
+                    args.remote, args.path, hostname, token, to_keep, gps_del
+                )
+                if not ok:
+                    print("  GPS injection failed — skipping deletion to preserve GPS data.")
+                    continue
+
+            print(f"  Deleting {to_delete['Path']} … ", end="", flush=True)
+            ok, err = delete_file(args.remote, args.path, to_delete["Path"])
             print("done." if ok else f"FAILED: {err}")
             deleted += 1
         else:
