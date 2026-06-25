@@ -310,21 +310,20 @@ async function _runBulkFixDate(list, ts, cb) {
     }
   }
   if (ok > 0) _lastFixDateTs = ts;
-  try {
-    log('Fix date', 'reloading topbar counts');
-    await reloadTopbarCounts();
-    log('Fix date', 'topbar counts done');
-  } catch (e) {
-    log('Fix date', `reloadTopbarCounts error: ${e.message}`);
+
+  // Show result immediately so the user knows the loop is done.
+  if (failedItems.length > 0) {
+    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed`, 0);
+  } else {
+    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}`);
   }
+
+  try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
   flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
 
   if (failedItems.length > 0) {
-    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed`, 0);
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
-  } else {
-    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}`);
   }
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
 }
