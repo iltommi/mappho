@@ -65,32 +65,6 @@ let pinDropMarker = null;
 let pinDropHandler = null;
 let pinDropOnPlace = null;
 
-let _pickDateListener = null;
-
-export function enterPickDateMode(onPick) {
-  _pickDateListener = e => {
-    const iconEl = e.target.closest('.leaflet-marker-icon');
-    if (!iconEl) return;
-    for (const { marker, ts, name } of markerIndex) {
-      if (marker._icon === iconEl && ts) {
-        e.stopPropagation();
-        exitPickDateMode();
-        onPick({ ts, name });
-        return;
-      }
-    }
-  };
-  map.getContainer().addEventListener('click', _pickDateListener, { capture: true });
-  map.getContainer().style.cursor = 'crosshair';
-}
-
-export function exitPickDateMode() {
-  if (!_pickDateListener) return;
-  map.getContainer().removeEventListener('click', _pickDateListener, { capture: true });
-  _pickDateListener = null;
-  map.getContainer().style.cursor = '';
-}
-
 let markerGeotagHandler = null;
 export function setMarkerGeotagHandler(fn) { markerGeotagHandler = fn; }
 

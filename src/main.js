@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, enterPickDateMode, exitPickDateMode } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
@@ -152,21 +152,11 @@ async function openNodatetimeGrid() {
 
 // ── Fix date panel ────────────────────────────────────────────────────────────
 
-const fixDateBar        = document.getElementById('fix-date-bar');
-const fixDateHintEl     = document.getElementById('fix-date-hint');
-const fixDateInputsEl   = document.getElementById('fix-date-inputs');
-const fixDateInput      = document.getElementById('fix-date-input');
-const fixDateTimeInput  = document.getElementById('fix-date-time-input');
-const fixDateSaveBtn    = document.getElementById('fix-date-save');
-const fixDatePickMapBtn = document.getElementById('fix-date-pick-map');
-const fixDateCancelBtn  = document.getElementById('fix-date-cancel');
-
-function _restoreFixDateUI(hint) {
-  fixDateInputsEl.style.display   = '';
-  fixDateSaveBtn.style.display    = '';
-  fixDatePickMapBtn.style.display = '';
-  fixDateHintEl.textContent = hint;
-}
+const fixDateBar      = document.getElementById('fix-date-bar');
+const fixDateInput    = document.getElementById('fix-date-input');
+const fixDateTimeInput = document.getElementById('fix-date-time-input');
+const fixDateSaveBtn  = document.getElementById('fix-date-save');
+const fixDateCancelBtn = document.getElementById('fix-date-cancel');
 
 let fixDatePhoto   = null;
 let fixDatePhotos  = null; // bulk mode
@@ -239,8 +229,6 @@ function startFixDate(photo, onDone) {
   fixDatePhoto  = photo;
   fixDatePhotos = null;
   fixDateOnDone = onDone;
-  exitPickDateMode();
-  _restoreFixDateUI('Set date for this photo');
   const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
   const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
   fixDateInput.value = seed.toISOString().split('T')[0];
@@ -254,8 +242,6 @@ function startBulkFixDate(photos, onDone) {
   fixDatePhoto  = null;
   fixDatePhotos = photos;
   fixDateOnDone = onDone;
-  exitPickDateMode();
-  _restoreFixDateUI('Set date for these photos');
   const seed = _lastFixDateTs ? new Date(_lastFixDateTs) : new Date();
   fixDateInput.value = seed.toISOString().split('T')[0];
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
@@ -342,21 +328,7 @@ async function _runBulkFixDate(list, ts, cb) {
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
 }
 
-fixDatePickMapBtn.addEventListener('click', () => {
-  fixDateHintEl.textContent      = 'Tap a dated photo on the map…';
-  fixDateInputsEl.style.display  = 'none';
-  fixDateSaveBtn.style.display   = 'none';
-  fixDatePickMapBtn.style.display = 'none';
-  enterPickDateMode(({ ts, name }) => {
-    const d = new Date(ts);
-    fixDateInput.value     = d.toISOString().split('T')[0];
-    fixDateTimeInput.value = d.toTimeString().slice(0, 5);
-    _restoreFixDateUI(`Date from: ${name}`);
-  });
-});
-
 fixDateCancelBtn.addEventListener('click', () => {
-  exitPickDateMode();
   fixDateBar.style.display = 'none';
   document.body.classList.remove('action-bar-open');
   const wasBulk = !!fixDatePhotos;
