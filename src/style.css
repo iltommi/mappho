@@ -1204,7 +1204,7 @@ body.filter-open #map { top: 40px; }
   gap: 10px;
 }
 
-#fix-date-save, #fix-date-cancel {
+#fix-date-save, #fix-date-pick-map, #fix-date-cancel {
   padding: 8px 18px;
   border: none;
   border-radius: 8px;
@@ -1215,6 +1215,8 @@ body.filter-open #map { top: 40px; }
 #fix-date-save { background: #16a34a; color: #fff; }
 #fix-date-save:hover:not(:disabled) { background: #15803d; }
 #fix-date-save:disabled { opacity: .45; cursor: default; }
+#fix-date-pick-map { background: #1e3a5f; color: #93c5fd; }
+#fix-date-pick-map:hover { background: #1d4ed8; color: #fff; }
 #fix-date-cancel { background: #334155; color: #e2e8f0; }
 #fix-date-cancel:hover { background: #475569; }
 
