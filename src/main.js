@@ -10,7 +10,7 @@ import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeic
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
-import { startGeotagging } from './geotag.js';
+import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
@@ -1298,6 +1298,7 @@ async function main() {
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
+  setGeotagStatusFn(setStatus);
 
   // Handlers for map marker slideshow — update in place, no redirect.
   setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {

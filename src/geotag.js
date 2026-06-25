@@ -18,6 +18,9 @@ const searchInput = document.getElementById('pin-drop-search');
 const searchBtn   = document.getElementById('pin-drop-search-btn');
 const resultsEl   = document.getElementById('pin-drop-results');
 
+let _statusFn = null;
+export function setGeotagStatusFn(fn) { _statusFn = fn; }
+
 async function doSearch() {
   const q = searchInput.value.trim();
   if (!q) return;
@@ -253,6 +256,7 @@ async function _runBulkGeotag(list, lat, lng, cb) {
   let ok = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
+    _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
     try {
       await applyGeotagToPhoto(list[i], lat, lng);
@@ -262,7 +266,13 @@ async function _runBulkGeotag(list, lat, lng, cb) {
       log('Bulk geotag error', `${list[i].name}: ${e.message}`);
     }
   }
-  flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+  flushPhotoIndex();
+
+  if (failedItems.length > 0) {
+    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed`, 0);
+  } else {
+    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}`, 4000);
+  }
 
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
