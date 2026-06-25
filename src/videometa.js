@@ -5,7 +5,7 @@ import { addMarker } from './map.js';
 import { scheduleUpload } from './syncmanager.js';
 import { log } from './log.js';
 
-const FILENAME    = 'mappho-video-meta.json';
+const FILENAME    = 'temporary-meta.json';
 const FILEID_KEY  = 'mappho_video_meta_fileid';
 const CONTENT_KEY = 'mappho_videometa_content'; // mirrors JSON content locally
 
@@ -34,7 +34,7 @@ async function load() {
   let stored = localStorage.getItem(FILEID_KEY);
   if (!stored) {
     try {
-      const meta = await statByPath('/Photos/mappho-video-meta.json');
+      const meta = await statByPath('/Photos/temporary-meta.json');
       _fileid = meta.fileid;
       localStorage.setItem(FILEID_KEY, String(_fileid));
       stored = String(_fileid);
