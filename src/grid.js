@@ -179,9 +179,11 @@ bulkGeotagBtn.addEventListener('click', () => {
 bulkFixDateBtn.addEventListener('click', () => {
   if (!selected.size || !bulkFixDateHandler) return;
   const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const reopen = reopenFn;
   close();
   bulkFixDateHandler(photos, ({ success, count, failed }) => {
     if (success) log('Bulk fix date', `dated ${count}${failed ? `, ${failed} failed` : ''}`);
+    reopen?.();
   });
 });
 

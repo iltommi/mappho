@@ -710,7 +710,7 @@ async function openDatedOrphanGrid() {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     openDatedOrphanGrid();
   }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setFixDateHandler(photo => startFixDate(photo, openDatedOrphanGrid));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getOrphansPage(offset, limit, from, to), total, { reopen: openDatedOrphanGrid });
 }
