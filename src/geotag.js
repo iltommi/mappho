@@ -170,12 +170,11 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const newFileid = await uploadFile(parentfolderid, jpegName, jpegWithExif);
 
     log('Geotag', `Removing original HEIC…`);
+    removeMarker(fileid); // before deleteFile — same race-condition fix as JPEG path
     await deleteFile(fileid);
 
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
     await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
-
-    removeMarker(fileid);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
     await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
@@ -192,13 +191,17 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
   const modified = injectGPS(buffer, lat, lng);
 
+  // Remove before overwrite: overwriteFile deletes the old file first, so the
+  // marker would point to a deleted fileid during the upload + syncMapphoOnEdit
+  // round-trips, causing popup opens to hit pCloud 2009 and auto-purge the marker.
+  removeMarker(fileid);
+
   log('Geotag', 'Uploading to pCloud…');
   const newFileid = await overwriteFile(fileid, modified);
 
   const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
   await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
 
-  removeMarker(fileid);
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
   await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
