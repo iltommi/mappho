@@ -199,12 +199,9 @@ export function initMap() {
   map.addLayer(cluster);
 }
 
-export function addMarker({ fileid, name, lat, lng, ts }) {
-  if (addedIds.has(fileid)) return;
-  addedIds.add(fileid);
-  const marker = L.marker([lat, lng]);
-
-  const div = document.createElement('div');
+function _buildMarker(fileid, name, lat, lng, ts) {
+  const marker  = L.marker([lat, lng]);
+  const div     = document.createElement('div');
   div.className = 'photo-popup';
   const caption = document.createElement('p');
   caption.textContent = name;
@@ -263,13 +260,32 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
   });
 
   marker.bindPopup(div, { maxWidth: 280 });
-  cluster.addLayer(marker);
   markerIndex.push({ marker, ts: ts ?? null, name });
   markerData.set(marker, { fileid, name, ts: ts ?? null });
+  return marker;
+}
+
+export function addMarker({ fileid, name, lat, lng, ts }) {
+  if (addedIds.has(fileid)) return;
+  addedIds.add(fileid);
+  const marker = _buildMarker(fileid, name, lat, lng, ts);
+  cluster.addLayer(marker);
   if (heatmapActive && heatLayer) {
     heatLayer.addLatLng([lat, lng]);
     heatPoints.push([lat, lng]);
   }
+}
+
+// Bulk variant for startup — uses addLayers() so markercluster does a single
+// cluster pass (with chunkedLoading) instead of 40k individual refreshes.
+export function bulkAddMarkers(records) {
+  const toAdd = [];
+  for (const { fileid, name, lat, lng, ts } of records) {
+    if (addedIds.has(fileid)) continue;
+    addedIds.add(fileid);
+    toAdd.push(_buildMarker(fileid, name, lat, lng, ts));
+  }
+  if (toAdd.length) cluster.addLayers(toAdd);
 }
 
 export function filterMarkers(fromTs, toTs) {
