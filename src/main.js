@@ -8,7 +8,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
 import { startGeotagging } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
@@ -817,21 +817,20 @@ async function startScan() {
   }
   let cachedGeo = 0, cachedLocatedUndated = 0, cachedDated = 0, cachedUnknown = 0, cachedIgnored = 0;
   const toMigrate = [];
-  const cacheTotal = cached.length;
-  for (let i = 0; i < cacheTotal; i++) {
-    const p = cached[i];
+  const geoToAdd  = [];
+  for (const p of cached) {
     if (p.ignored) { cachedIgnored++; }
     else if (p.lat != null) {
-      addMarker(p);
+      geoToAdd.push(p);
       cachedGeo++;
       if (!(p.ts > 0 && p.ts < UNDATED_TS)) cachedLocatedUndated++;
     }
     else { toMigrate.push(p); if (p.ts != null) cachedDated++; else cachedUnknown++; }
-    if (i % 100 === 0) {
-      setProgress(cacheTotal > 0 ? (i / cacheTotal) * 100 : 0);
-      await new Promise(r => setTimeout(r, 0));
-    }
   }
+  // One batch call: markercluster does a single cluster pass with chunkedLoading
+  // instead of N individual addLayer() calls that each trigger a full re-cluster.
+  setProgress(50);
+  bulkAddMarkers(geoToAdd);
   topbarGeotagged      = cachedGeo;
   topbarLocatedUndated = cachedLocatedUndated;
   topbarDated          = cachedDated;
