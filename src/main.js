@@ -671,6 +671,24 @@ function setProgress(pct) {
   progressFill.style.width = `${Math.min(100, pct)}%`;
 }
 
+const PHASE2_TIMING_KEY = 'mappho_startup_phase2_ms';
+let _phase2Timer = null;
+
+function _startPhase2Animation(durationMs) {
+  const start = Date.now();
+  function tick() {
+    const frac = Math.min((Date.now() - start) / durationMs, 1);
+    setProgress(50 + frac * 45); // 50 → 95, leaving a visible jump to 100 when done
+    if (frac < 1) _phase2Timer = setTimeout(tick, 50);
+  }
+  _phase2Timer = setTimeout(tick, 50);
+}
+
+function _stopPhase2Animation() {
+  clearTimeout(_phase2Timer);
+  _phase2Timer = null;
+}
+
 const heatmapBtn = document.getElementById('heatmap-btn');
 heatmapBtn.addEventListener('click', () => {
   const active = toggleHeatmap();
@@ -857,6 +875,10 @@ async function startScan() {
   // One batch call: markercluster does a single cluster pass with chunkedLoading
   // instead of N individual addLayer() calls that each trigger a full re-cluster.
   setProgress(50);
+  const _phase2Start   = Date.now();
+  const _savedPhase2Ms = Number(localStorage.getItem(PHASE2_TIMING_KEY) || 0);
+  if (_savedPhase2Ms > 200) _startPhase2Animation(_savedPhase2Ms);
+
   bulkAddMarkers(geoToAdd);
   topbarGeotagged      = cachedGeo;
   topbarLocatedUndated = cachedLocatedUndated;
@@ -873,6 +895,8 @@ async function startScan() {
   await applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   await applyIgnored().catch(e => log('Ignored apply error', e.message));
 
+  _stopPhase2Animation();
+  localStorage.setItem(PHASE2_TIMING_KEY, String(Date.now() - _phase2Start));
   setProgress(100);
   setTimeout(() => setProgress(0), 500);
   updateTopbar();
