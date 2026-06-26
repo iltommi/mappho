@@ -274,8 +274,9 @@ export async function renameFile(fileid, { toname, tofolderid } = {}) {
 
 export async function overwriteFile(fileid, arrayBuffer) {
   const { name, parentfolderid } = await getFileStat(fileid);
+  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
   await deleteFile(fileid);
-  return uploadFile(parentfolderid, name, arrayBuffer);
+  return newFileid;
 }
 
 export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFileid = null) {
