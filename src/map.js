@@ -217,6 +217,12 @@ function _buildMarker(fileid, name, lat, lng, ts) {
     loading.textContent = 'Loading…';
     div.insertBefore(loading, caption);
 
+    function openPhoto() {
+      setGeotagHandler(markerGeotagHandler);
+      setFixDateHandler(markerFixDateHandler);
+      openSlideshow([markerData.get(marker)], 0);
+    }
+
     fetchThumbSrc(fileid).then(src => {
       loading.remove();
       if (src) {
@@ -227,34 +233,29 @@ function _buildMarker(fileid, name, lat, lng, ts) {
         img.onerror = () => {
           log('thumb img error', `len=${src.length}`);
           img.remove();
-          const errEl = document.createElement('p');
-          errEl.className = 'popup-error';
-          errEl.textContent = 'Preview unavailable';
-          div.insertBefore(errEl, caption);
+          const link = document.createElement('p');
+          link.className = 'popup-error';
+          link.textContent = 'Tap to open photo';
+          link.style.cursor = 'pointer';
+          link.addEventListener('click', openPhoto);
+          div.insertBefore(link, caption);
           marker.getPopup()?.update();
         };
         img.style.cursor = 'zoom-in';
-        img.addEventListener('click', () => {
-          setGeotagHandler(markerGeotagHandler);
-          setFixDateHandler(markerFixDateHandler);
-          openSlideshow([markerData.get(marker)], 0);
-        });
+        img.addEventListener('click', openPhoto);
         div.insertBefore(img, caption);
       }
       marker.getPopup()?.update();
     }).catch(e => {
       loading.remove();
-      if (e.pcloudResult === 2009) {
-        marker.closePopup();
-        removeMarker(fileid);
-        Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
-        log('Purged stale marker', fileid);
-        return;
-      }
-      const errEl = document.createElement('p');
-      errEl.className = 'popup-error';
-      errEl.textContent = 'Preview unavailable';
-      div.insertBefore(errEl, caption);
+      fetched = false; // allow retry on next popup open
+      log('Thumb error', `fileid=${fileid} pCloud=${e.pcloudResult ?? '?'} ${e.message}`);
+      const link = document.createElement('p');
+      link.className = 'popup-error';
+      link.textContent = 'Tap to open photo';
+      link.style.cursor = 'pointer';
+      link.addEventListener('click', openPhoto);
+      div.insertBefore(link, caption);
       marker.getPopup()?.update();
     });
   });

@@ -274,8 +274,11 @@ export async function renameFile(fileid, { toname, tofolderid } = {}) {
 
 export async function overwriteFile(fileid, arrayBuffer) {
   const { name, parentfolderid } = await getFileStat(fileid);
-  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
+  // Delete first so the upload has no filename conflict in the same folder.
+  // Without this, pCloud may return the existing fileid for the "new" upload,
+  // causing the subsequent delete to erase the freshly-written content.
   await deleteFile(fileid);
+  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
   return newFileid;
 }
 
