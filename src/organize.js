@@ -251,6 +251,22 @@ export async function organizeFile(record, rootFolderId) {
   return name;
 }
 
+// If the file isn't already tracked in Photos/, organizes it there now.
+// Used after geotagging orphan photos so they survive a Photos/ rebuild scan.
+// Returns the new organized name, or null if already in Photos or index not ready.
+export async function ensureInPhotos(record) {
+  const h = normHash(record.hash);
+  if (h && _hashMap.has(h)) return null; // already tracked
+  if (!_indexReady) return null;
+  const rootFolderId = await getMapphoRoot();
+  try {
+    return await organizeFile(record, rootFolderId);
+  } catch (e) {
+    log('ensureInPhotos', e.message);
+    return null;
+  }
+}
+
 // Removes a file's entry from the hash index when the file is deleted.
 // Without this, a re-added identical file would be silently skipped by scan.
 export async function removeOrganizedEntry(fileid) {
@@ -287,13 +303,21 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
     if (monthFolderId === existing.folderid && newHash === oldHash) return;
 
     if (monthFolderId === existing.folderid) {
-      // Same folder, content changed — replace file keeping the existing name.
-      await deleteFile(existing.fileid);
-      const refreshedFileid = await copyFile(newFileid, monthFolderId, existing.name);
+      // Same folder, content changed.
+      // overwriteFile deletes the original before uploading, so existing.fileid
+      // is already gone by the time we get here.  Catch the 2009 and use
+      // newFileid directly — it is already in monthFolderId with the right name.
+      // If the delete somehow succeeds (duplicate-hash edge case), copy newFileid
+      // into Photos under the canonical name.
+      let finalFileid = newFileid;
+      try {
+        await deleteFile(existing.fileid);
+        finalFileid = await copyFile(newFileid, monthFolderId);
+      } catch {}
       await deleteMapphoIndexEntry(oldHash);
-      await putMapphoIndexEntry({ hash: newHash, fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
+      await putMapphoIndexEntry({ hash: newHash, fileid: finalFileid, folderid: monthFolderId, name: existing.name });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: refreshedFileid, folderid: monthFolderId, name: existing.name });
+      _hashMap.set(newHash, { fileid: finalFileid, folderid: monthFolderId, name: existing.name });
     } else {
       // Different folder — move and rename to match the new date.
       const newName = hasDate ? nextName(ts, extOf(existing.name)) : existing.name;

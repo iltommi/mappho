@@ -946,6 +946,9 @@ async function runRebuild() {
 }
 
 async function rebuildScan() {
+  let wakeLock = null;
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch {}
+
   // Clear EXIF cache and markers — we are rebuilding from Photos/ as source of truth.
   await Promise.all([clearNonIgnored(), clearOrphans()]);
   clearMarkers();
@@ -1012,6 +1015,8 @@ async function rebuildScan() {
     updateRetryBtn();
     showRetryDialog(failedFiles);
   }
+
+  try { wakeLock?.release(); } catch {}
 }
 
 // Returns true on success, false on network/download failure (file not written to DB so retry works).

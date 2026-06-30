@@ -2,7 +2,7 @@ import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectEx
 import { deleteRecord, deleteOrphan, putCached, UNDATED_TS } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker, findClosestMarker } from './map.js';
-import { syncMapphoOnEdit } from './organize.js';
+import { syncMapphoOnEdit, ensureInPhotos } from './organize.js';
 import { isVideo } from './mp4.js';
 import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
@@ -175,11 +175,12 @@ async function applyGeotagToPhoto(photo, lat, lng) {
 
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
     await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+    const orgName = await ensureInPhotos({ fileid: newFileid, name: jpegName, ts: realTs, hash: newHash ?? null });
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
-    await putCached({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
-    addMarker({ fileid: newFileid, name: jpegName, lat, lng, ts: realTs });
-    log('Geotag', `Done — HEIC replaced by ${jpegName} (fileid ${newFileid})`);
+    await putCached({ fileid: newFileid, name: orgName ?? jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
+    addMarker({ fileid: newFileid, name: orgName ?? jpegName, lat, lng, ts: realTs });
+    log('Geotag', `Done — HEIC replaced by ${orgName ?? jpegName} (fileid ${newFileid})`);
     return;
   }
 
@@ -201,12 +202,13 @@ async function applyGeotagToPhoto(photo, lat, lng) {
 
   const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
   await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+  const orgName = await ensureInPhotos({ fileid: newFileid, name, ts: realTs, hash: newHash ?? null });
 
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
-  await putCached({ fileid: newFileid, name, lat, lng, ts: realTs, hash: newHash ?? null });
-  addMarker({ fileid: newFileid, name, lat, lng, ts: realTs });
-  log('Geotag', `Saved — new fileid ${newFileid}`);
+  await putCached({ fileid: newFileid, name: orgName ?? name, lat, lng, ts: realTs, hash: newHash ?? null });
+  addMarker({ fileid: newFileid, name: orgName ?? name, lat, lng, ts: realTs });
+  log('Geotag', `Saved — new fileid ${newFileid}${orgName ? ` → organized as ${orgName}` : ''}`);
 }
 
 saveBtn.addEventListener('click', async () => {
