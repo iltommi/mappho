@@ -325,14 +325,20 @@ function purgeStaleFile(tile) {
 
 async function loadThumb(tile, attempt = 0) {
   const { fileid } = tile._item;
+  let got2009 = false;
   try {
     const src = await fetchThumbSrc(fileid, THUMB_SIZE);
     if (src) { tile._img.src = src; tile._img.classList.add('loaded'); return; }
   } catch (e) {
-    if (e.pcloudResult === 2009) { purgeStaleFile(tile); return; }
+    // Don't purge on the first 2009 — CDN may not have propagated a freshly
+    // uploaded file yet.  Retry on the same schedule as transient null failures
+    // and only purge if the file is still missing after all attempts.
+    if (e.pcloudResult === 2009) got2009 = true;
   }
   if (attempt < THUMB_RETRY_DELAYS.length) {
     setTimeout(() => loadThumb(tile, attempt + 1), THUMB_RETRY_DELAYS[attempt]);
+  } else if (got2009) {
+    purgeStaleFile(tile);
   }
 }
 
