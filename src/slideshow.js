@@ -34,6 +34,7 @@ const closeBtn  = document.getElementById('ss-close');
 const playBadge   = document.getElementById('ss-play-badge');
 const geotagBtn   = document.getElementById('ss-geotag-btn');
 const fixDateBtn  = document.getElementById('ss-fixdate-btn');
+const fixTimeBtn  = document.getElementById('ss-fixtime-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
@@ -42,10 +43,12 @@ const wrap        = document.getElementById('ss-img-wrap');
 
 let geotagHandler    = null;
 let fixDateHandler   = null;
+let fixTimeHandler   = null;
 let ignoreHandler    = null;
 let afterDeleteCb    = null;
 export function setGeotagHandler(fn)       { geotagHandler = fn; }
 export function setFixDateHandler(fn)      { fixDateHandler = fn; }
+export function setFixTimeHandler(fn)      { fixTimeHandler = fn; }
 export function setIgnoreHandler(fn)       { ignoreHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
@@ -124,6 +127,7 @@ function close({ handoff = false } = {}) {
   playBadge.style.display  = 'none';
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
+  fixTimeBtn.style.display = 'none';
   ignoreBtn.style.display  = 'none';
   photos = [];
   imgCache.clear();
@@ -150,6 +154,13 @@ fixDateBtn.addEventListener('click', () => {
   if (!photo || !fixDateHandler) return;
   close();
   fixDateHandler(photo);
+});
+
+fixTimeBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo || !fixTimeHandler) return;
+  close();
+  fixTimeHandler(photo);
 });
 
 ignoreBtn.addEventListener('click', async () => {
@@ -597,6 +608,7 @@ function updateCaption() {
   captionEl.textContent = buildCaption('');
   geotagBtn.style.display   = '';
   fixDateBtn.style.display  = '';
+  fixTimeBtn.style.display  = fixTimeHandler ? '' : 'none';
   ignoreBtn.style.display   = ignoreHandler ? '' : 'none';
   playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
@@ -685,6 +697,7 @@ export function openSlideshow(photoList, startIndex = 0) {
   imgCache.clear();
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
+  fixTimeBtn.style.display = 'none';
   ignoreBtn.style.display  = 'none';
   el.classList.add('open');
   go(startIndex);
@@ -712,8 +725,9 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
     photos = firstPage;
   }
   if (!photos.length) return;
-  geotagBtn.style.display = '';
+  geotagBtn.style.display  = '';
   fixDateBtn.style.display = '';
+  fixTimeBtn.style.display = fixTimeHandler ? '' : 'none';
   el.classList.add('open');
   go(startIndex);
 }
