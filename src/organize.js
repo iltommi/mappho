@@ -1,4 +1,4 @@
-import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, copyFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
+import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
 import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
@@ -303,21 +303,16 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
     if (monthFolderId === existing.folderid && newHash === oldHash) return;
 
     if (monthFolderId === existing.folderid) {
-      // Same folder, content changed.
-      // overwriteFile deletes the original before uploading, so existing.fileid
-      // is already gone by the time we get here.  Catch the 2009 and use
-      // newFileid directly — it is already in monthFolderId with the right name.
-      // If the delete somehow succeeds (duplicate-hash edge case), copy newFileid
-      // into Photos under the canonical name.
-      let finalFileid = newFileid;
-      try {
-        await deleteFile(existing.fileid);
-        finalFileid = await copyFile(newFileid, monthFolderId);
-      } catch {}
+      // Same folder, content changed (GPS injected or EXIF date updated).
+      // overwriteFile deleted existing.fileid and uploaded newFileid to the same
+      // folder under the same name, so newFileid is already correctly placed.
+      // Do NOT try to delete existing.fileid here — it is already gone, and if
+      // pCloud returns success for a re-delete, the subsequent copyFile call would
+      // create an untracked duplicate and leave newFileid un-indexed.
       await deleteMapphoIndexEntry(oldHash);
-      await putMapphoIndexEntry({ hash: newHash, fileid: finalFileid, folderid: monthFolderId, name: existing.name });
+      await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: existing.name });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: finalFileid, folderid: monthFolderId, name: existing.name });
+      _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: existing.name });
     } else {
       // Different folder — move to the correct month and give it a date-based name.
       //
