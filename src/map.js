@@ -263,6 +263,12 @@ function _buildMarker(fileid, name, lat, lng, ts) {
     });
   });
 
+  marker.on('popupclose', () => {
+    div.querySelectorAll('img').forEach(img => { img.src = ''; img.remove(); });
+    div.querySelectorAll('.popup-error').forEach(el => el.remove());
+    fetched = false;
+  });
+
   marker.bindPopup(div, { maxWidth: 280 });
   markerIndex.push({ marker, ts: ts ?? null, name });
   markerData.set(marker, { fileid, name, ts: ts ?? null });

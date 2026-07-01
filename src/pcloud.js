@@ -172,6 +172,12 @@ const _fileParentCache = new Map();
 const _folderNameCache   = new Map(); // folderid → name
 const _folderParentCache = new Map(); // folderid → parentfolderid
 
+const MAX_FILE_CACHE = 2000;
+function _cacheSet(map, k, v) {
+  map.set(k, v);
+  if (map.size > MAX_FILE_CACHE) map.delete(map.keys().next().value);
+}
+
 async function _statFolder(folderid) {
   if (_folderNameCache.has(folderid)) {
     return { name: _folderNameCache.get(folderid), parentfolderid: _folderParentCache.get(folderid) ?? 0 };
@@ -195,11 +201,11 @@ export async function getFileDimensions(fileid) {
   try {
     const meta = await getFileStat(fileid);
     const dim = (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null;
-    _dimCache.set(fileid, dim);
-    if (!_fileParentCache.has(fileid)) _fileParentCache.set(fileid, meta.parentfolderid ?? null);
+    _cacheSet(_dimCache, fileid, dim);
+    if (!_fileParentCache.has(fileid)) _cacheSet(_fileParentCache, fileid, meta.parentfolderid ?? null);
     return dim;
   } catch {
-    _dimCache.set(fileid, null);
+    _cacheSet(_dimCache, fileid, null);
     return null;
   }
 }
@@ -211,12 +217,12 @@ export async function getFileFolderName(fileid) {
   if (!_fileParentCache.has(fileid)) {
     try {
       const meta = await getFileStat(fileid);
-      _fileParentCache.set(fileid, meta.parentfolderid ?? null);
+      _cacheSet(_fileParentCache, fileid, meta.parentfolderid ?? null);
       if (!_dimCache.has(fileid)) {
-        _dimCache.set(fileid, (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null);
+        _cacheSet(_dimCache, fileid, (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null);
       }
     } catch {
-      _fileParentCache.set(fileid, null);
+      _cacheSet(_fileParentCache, fileid, null);
       return '';
     }
   }
