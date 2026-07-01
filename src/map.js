@@ -128,7 +128,8 @@ export function initMap() {
   map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 19,
+    maxNativeZoom: 19,
+    maxZoom: 21,
   }).addTo(map);
 
   cluster = L.markerClusterGroup({
