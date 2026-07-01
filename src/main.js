@@ -5,14 +5,14 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
-import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback, updateCurrentSlideshowItem } from './slideshow.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
-import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
+import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
@@ -203,17 +203,49 @@ async function applyFixDateToPhoto(photo, ts) {
     syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   } else {
     log('Fix date', 'stat (jpeg)');
-    const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
-    log('Fix date', 'download');
-    const buffer = await downloadFullFile(fileid);
-    log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
-    const modified = injectExif(buffer, { ts });
-    log('Fix date', 'overwrite');
-    newFileid = await overwriteFile(fileid, modified);
-    log('Fix date', 'stat new file');
-    ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
-    log('Fix date', 'sync organize');
-    syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+    const stat = await getFileStat(fileid).catch(() => ({}));
+    const oldHash = stat.hash ?? null;
+
+    // Determine whether the file moves to a different month folder.
+    const rootFolderId = await getMapphoRoot();
+    const targetFolderId = (stat.parentfolderid != null && ts != null)
+      ? await getMapphoMonthFolder(rootFolderId, ts).catch(() => null)
+      : null;
+
+    if (targetFolderId != null && targetFolderId !== stat.parentfolderid) {
+      // Cross-month: server-side copy to the destination folder first.
+      // The original survives until the modified copy is verified and the index
+      // is updated, so any failure up to that point leaves the data recoverable.
+      log('Fix date', `cross-month copy to folder ${targetFolderId}`);
+      const copyFileid = await copyFile(fileid, targetFolderId);
+      log('Fix date', `copy ${copyFileid} — verifying`);
+      await getFileStat(copyFileid);
+      log('Fix date', 'download copy');
+      const buffer = await downloadFullFile(copyFileid);
+      log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
+      const modified = injectExif(buffer, { ts });
+      log('Fix date', 'overwrite copy');
+      newFileid = await overwriteFile(copyFileid, modified);
+      log('Fix date', 'stat modified copy');
+      ({ hash: newHash } = await getFileStat(newFileid));
+      log('Fix date', 'sync organize');
+      syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+      // syncMapphoOnEdit's different-folder branch renames newFileid to the canonical
+      // name and then deletes the original. If the rename throws, the original is
+      // untouched and newFileid remains as an untracked copy in targetFolderId.
+    } else {
+      // Same month: content change in place.
+      log('Fix date', 'download');
+      const buffer = await downloadFullFile(fileid);
+      log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
+      const modified = injectExif(buffer, { ts });
+      log('Fix date', 'overwrite');
+      newFileid = await overwriteFile(fileid, modified);
+      log('Fix date', 'stat new file');
+      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
+      log('Fix date', 'sync organize');
+      syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+    }
   }
 
   // Use the canonical name that syncMapphoOnEdit assigned in Photos/,
