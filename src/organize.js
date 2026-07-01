@@ -319,14 +319,24 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: finalFileid, folderid: monthFolderId, name: existing.name });
     } else {
-      // Different folder — move and rename to match the new date.
+      // Different folder — move to the correct month and give it a date-based name.
+      //
+      // For JPEG/HEIC: overwriteFile deleted existing.fileid before uploading newFileid,
+      // so existing.fileid is already gone.  We move newFileid to the target folder.
+      // For MP4: the file is never replaced (newFileid === existing.fileid), so we
+      // rename the file in place.  In that case we must not attempt a separate delete.
       const newName = hasDate ? nextName(ts, extOf(existing.name)) : existing.name;
-      await renameFile(existing.fileid, { tofolderid: monthFolderId, toname: newName });
+      const fileToMove = newFileid !== existing.fileid ? newFileid : existing.fileid;
+      await renameFile(fileToMove, { tofolderid: monthFolderId, toname: newName });
+      if (newFileid !== existing.fileid) {
+        try { await deleteFile(existing.fileid); } catch {}
+      }
+      _takenNames.delete(existing.name);
       _takenNames.add(newName);
       await deleteMapphoIndexEntry(oldHash);
-      await putMapphoIndexEntry({ hash: newHash, fileid: existing.fileid, folderid: monthFolderId, name: newName });
+      await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: newName });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: existing.fileid, folderid: monthFolderId, name: newName });
+      _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: newName });
     }
     _hashDirty = true;
     flushOrganizeIndex();
