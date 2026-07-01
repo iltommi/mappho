@@ -227,7 +227,7 @@ async function applyFixDateToPhoto(photo, ts) {
       log('Fix date', 'overwrite copy');
       newFileid = await overwriteFile(copyFileid, modified);
       log('Fix date', 'stat modified copy');
-      ({ hash: newHash } = await getFileStat(newFileid));
+      ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
       log('Fix date', 'sync organize');
       syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
       // syncMapphoOnEdit's different-folder branch renames newFileid to the canonical
