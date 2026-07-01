@@ -663,6 +663,19 @@ async function go(index) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+// Patches the current slide's metadata in-place after an edit (fix-date, geotag).
+// Transfers the thumbnail cache from old fileid to new so no re-fetch is needed.
+export function updateCurrentSlideshowItem({ fileid, name, ts }) {
+  if (!photos.length || !el.classList.contains('open')) return;
+  const old = photos[current];
+  if (old.fileid !== fileid && imgCache.has(old.fileid)) {
+    imgCache.set(fileid, imgCache.get(old.fileid));
+    imgCache.delete(old.fileid);
+  }
+  photos[current] = { ...old, fileid, name, ts };
+  updateCaption();
+}
+
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
   ignoreHandler  = null;

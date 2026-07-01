@@ -300,7 +300,7 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       ? await getMapphoMonthFolder(rootFolderId, ts)
       : await getMapphoUnknownFolder(rootFolderId);
 
-    if (monthFolderId === existing.folderid && newHash === oldHash) return;
+    if (monthFolderId === existing.folderid && newHash === oldHash) return existing.name;
 
     if (monthFolderId === existing.folderid) {
       // Same folder, content changed (GPS injected or EXIF date updated).
@@ -313,6 +313,9 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: existing.name });
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: existing.name });
+      _hashDirty = true;
+      flushOrganizeIndex();
+      return existing.name;
     } else {
       // Different folder — move to the correct month and give it a date-based name.
       //
@@ -332,10 +335,12 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: newName });
       _hashMap.delete(oldHash);
       _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: newName });
+      _hashDirty = true;
+      flushOrganizeIndex();
+      return newName;
     }
-    _hashDirty = true;
-    flushOrganizeIndex();
   } catch (e) {
     log('Mappho sync error', e.message);
+    return null;
   }
 }
