@@ -8,7 +8,7 @@ import { fetchThumbSrc } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { isVideo } from './mp4.js';
 import { log } from './log.js';
-import { openSlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler } from './slideshow.js';
+import { openSlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid } from './grid.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
@@ -70,6 +70,8 @@ export function setMarkerGeotagHandler(fn) { markerGeotagHandler = fn; }
 
 let markerFixDateHandler = null;
 export function setMarkerFixDateHandler(fn) { markerFixDateHandler = fn; }
+let markerFixTimeHandler = null;
+export function setMarkerFixTimeHandler(fn) { markerFixTimeHandler = fn; }
 
 const PIN_ICON = L.icon({
   iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
@@ -220,6 +222,7 @@ function _buildMarker(fileid, name, lat, lng, ts) {
     function openPhoto() {
       setGeotagHandler(markerGeotagHandler);
       setFixDateHandler(markerFixDateHandler);
+      setFixTimeHandler(markerFixTimeHandler);
       openSlideshow([markerData.get(marker)], 0);
     }
 

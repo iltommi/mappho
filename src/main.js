@@ -8,8 +8,8 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback, updateCurrentSlideshowItem } from './slideshow.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setAfterDeleteCallback, updateCurrentSlideshowItem } from './slideshow.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
@@ -112,6 +112,7 @@ async function openOrphanSlideshow() {
     openOrphanSlideshow();
   }));
   setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
+  setFixTimeHandler(photo => startFixTime(photo, openOrphanSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openLazySlideshow(fetcher, total);
 }
@@ -127,6 +128,7 @@ async function openOrphanGrid() {
     openOrphanGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, openOrphanGrid));
+  setFixTimeHandler(photo => startFixTime(photo, openOrphanGrid));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid(fetcher, total, { reopen: openOrphanGrid });
 }
@@ -146,6 +148,7 @@ async function openNodatetimeGrid() {
     openNodatetimeGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, openNodatetimeGrid));
+  setFixTimeHandler(photo => startFixTime(photo, openNodatetimeGrid));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS), total, { reopen: openNodatetimeGrid });
 }
@@ -153,11 +156,13 @@ async function openNodatetimeGrid() {
 // ── Fix date panel ────────────────────────────────────────────────────────────
 
 const fixDateBar      = document.getElementById('fix-date-bar');
+const fixDateHint     = document.getElementById('fix-date-hint');
 const fixDateInput    = document.getElementById('fix-date-input');
 const fixDateTimeInput = document.getElementById('fix-date-time-input');
 const fixDateSaveBtn  = document.getElementById('fix-date-save');
 const fixDateCancelBtn = document.getElementById('fix-date-cancel');
 
+let fixDateMode    = 'date'; // 'date' | 'time' | 'both'
 let fixDatePhoto   = null;
 let fixDatePhotos  = null; // bulk mode
 let fixDateOnDone  = null;
@@ -262,37 +267,59 @@ async function applyFixDateToPhoto(photo, ts) {
 }
 
 function startFixDate(photo, onDone) {
+  fixDateMode   = 'date';
   fixDatePhoto  = photo;
   fixDatePhotos = null;
   fixDateOnDone = onDone;
   const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
   const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
-  fixDateInput.value = seed.toISOString().split('T')[0];
+  fixDateInput.value     = seed.toISOString().split('T')[0];
+  fixDateInput.style.display     = '';
+  fixDateTimeInput.style.display = 'none';
+  fixDateHint.textContent    = 'Change date for this photo';
+  fixDateSaveBtn.textContent = '💾 Save';
+  fixDateBar.style.display = 'flex';
+  document.body.classList.add('action-bar-open');
+}
+
+function startFixTime(photo, onDone) {
+  fixDateMode   = 'time';
+  fixDatePhoto  = photo;
+  fixDatePhotos = null;
+  fixDateOnDone = onDone;
+  const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+  const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
+  fixDateInput.style.display     = 'none';
+  fixDateTimeInput.style.display = '';
+  fixDateHint.textContent    = 'Change time for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
   fixDateBar.style.display = 'flex';
   document.body.classList.add('action-bar-open');
 }
 
 function startBulkFixDate(photos, onDone) {
+  fixDateMode   = 'both';
   fixDatePhoto  = null;
   fixDatePhotos = photos;
   fixDateOnDone = onDone;
   const seed = _lastFixDateTs ? new Date(_lastFixDateTs) : new Date();
-  fixDateInput.value = seed.toISOString().split('T')[0];
+  fixDateInput.value     = seed.toISOString().split('T')[0];
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
+  fixDateInput.style.display     = '';
+  fixDateTimeInput.style.display = '';
+  fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   fixDateBar.style.display = 'flex';
   document.body.classList.add('action-bar-open');
 }
 
 fixDateSaveBtn.addEventListener('click', () => {
-  if (!fixDateInput.value) return;
-  const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
-
   if (fixDatePhotos) {
+    if (!fixDateInput.value) return;
     const list = fixDatePhotos;
     const cb   = fixDateOnDone;
+    const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     fixDateBar.style.display = 'none';
     document.body.classList.remove('action-bar-open');
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
@@ -303,13 +330,32 @@ fixDateSaveBtn.addEventListener('click', () => {
   if (!fixDatePhoto) return;
   const photo = fixDatePhoto;
   const cb    = fixDateOnDone;
+  const mode  = fixDateMode;
+
+  let ts;
+  if (mode === 'time') {
+    if (!fixDateTimeInput.value) return;
+    const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+    const existingDate = hasOwnDate
+      ? new Date(photo.ts).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    ts = new Date(`${existingDate}T${fixDateTimeInput.value}`).getTime();
+  } else {
+    if (!fixDateInput.value) return;
+    const hasOwnDate = mode === 'date' && photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+    const existingTime = hasOwnDate
+      ? new Date(photo.ts).toTimeString().slice(0, 5)
+      : (fixDateTimeInput.value || '12:00');
+    ts = new Date(`${fixDateInput.value}T${existingTime}`).getTime();
+  }
+
   fixDateBar.style.display = 'none';
   document.body.classList.remove('action-bar-open');
   fixDatePhoto = null; fixDateOnDone = null;
-  _runFixDate(photo, ts, cb);
+  _runFixDate(photo, ts, cb, mode);
 });
 
-async function _runFixDate(photo, ts, onDone) {
+async function _runFixDate(photo, ts, onDone, mode = 'date') {
   try {
     const r = await applyFixDateToPhoto(photo, ts);
     if (r.lat != null && r.newFileid !== r.oldFileid) {
@@ -323,8 +369,8 @@ async function _runFixDate(photo, ts, onDone) {
     onDone?.();
   } catch (e) {
     log('Fix date error', e.message);
-    // Re-open the bar so the user can retry.
-    startFixDate(photo, onDone);
+    if (mode === 'time') startFixTime(photo, onDone);
+    else startFixDate(photo, onDone);
     showBriefStatus(`❌ Fix date failed — try again`);
   }
 }
@@ -797,6 +843,7 @@ async function openLocatedUndatedGrid() {
     openLocatedUndatedGrid();
   }));
   setFixDateHandler(photo => startFixDate(photo, () => { openLocatedUndatedGrid(); }));
+  setFixTimeHandler(photo => startFixTime(photo, () => { openLocatedUndatedGrid(); }));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid((offset, limit) => getLocatedUndatedPage(offset, limit), total, { reopen: openLocatedUndatedGrid });
 }
@@ -1371,6 +1418,7 @@ async function main() {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
   }));
   setMarkerFixDateHandler(photo => startFixDate(photo, () => {}));
+  setMarkerFixTimeHandler(photo => startFixTime(photo, () => {}));
 
   const token = getToken();
   setupAuthBtn(!!token);
