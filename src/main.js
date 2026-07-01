@@ -9,7 +9,7 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setIgnoreHandler, setAfterDeleteCallback, updateCurrentSlideshowItem } from './slideshow.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
@@ -173,12 +173,13 @@ async function applyFixDateToPhoto(photo, ts) {
   let newName   = name;
   let newHash   = null;
 
+  let syncedName = null;
   if (isMP4) {
     log('Fix date', 'stat (mp4)');
     const { hash } = await getFileStat(fileid).catch(() => ({}));
     newHash = hash ?? null;
     log('Fix date', 'sync organize');
-    await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
+    syncedName = await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
     log('Fix date', 'extract HEIC meta');
     const meta = await extractHeicMeta(fileid);
@@ -199,7 +200,7 @@ async function applyFixDateToPhoto(photo, ts) {
     log('Fix date', 'stat new file');
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
     log('Fix date', 'sync organize');
-    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+    syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   } else {
     log('Fix date', 'stat (jpeg)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
@@ -212,17 +213,20 @@ async function applyFixDateToPhoto(photo, ts) {
     log('Fix date', 'stat new file');
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
     log('Fix date', 'sync organize');
-    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+    syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
   }
 
+  // Use the canonical name that syncMapphoOnEdit assigned in Photos/,
+  // falling back to the locally computed newName if the file wasn't in Photos/.
+  const canonicalName = syncedName ?? newName;
   log('Fix date', 'update cache');
   const cached = await getCached(fileid);
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
-  if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, ts, hash: newHash ?? cached.hash ?? null });
-  else await putOrphan({ fileid: newFileid, name: newName, ts, hash: newHash });
-  log('Fix date', `done → newFileid=${newFileid}`);
-  return { oldFileid: fileid, newFileid, newName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
+  if (cached) await putCached({ ...cached, fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached.hash ?? null });
+  else await putOrphan({ fileid: newFileid, name: canonicalName, ts, hash: newHash });
+  log('Fix date', `done → newFileid=${newFileid} name=${canonicalName}`);
+  return { oldFileid: fileid, newFileid, newName: canonicalName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
 }
 
 function startFixDate(photo, onDone) {
@@ -280,6 +284,7 @@ async function _runFixDate(photo, ts, onDone) {
       removeMarker(r.oldFileid);
       addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
     }
+    updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts });
     _lastFixDateTs = ts;
     await reloadTopbarCounts().catch(e => log('Fix date', `reloadTopbarCounts error: ${e.message}`));
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
