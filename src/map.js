@@ -125,12 +125,12 @@ export function flyToAndPlacePin(lat, lng) {
 }
 
 export function initMap() {
-  map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxNativeZoom: 19,
     maxZoom: 21,
   }).addTo(map);
+  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
 
   cluster = L.markerClusterGroup({
     chunkedLoading: true,
