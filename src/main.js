@@ -826,7 +826,6 @@ document.getElementById('fix-date-only-btn').addEventListener('click', () => {
 });
 
 document.getElementById('fix-position-only-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
   openDatedOrphanGrid().catch(e => { log('Fix position error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
@@ -852,6 +851,7 @@ document.getElementById('log-open-btn').addEventListener('click', () => { infoPo
 function showApp() {
   loginOverlay.style.display = 'none';
   menuFab.style.display = '';
+  document.getElementById('fix-position-only-btn').style.display = '';
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
