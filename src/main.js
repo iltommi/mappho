@@ -835,7 +835,7 @@ document.getElementById('fix-date-and-pos-btn').addEventListener('click', () => 
 });
 
 async function openLocatedUndatedGrid() {
-  const total = topbarLocatedUndated;
+  const total = await countLocatedUndated();
   if (!total) { showBriefStatus('No located photos without a date.'); return; }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
