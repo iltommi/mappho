@@ -30,6 +30,29 @@ html, body {
 }
 #menu-fab:hover { opacity: 1; background: #334155; }
 
+#fix-position-only-btn {
+  position: fixed;
+  bottom: 80px;
+  left: 16px;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: .85;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  transition: opacity .15s, background .15s;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#fix-position-only-btn:hover { opacity: 1; background: #334155; }
+
 
 /* Folder picker overlay */
 #folder-picker {
@@ -150,7 +173,7 @@ html, body {
 #overflow-menu {
   display: none;
   position: fixed;
-  bottom: 80px;
+  bottom: 136px;
   left: 8px;
   background: #16213e;
   border: 1px solid #334155;
@@ -1378,5 +1401,6 @@ body.filter-open #map { top: 40px; }
 
 /* Hide FABs while action bars are active */
 body.action-bar-open #menu-fab,
+body.action-bar-open #fix-position-only-btn,
 body.action-bar-open #heatmap-btn,
 body.action-bar-open #media-type-btn { display: none !important; }
