@@ -8,7 +8,7 @@ import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
 import { searchLocation } from './geocode.js';
 import { log } from './log.js';
-import { askRetry } from './confirm.js';
+import { askRetry, waitForVisible } from './confirm.js';
 
 const bar        = document.getElementById('pin-drop-bar');
 const hintEl     = document.getElementById('pin-drop-hint');
@@ -261,6 +261,7 @@ async function _runBulkGeotag(list, lat, lng, cb) {
   let ok = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
+    await waitForVisible();
     _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
     try {

@@ -1,3 +1,11 @@
+export function waitForVisible() {
+  if (document.visibilityState !== 'hidden') return Promise.resolve();
+  return new Promise(resolve => {
+    const fn = () => { if (document.visibilityState !== 'hidden') { document.removeEventListener('visibilitychange', fn); resolve(); } };
+    document.addEventListener('visibilitychange', fn);
+  });
+}
+
 export function askRetry(count, noun) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
