@@ -17,7 +17,7 @@ import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
-import { askRetry } from './confirm.js';
+import { askRetry, waitForVisible } from './confirm.js';
 import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
@@ -379,6 +379,7 @@ async function _runBulkFixDate(list, ts, cb) {
   let ok = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
+    await waitForVisible();
     setStatus(`📅 Fixing dates… ${i + 1}/${list.length}`, 0);
     try {
       const r = await applyFixDateToPhoto(list[i], ts);
