@@ -700,6 +700,8 @@ export function updateCurrentSlideshowItem({ fileid, name, ts }) {
   updateCaption();
 }
 
+export function getCurrentSlideshowIndex() { return current; }
+
 export function refreshSlideshowImage(fileid, src) {
   if (!el.classList.contains('open')) return;
   const photo = photos[current];

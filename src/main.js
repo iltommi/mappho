@@ -9,7 +9,7 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex } from './slideshow.js';
 import { openPhotoEdit } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
@@ -125,9 +125,10 @@ async function openOrphanGrid() {
     return;
   }
   async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
     const { total: t, fetcher: f } = await getOrphanListing();
     if (!t) { showBriefStatus(range ? 'All photos in range have locations!' : 'All photos located!'); return; }
-    openLazySlideshow(f, t);
+    openLazySlideshow(f, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
@@ -151,9 +152,10 @@ async function openNodatetimeGrid() {
   }
   const fetcher = (offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS);
   async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
     const t = await countOrphansInRange(UNDATED_TS, UNDATED_TS);
     if (!t) { showBriefStatus('All photos have date or location!'); return; }
-    openLazySlideshow(fetcher, t);
+    openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
@@ -822,9 +824,10 @@ async function openDatedOrphanGrid() {
   if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return; }
   const fetcher = (offset, limit) => getOrphansPage(offset, limit, from, to);
   async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
     const t = await countOrphansInRange(from, to);
     if (!t) { showBriefStatus(range ? 'All photos in range have locations!' : 'All photos located!'); return; }
-    openLazySlideshow(fetcher, t);
+    openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
@@ -858,9 +861,10 @@ async function openLocatedUndatedGrid() {
   if (!total) { showBriefStatus('No located photos without a date.'); return; }
   const fetcher = (offset, limit) => getLocatedUndatedPage(offset, limit);
   async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
     const t = await countLocatedUndated();
     if (!t) { showBriefStatus('All located photos now have dates!'); return; }
-    openLazySlideshow(fetcher, t);
+    openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
   setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
     if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
