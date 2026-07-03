@@ -35,6 +35,7 @@ const playBadge   = document.getElementById('ss-play-badge');
 const geotagBtn   = document.getElementById('ss-geotag-btn');
 const fixDateBtn  = document.getElementById('ss-fixdate-btn');
 const fixTimeBtn  = document.getElementById('ss-fixtime-btn');
+const editBtn     = document.getElementById('ss-edit-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
@@ -45,11 +46,13 @@ let geotagHandler    = null;
 let fixDateHandler   = null;
 let fixTimeHandler   = null;
 let ignoreHandler    = null;
+let editHandler      = null;
 let afterDeleteCb    = null;
 export function setGeotagHandler(fn)       { geotagHandler = fn; }
 export function setFixDateHandler(fn)      { fixDateHandler = fn; }
 export function setFixTimeHandler(fn)      { fixTimeHandler = fn; }
 export function setIgnoreHandler(fn)       { ignoreHandler = fn; }
+export function setEditHandler(fn)         { editHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
 let photos  = [];
@@ -128,6 +131,7 @@ function close({ handoff = false } = {}) {
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
   fixTimeBtn.style.display = 'none';
+  editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
   photos = [];
   imgCache.clear();
@@ -161,6 +165,13 @@ fixTimeBtn.addEventListener('click', () => {
   if (!photo || !fixTimeHandler) return;
   close();
   fixTimeHandler(photo);
+});
+
+editBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo || !editHandler) return;
+  const thumbSrc = curImg.src || '';
+  editHandler(photo, thumbSrc);
 });
 
 ignoreBtn.addEventListener('click', async () => {
@@ -612,6 +623,7 @@ function updateCaption() {
   ignoreBtn.style.display   = ignoreHandler ? '' : 'none';
   playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
+  editBtn.style.display  = (editHandler && !isVideo(name) && !/\.heic$/i.test(name)) ? '' : 'none';
   shareBtn.style.display = '';
 
   if (!isVideo(name)) {
@@ -688,6 +700,15 @@ export function updateCurrentSlideshowItem({ fileid, name, ts }) {
   updateCaption();
 }
 
+export function refreshSlideshowImage(fileid, src) {
+  if (!el.classList.contains('open')) return;
+  const photo = photos[current];
+  if (!photo || photo.fileid !== fileid) return;
+  imgCache.delete(fileid);
+  imgCache.set(fileid, src);
+  curImg.src = src;
+}
+
 export function openSlideshow(photoList, startIndex = 0) {
   if (!photoList.length) return;
   ignoreHandler  = null;
@@ -698,6 +719,7 @@ export function openSlideshow(photoList, startIndex = 0) {
   geotagBtn.style.display  = 'none';
   fixDateBtn.style.display = 'none';
   fixTimeBtn.style.display = 'none';
+  editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
   el.classList.add('open');
   go(startIndex);

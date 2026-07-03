@@ -105,6 +105,7 @@
         <button id="ss-geotag-btn" style="display:none" title="Set location">📍</button>
         <button id="ss-fixdate-btn" style="display:none" title="Fix date">📅</button>
         <button id="ss-fixtime-btn" style="display:none" title="Fix time">🕐</button>
+        <button id="ss-edit-btn" style="display:none" title="Edit photo">✏️</button>
         <button id="ss-ignore-btn" style="display:none" title="Ignore">🚫</button>
         <button id="ss-exif-btn" title="EXIF">ℹ</button>
         <button id="ss-share-btn" title="Share">📤</button>
@@ -112,6 +113,23 @@
       </div>
     </div>
   </div>
+  <div id="photoedit-overlay" style="display:none">
+    <div id="photoedit-header">
+      <button id="photoedit-cancel">✕ Cancel</button>
+      <span>Edit photo</span>
+      <button id="photoedit-save">💾 Save</button>
+    </div>
+    <div id="photoedit-canvas-wrap">
+      <canvas id="photoedit-canvas"></canvas>
+    </div>
+    <div id="photoedit-tools">
+      <button id="photoedit-rotl" title="Rotate left">↺</button>
+      <button id="photoedit-rotr" title="Rotate right">↻</button>
+      <button id="photoedit-flip" title="Flip horizontal">⇄</button>
+      <button id="photoedit-enhance" title="Auto enhance">✨</button>
+    </div>
+  </div>
+
   <div id="lightbox">
     <span id="lightbox-loading">Loading…</span>
     <img id="lightbox-img" alt="" />

@@ -9,7 +9,8 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setAfterDeleteCallback, updateCurrentSlideshowItem } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage } from './slideshow.js';
+import { openPhotoEdit } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
@@ -1434,6 +1435,14 @@ async function main() {
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
   setGeotagStatusFn(setStatus);
+  setEditHandler((photo, thumbSrc) => {
+    openPhotoEdit(photo, thumbSrc, ({ newFileid, newName, thumbSrc: newThumb }) => {
+      updateCurrentSlideshowItem({ fileid: newFileid, name: newName, ts: photo.ts });
+      refreshSlideshowImage(newFileid, newThumb);
+      reloadTopbarCounts();
+      showBriefStatus('✅ Photo saved');
+    });
+  });
 
   // Handlers for map marker slideshow — update in place, no redirect.
   setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
