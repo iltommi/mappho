@@ -77,7 +77,7 @@ export async function startGeotagging(photo, callback) {
   onDone        = callback;
 
   // Resolve a timestamp to compare with geotagged photos
-  const ts = (photo.ts && photo.ts > 0) ? photo.ts : parseDateFromFilename(photo.name);
+  const ts = (photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS) ? photo.ts : parseDateFromFilename(photo.name);
 
   let initialPin = null;
   let hint       = 'Tap map to place pin';

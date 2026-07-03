@@ -97,7 +97,7 @@ export function enterPinDropMode({ center, initialPin, onPlace }) {
   map.getContainer().style.cursor = 'crosshair';
 
   if (initialPin) {
-    map.setView([initialPin.lat, initialPin.lng], 14);
+    map.flyTo([initialPin.lat, initialPin.lng], 14);
     placePinAt(initialPin.lat, initialPin.lng);
   } else if (center) {
     map.setView([center.lat, center.lng], 14);
