@@ -51,7 +51,13 @@ let afterDeleteCb    = null;
 export function setGeotagHandler(fn)       { geotagHandler = fn; }
 export function setFixDateHandler(fn)      { fixDateHandler = fn; }
 export function setFixTimeHandler(fn)      { fixTimeHandler = fn; }
-export function setIgnoreHandler(fn)       { ignoreHandler = fn; }
+// The ignore slot doubles as "restore" in the ignored-photos view; callers can
+// override the icon/title, and the defaults reset it for every other flow.
+export function setIgnoreHandler(fn, { icon = '🚫', title = 'Ignore' } = {}) {
+  ignoreHandler = fn;
+  ignoreBtn.textContent = icon;
+  ignoreBtn.title = title;
+}
 export function setEditHandler(fn)         { editHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
@@ -623,8 +629,8 @@ function updateCaption() {
   const buildCaption = folder => folder ? `${folder} / ${name}` : name;
 
   captionEl.textContent = buildCaption('');
-  geotagBtn.style.display   = '';
-  fixDateBtn.style.display  = '';
+  geotagBtn.style.display   = geotagHandler ? '' : 'none';
+  fixDateBtn.style.display  = fixDateHandler ? '' : 'none';
   fixTimeBtn.style.display  = fixTimeHandler ? '' : 'none';
   ignoreBtn.style.display   = ignoreHandler ? '' : 'none';
   playBadge.style.display   = isVideo(name) ? '' : 'none';
@@ -756,8 +762,8 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
     photos = firstPage;
   }
   if (!photos.length) return;
-  geotagBtn.style.display  = '';
-  fixDateBtn.style.display = '';
+  geotagBtn.style.display  = geotagHandler ? '' : 'none';
+  fixDateBtn.style.display = fixDateHandler ? '' : 'none';
   fixTimeBtn.style.display = fixTimeHandler ? '' : 'none';
   el.classList.add('open');
   go(startIndex);

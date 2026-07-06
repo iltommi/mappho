@@ -884,7 +884,7 @@ body.filter-open #map { top: 40px; }
 #ss-prev:hover, #ss-next:hover { background: rgba(255,255,255,.3); }
 
 #ss-footer {
-  padding: 10px 16px;
+  padding: 10px 12px;
   text-align: center;
 }
 #ss-counter {
@@ -1326,23 +1326,27 @@ body.filter-open #map { top: 40px; }
 #fix-date-cancel { background: #334155; color: #e2e8f0; }
 #fix-date-cancel:hover { background: #475569; }
 
-/* Slideshow footer action buttons — icon-only */
+/* Slideshow footer action buttons — icon-only.
+   Buttons flex to share the row width so all of them always fit on screen
+   (8 fixed 48px buttons overflowed narrow phones). */
 #ss-footer-btns {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   justify-content: center;
   margin-top: 8px;
 }
 
 #ss-footer-btns button {
-  width: 48px;
-  height: 48px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 56px;
+  height: 52px;
   padding: 0;
   border: none;
   border-radius: 10px;
   background: #334155;
   color: #e2e8f0;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   line-height: 1;
   cursor: pointer;
   transition: background .15s, color .15s;

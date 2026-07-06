@@ -19,7 +19,7 @@ import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, unignorePhoto, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -44,6 +44,7 @@ let topbarDated          = 0;
 let topbarUnknown        = 0;
 let topbarLocatedUndated = 0;
 let topbarTotal          = 0;
+let topbarIgnored        = 0;
 
 function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
@@ -59,6 +60,7 @@ async function reloadTopbarCounts() {
   topbarGeotagged = total - ignored - orphans;
   topbarDated     = orphans - noDate;
   topbarUnknown   = noDate;
+  topbarIgnored   = ignored;
   // Full cursor scan — runs without blocking the caller
   countLocatedUndated()
     .then(n => { topbarLocatedUndated = n; })
@@ -646,6 +648,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   topbarUnknown        = 0;
   topbarLocatedUndated = 0;
   topbarTotal          = 0;
+  topbarIgnored        = 0;
   sessionGeotagged = 0;
   log('Cache erased');
   setStatus('Cache erased — pick a folder to scan.');
@@ -736,6 +739,7 @@ function renderInfoRows() {
     { icon: X('📍'),                label: 'Only Date',       value: topbarDated,                            action: 'dated' },
     { icon: X('📅'),                label: 'Only Position',   value: topbarLocatedUndated,                   action: 'located-undated' },
     { icon: X('📅') + X('📍'),     label: 'Nothing',         value: topbarUnknown,                          action: 'unknown' },
+    { icon: '🚫',                   label: 'Ignored',         value: topbarIgnored,                          action: 'ignored' },
   ];
   infoRowsEl.innerHTML = rows.map(r =>
     r.action
@@ -757,9 +761,32 @@ function renderInfoRows() {
         openNodatetimeGrid().catch(e => { log('Unknown grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
       } else if (el.dataset.action === 'located-undated') {
         openLocatedUndatedGrid().catch(e => { log('Located undated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      } else if (el.dataset.action === 'ignored') {
+        openIgnoredGrid().catch(e => { log('Ignored grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
       }
     });
   });
+}
+
+// Grid of ignored photos. View/restore only: the tag/date actions are hidden
+// and the ignore slot becomes ♻️ Restore, which clears the flag, re-adds the
+// photo to the fix-up lists (or the map if it has GPS), and removes it from
+// the persisted ignored.json.
+async function openIgnoredGrid() {
+  const total = await countIgnored();
+  if (!total) { showBriefStatus('No ignored photos.'); return; }
+  const fetcher = (offset, limit) => getIgnoredPage(offset, limit);
+  setGeotagHandler(null);
+  setFixDateHandler(null);
+  setFixTimeHandler(null);
+  setIgnoreHandler(async photo => {
+    const rec = await unignorePhoto(photo.fileid);
+    removeIgnoredEntry(photo.fileid);
+    if (rec?.lat != null) addMarker(rec);
+    await reloadTopbarCounts();
+    showBriefStatus('♻️ Photo restored');
+  }, { icon: '♻️', title: 'Restore' });
+  openGrid(fetcher, total, { reopen: openIgnoredGrid });
 }
 
 function openInfoPopup() {
@@ -922,6 +949,7 @@ async function startScan() {
   topbarDated          = cachedDated;
   topbarUnknown        = cachedUnknown;
   topbarTotal          = cached.length - cachedIgnored;
+  topbarIgnored        = cachedIgnored;
 
   // Populate orphan store in one transaction so the No-location / No-date buttons work immediately.
   if (toMigrate.length > 0) {

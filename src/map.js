@@ -169,6 +169,9 @@ export function initMap() {
           .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
         if (!photos.length) return;
         log('cluster long-press', `${photos.length} photos`);
+        setGeotagHandler(markerGeotagHandler);
+        setFixDateHandler(markerFixDateHandler);
+        setFixTimeHandler(markerFixTimeHandler);
         setIgnoreHandler(null);
         openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
       });

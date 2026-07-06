@@ -143,6 +143,35 @@ export async function countIgnored() {
   return tx.store.index('by_ignored').count(IDBKeyRange.only(1));
 }
 
+export async function getIgnoredPage(offset, limit) {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.index('by_ignored').openCursor(IDBKeyRange.only(1));
+  if (offset > 0 && cursor) cursor = await cursor.advance(offset);
+  const results = [];
+  while (cursor && results.length < limit) {
+    results.push(cursor.value);
+    cursor = await cursor.continue();
+  }
+  return results;
+}
+
+// Clears the ignored flag and, for photos without GPS, restores the orphan row
+// so the photo reappears in the fix-up lists. Returns the updated record.
+export async function unignorePhoto(fileid) {
+  const d = await db();
+  const tx = d.transaction([STORE, ORPHAN_STORE], 'readwrite');
+  const existing = await tx.objectStore(STORE).get(fileid);
+  if (!existing) { await tx.done; return null; }
+  const { ignored, ...rest } = existing; // dropping the key removes it from by_ignored
+  tx.objectStore(STORE).put(rest);
+  if (rest.lat == null) {
+    tx.objectStore(ORPHAN_STORE).put({ fileid: rest.fileid, name: rest.name, ts: rest.ts ?? UNDATED_TS, hash: rest.hash ?? null });
+  }
+  await tx.done;
+  return rest;
+}
+
 export async function deleteOrphan(fileid) {
   return (await db()).delete(ORPHAN_STORE, fileid);
 }
