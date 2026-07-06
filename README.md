@@ -23,7 +23,7 @@ An Android app (Capacitor 8) that plots your pCloud photo library on an interact
 |---|---|
 | [Vite](https://vitejs.dev/) | build tool |
 | [Capacitor 8](https://capacitorjs.com/) | Android wrapper (all HTTP via OkHttp — no CORS) |
-| [Leaflet](https://leafletjs.com/) + [leaflet.markercluster](https://github.com/Libs/Leaflet.markercluster) | map and clustering |
+| [Leaflet](https://leafletjs.com/) + [leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | map and clustering |
 | [exifr](https://github.com/MikeKovarik/exifr) | EXIF / GPS / date parsing |
 | [piexifjs](https://github.com/hMatoba/piexifjs) | GPS EXIF injection |
 | [idb](https://github.com/jakearchibald/idb) | IndexedDB wrapper |
@@ -44,7 +44,7 @@ Requires Node 22+ and Java 21+.
 
 ## Android APK
 
-The [GitHub Actions workflow](.github/workflows/android.yml) builds a **signed release APK** on every push to `main` and publishes it to the [latest release](../../releases/tag/latest).
+The [GitHub Actions workflow](.github/workflows/release.yml) builds a **signed release APK** on every push to `main` and publishes it to the [latest release](../../releases/tag/latest).
 
 To install: download `Mappho.apk`, open it on your device, and enable *Install from unknown sources* when prompted. Subsequent installs update the app in place (no uninstall needed).
 

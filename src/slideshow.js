@@ -1,4 +1,4 @@
-import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
+import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -72,6 +72,14 @@ const MAX_CACHE  = 50;
 
 function resetLazy() {
   lazyFetch = null; lazyOffset = 0; lazyTotal = null; lazyDone = false; lazyPending = false;
+}
+
+// Call whenever an already-fetched photo is removed from the underlying store
+// (ignore/delete/purge): later rows shift down by one, so without adjusting
+// lazyOffset the next page fetch would skip a photo.
+function noteLazyRemoval() {
+  if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
+  if (lazyFetch) lazyOffset = Math.max(0, lazyOffset - 1);
 }
 
 // ── Image zoom / pan state ────────────────────────────────────────────────────
@@ -180,7 +188,7 @@ ignoreBtn.addEventListener('click', async () => {
 
   ignoreBtn.disabled = true;
   photos.splice(current, 1);
-  if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
+  noteLazyRemoval();
 
   if (!photos.length) {
     ignoreBtn.disabled = false;
@@ -204,14 +212,6 @@ closeBtn.addEventListener('click', close);
 // ── Share ─────────────────────────────────────────────────────────────────────
 
 export const SMALL_VIDEO_THRESHOLD = 50 * 1024 * 1024; // 50 MB — download & share directly below this
-
-export function bufToBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 8192)
-    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
-  return btoa(bin);
-}
 
 export function confirmVideoShare(sizeMB) {
   return new Promise(resolve => {
@@ -329,7 +329,7 @@ deleteBtn.addEventListener('click', async () => {
     imgCache.delete(photo.fileid);
 
     photos.splice(current, 1);
-    if (lazyTotal != null) lazyTotal = Math.max(0, lazyTotal - 1);
+    noteLazyRemoval();
 
     afterDeleteCb?.();
 
@@ -533,6 +533,7 @@ async function navigate(dir) {
     loadingEl.style.display = 'none';
   } else {
     curImg.style.display    = 'none';
+    loadingEl.textContent   = 'Loading…';
     loadingEl.style.display = '';
   }
 
@@ -550,8 +551,8 @@ async function navigate(dir) {
       throw e;
     }
     if (id !== reqId) return;
-    loadingEl.style.display = 'none';
-    if (src) { curImg.src = src; curImg.style.display = 'block'; }
+    if (src) { loadingEl.style.display = 'none'; curImg.src = src; curImg.style.display = 'block'; }
+    else loadingEl.textContent = '⚠️ Could not load — swipe to retry';
   }
 
   loadSidePanes();
@@ -568,8 +569,12 @@ async function fetchCached(fileid, name = '') {
   } else {
     src = await fetchThumbSrc(fileid, '512x512');
   }
-  imgCache.set(fileid, src);
-  if (imgCache.size > MAX_CACHE) imgCache.delete(imgCache.keys().next().value);
+  // Don't cache failures — revisiting the slide retries the fetch instead of
+  // pinning a permanently blank pane.
+  if (src) {
+    imgCache.set(fileid, src);
+    if (imgCache.size > MAX_CACHE) imgCache.delete(imgCache.keys().next().value);
+  }
   return src;
 }
 
@@ -582,6 +587,7 @@ async function purgeAndAdvance(index) {
   Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
   log('Purged stale file from slideshow', fileid);
   photos.splice(index, 1);
+  noteLazyRemoval();
   if (!photos.length) { close(); return; }
   await go(Math.min(index, photos.length - 1));
 }
@@ -664,6 +670,7 @@ async function go(index) {
   updateCaption();
   resetImgZoom(false);
   curImg.style.display    = 'none';
+  loadingEl.textContent   = 'Loading…';
   loadingEl.style.display = '';
   prevImg.src = '';
   nextImg.src = '';
@@ -678,8 +685,8 @@ async function go(index) {
   }
   if (id !== reqId) return;
 
-  loadingEl.style.display = 'none';
-  if (src) { curImg.src = src; curImg.style.display = 'block'; }
+  if (src) { loadingEl.style.display = 'none'; curImg.src = src; curImg.style.display = 'block'; }
+  else loadingEl.textContent = '⚠️ Could not load — swipe to retry';
 
   loadSidePanes();
   maybeLoadMore();

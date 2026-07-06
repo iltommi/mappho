@@ -35,12 +35,15 @@ export async function listFolders(folderid = 0) {
   return (data.metadata.contents ?? []).filter(i => i.isfolder);
 }
 
+// Resolves false only when pCloud confirms the folder is gone (2005).
+// Network/transient errors throw so callers don't mistake them for deletion.
 export async function folderExists(folderid) {
   try {
     await api('stat', { folderid });
     return true;
-  } catch {
-    return false;
+  } catch (e) {
+    if (/pCloud 2005:/.test(e.message ?? '')) return false;
+    throw e;
   }
 }
 
@@ -106,6 +109,16 @@ function base64ToArrayBuffer(b64) {
   return buf;
 }
 
+// Chunked to avoid String.fromCharCode(...bytes) blowing the call stack on
+// multi-megabyte buffers.
+export function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192)
+    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  return btoa(bin);
+}
+
 export async function fetchFileHead(fileid, bytes = 131072) {
   const cdnUrl = await getCdnUrl(fileid);
   const dlResp = await withTimeout(
@@ -167,7 +180,6 @@ export async function getPublicLink(fileid) {
   return data.link;
 }
 
-const _dimCache = new Map();
 const _fileParentCache = new Map();
 const _folderNameCache   = new Map(); // folderid → name
 const _folderParentCache = new Map(); // folderid → parentfolderid
@@ -196,20 +208,6 @@ async function _statFolder(folderid) {
   }
 }
 
-export async function getFileDimensions(fileid) {
-  if (_dimCache.has(fileid)) return _dimCache.get(fileid);
-  try {
-    const meta = await getFileStat(fileid);
-    const dim = (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null;
-    _cacheSet(_dimCache, fileid, dim);
-    if (!_fileParentCache.has(fileid)) _cacheSet(_fileParentCache, fileid, meta.parentfolderid ?? null);
-    return dim;
-  } catch {
-    _cacheSet(_dimCache, fileid, null);
-    return null;
-  }
-}
-
 // Returns the parent folder name for display. Photos inside Photos/YYYY/MM
 // return '' — the filename already encodes the date. Everything else returns
 // the immediate parent folder name.
@@ -218,9 +216,6 @@ export async function getFileFolderName(fileid) {
     try {
       const meta = await getFileStat(fileid);
       _cacheSet(_fileParentCache, fileid, meta.parentfolderid ?? null);
-      if (!_dimCache.has(fileid)) {
-        _cacheSet(_dimCache, fileid, (meta.width && meta.height) ? { w: meta.width, h: meta.height } : null);
-      }
     } catch {
       _cacheSet(_fileParentCache, fileid, null);
       return '';
@@ -242,12 +237,7 @@ export async function getFileFolderName(fileid) {
 }
 
 export async function uploadFile(folderid, filename, arrayBuffer) {
-  const bytes = new Uint8Array(arrayBuffer);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 8192) {
-    bin += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
-  }
-  const b64 = btoa(bin);
+  const b64 = bufToBase64(arrayBuffer);
   // dataType:'formData' uses Capacitor's native multipart builder which base64-decodes
   // the value to raw bytes before writing — the plain string path would store the
   // base64 text literally on pCloud instead of the binary JPEG.
@@ -280,11 +270,16 @@ export async function renameFile(fileid, { toname, tofolderid } = {}) {
 
 export async function overwriteFile(fileid, arrayBuffer) {
   const { name, parentfolderid } = await getFileStat(fileid);
-  // Delete first so the upload has no filename conflict in the same folder.
-  // Without this, pCloud may return the existing fileid for the "new" upload,
-  // causing the subsequent delete to erase the freshly-written content.
+  // Upload under a temp name first so the original survives a failed upload,
+  // then delete the original and rename the temp into place. Uploading with
+  // the final name directly would conflict with the existing file, and
+  // deleting first risks losing the photo if the upload never completes.
+  // The temp suffix keeps the file out of listImages' extension filter, and
+  // is deterministic so a retry overwrites a leftover temp instead of piling up.
+  const tmpName = `${name}.mappho-tmp`;
+  const newFileid = await uploadFile(parentfolderid, tmpName, arrayBuffer);
   await deleteFile(fileid);
-  const newFileid = await uploadFile(parentfolderid, name, arrayBuffer);
+  await renameFile(newFileid, { toname: name });
   return newFileid;
 }
 
@@ -326,14 +321,13 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
   url.searchParams.set('fileid', fileid);
   url.searchParams.set('size', size);
   url.searchParams.set('type', 'jpg');
-  const urlStr = url.toString();
-  log('fetchThumb', urlStr);
+  // Note: never log the URL — it carries the auth token, and the debug log
+  // is user-shareable.
   try {
     const resp = await CapacitorHttp.request({
-      method: 'GET', url: urlStr, responseType: 'arraybuffer',
+      method: 'GET', url: url.toString(), responseType: 'arraybuffer',
       connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
     });
-    log('fetchThumb status', resp.status);
     const raw = resp.data;
     if (!raw) { log('fetchThumb', 'empty response'); return null; }
     if (typeof raw === 'object' && raw.result !== undefined) {
@@ -341,7 +335,7 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
       err.pcloudResult = raw.result;
       throw err;
     }
-    const b64 = (typeof raw === 'string' ? raw : btoa(String.fromCharCode(...new Uint8Array(raw)))).replace(/\s/g, '');
+    const b64 = (typeof raw === 'string' ? raw : bufToBase64(raw)).replace(/\s/g, '');
     return `data:image/jpeg;base64,${b64}`;
   } catch (e) {
     if (e.pcloudResult) throw e; // propagate pCloud errors (e.g. 2009 file not found)

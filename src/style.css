@@ -440,6 +440,16 @@ html, body {
   border-color: #0ea5e9;
 }
 
+#trust-device-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .85rem;
+  color: #94a3b8;
+  cursor: pointer;
+}
+#trust-device-label input { accent-color: #0ea5e9; cursor: pointer; padding: 0; }
+
 #login-btn {
   padding: 10px;
   border: none;
@@ -550,6 +560,12 @@ body.filter-open #map { top: 40px; }
   color: #94a3b8;
   text-align: center;
   padding: 4px 0;
+}
+.filter-hint {
+  font-size: .68rem;
+  color: #64748b;
+  margin: 0;
+  text-align: center;
 }
 
 /* Grid view */

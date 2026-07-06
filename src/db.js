@@ -196,34 +196,6 @@ export async function countGeotaggedInRange(fromTs, toTs) {
   return count;
 }
 
-export async function countGeotagged() {
-  const d = await db();
-  const tx = d.transaction(STORE, 'readonly');
-  let cursor = await tx.store.openCursor();
-  let count = 0;
-  while (cursor) {
-    if (cursor.value.lat != null && cursor.value.ignored !== 1) count++;
-    cursor = await cursor.continue();
-  }
-  return count;
-}
-
-export async function getGeotaggedPage(offset, limit) {
-  const d = await db();
-  const tx = d.transaction(STORE, 'readonly');
-  let cursor = await tx.store.index('by_ts').openCursor(null, 'next');
-  const results = [];
-  let skipped = 0;
-  while (cursor) {
-    if (cursor.value.lat != null && cursor.value.ignored !== 1) {
-      if (skipped < offset) { skipped++; }
-      else { results.push(cursor.value); if (results.length >= limit) break; }
-    }
-    cursor = await cursor.continue();
-  }
-  return results;
-}
-
 export async function countLocatedUndated() {
   const d = await db();
   const tx = d.transaction(STORE, 'readonly');

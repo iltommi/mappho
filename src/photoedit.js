@@ -108,7 +108,7 @@ saveBtn.addEventListener('click', async () => {
       c.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.92));
     let outBuf = await outBlob.arrayBuffer();
 
-    outBuf = injectExif(outBuf, { ts: photo.ts, lat: photo.lat, lng: photo.lng });
+    outBuf = injectExif(outBuf, { ts: photo.ts, lat: photo.lat, lng: photo.lng, resetOrientation: true });
 
     const { hash: oldHash } = await getFileStat(photo.fileid).catch(() => ({}));
     const newFileid = await overwriteFile(photo.fileid, outBuf);
@@ -116,7 +116,7 @@ saveBtn.addEventListener('click', async () => {
     const syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: photo.ts });
 
     const thumbSrc = canvas.toDataURL('image/jpeg', 0.85);
-    _onSaved?.({ newFileid, newName: syncedName ?? photo.name, thumbSrc });
+    _onSaved?.({ newFileid, newName: syncedName ?? photo.name, newHash: newHash ?? null, thumbSrc });
     _close();
   } catch (e) {
     log('photoedit save error', e.message);

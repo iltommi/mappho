@@ -144,7 +144,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     removeMarker(fileid);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
-    await putCached({ fileid, name, lat, lng, ts: realTs });
+    await putCached({ fileid, name, lat, lng, ts: realTs, hash: photo.hash ?? null });
     addMarker({ fileid, name, lat, lng, ts: realTs });
     await setVideoMetaEntry(fileid, { lat, lng, ts: realTs });
     return;
@@ -161,7 +161,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const jpegBuf = await heicToJpeg(heicBuf);
 
     log('Geotag', `Injecting EXIF (${lat.toFixed(5)}, ${lng.toFixed(5)})…`);
-    const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model });
+    const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model, resetOrientation: true });
 
     const jpegName = name.replace(/\.heic$/i, '.jpg');
     const { parentfolderid, hash: oldHash } = await getFileStat(fileid);

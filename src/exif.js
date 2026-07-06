@@ -44,33 +44,34 @@ export async function extractEXIF(buffer, fileid = null, name = '') {
   return result;
 }
 
+// Range-checked date builder: new Date() would silently roll over invalid
+// months/days (2025-99-01 → mid-2033), turning random digit runs into dates.
+function tsFromParts(y, mo, d, h = 0, mi = 0, s = 0) {
+  if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  if (h > 23 || mi > 59 || s > 59) return null;
+  const dt = new Date(y, mo - 1, d, h, mi, s);
+  return isNaN(dt) ? null : dt.getTime();
+}
+
 // Try to extract a Unix timestamp from filenames like:
 //   2024-01-15_14-30-22_anything.jpg
 //   20240613_121250.jpg
 export function parseDateFromFilename(name) {
   // Full datetime: 2024-01-15_14-30-22 or 20240613_121250
   let m = name.match(/(\d{4})-(\d{2})-(\d{2})[_T ](\d{2})[-:](\d{2})[-:](\d{2})/);
-  if (m) {
-    const dt = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
-    if (!isNaN(dt)) return dt.getTime();
-  }
+  let ts = m && tsFromParts(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]);
+  if (ts) return ts;
   m = name.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-  if (m) {
-    const dt = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
-    if (!isNaN(dt)) return dt.getTime();
-  }
+  ts = m && tsFromParts(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]);
+  if (ts) return ts;
   // Date only: 2024-06-13_001.jpg — midnight, no time info
   m = name.match(/(\d{4})-(\d{2})-(\d{2})_/);
-  if (m) {
-    const dt = new Date(+m[1], +m[2]-1, +m[3]);
-    if (!isNaN(dt)) return dt.getTime();
-  }
+  ts = m && tsFromParts(+m[1], +m[2], +m[3]);
+  if (ts) return ts;
   // Date only compact: IMG-20240613-* — 8-digit block between non-digit separators
   m = name.match(/[^0-9](\d{4})(\d{2})(\d{2})[^0-9]/);
-  if (m) {
-    const dt = new Date(+m[1], +m[2]-1, +m[3]);
-    if (!isNaN(dt)) return dt.getTime();
-  }
+  ts = m && tsFromParts(+m[1], +m[2], +m[3]);
+  if (ts) return ts;
   return null;
 }
 
@@ -123,8 +124,9 @@ function fmtExifDate(ts) {
 }
 
 // Inject GPS, date, make and model into a JPEG ArrayBuffer.
-// Canvas-converted images have no EXIF and Orientation=1 (already oriented).
-export function injectExif(jpegBuffer, { lat, lng, ts, make, model } = {}) {
+// Pass resetOrientation:true only for canvas-produced JPEGs (pixels already
+// upright); on original camera files it would clobber a real rotation tag.
+export function injectExif(jpegBuffer, { lat, lng, ts, make, model, resetOrientation = false } = {}) {
   const bytes = new Uint8Array(jpegBuffer);
   let binary = '';
   for (let i = 0; i < bytes.length; i += 8192) {
@@ -153,7 +155,7 @@ export function injectExif(jpegBuffer, { lat, lng, ts, make, model } = {}) {
 
   if (make)  exifObj['0th'][piexif.ImageIFD.Make]  = make;
   if (model) exifObj['0th'][piexif.ImageIFD.Model] = model;
-  exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
+  if (resetOrientation) exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
 
   const exifBytes = piexif.dump(exifObj);
   const modified  = piexif.insert(exifBytes, binary);
@@ -164,30 +166,7 @@ export function injectExif(jpegBuffer, { lat, lng, ts, make, model } = {}) {
 
 // Inject GPS coordinates into a JPEG ArrayBuffer, return new ArrayBuffer.
 export function injectGPS(buffer, lat, lng) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 8192) {
-    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
-  }
-
-  let exifObj;
-  try {
-    exifObj = piexif.load(binary);
-  } catch {
-    exifObj = { '0th': {}, Exif: {}, GPS: {}, Interop: {}, '1st': {} };
-  }
-
-  exifObj.GPS[piexif.GPSIFD.GPSLatitudeRef]  = lat >= 0 ? 'N' : 'S';
-  exifObj.GPS[piexif.GPSIFD.GPSLatitude]     = toDMS(Math.abs(lat));
-  exifObj.GPS[piexif.GPSIFD.GPSLongitudeRef] = lng >= 0 ? 'E' : 'W';
-  exifObj.GPS[piexif.GPSIFD.GPSLongitude]    = toDMS(Math.abs(lng));
-
-  const exifBytes = piexif.dump(exifObj);
-  const modified  = piexif.insert(exifBytes, binary);
-
-  const out = new Uint8Array(modified.length);
-  for (let i = 0; i < modified.length; i++) out[i] = modified.charCodeAt(i);
-  return out.buffer;
+  return injectExif(buffer, { lat, lng });
 }
 
 function toDMS(decimal) {

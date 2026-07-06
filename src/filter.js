@@ -15,7 +15,9 @@ function fmt(ts) {
   return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-function toDateStr(ts) {
+// Local-time YYYY-MM-DD for <input type="date"> — toISOString() would use UTC
+// and shift the date for photos taken shortly after local midnight.
+export function toDateStr(ts) {
   const d = new Date(ts);
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

@@ -1,6 +1,6 @@
-import { fetchThumbSrc, deleteFile, downloadFullFile, getFileStat, getPublicLink } from './pcloud.js';
+import { fetchThumbSrc, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
 import { isVideo } from './mp4.js';
-import { openLazySlideshow, setCloseHandler, confirmVideoShare, bufToBase64, SMALL_VIDEO_THRESHOLD } from './slideshow.js';
+import { openLazySlideshow, setCloseHandler, confirmVideoShare, SMALL_VIDEO_THRESHOLD } from './slideshow.js';
 import { startBulkGeotagging } from './geotag.js';
 import { deleteRecord, deleteOrphan } from './db.js';
 import { removeMarker } from './map.js';
@@ -199,7 +199,7 @@ bulkShareBtn.addEventListener('click', async () => {
   try {
     for (let i = 0; i < all.length; i++) {
       const item = all[i];
-      bulkShareBtn.title = `Preparing ${i + 1}/${all.length}…`;
+      bulkShareBtn.textContent = `⏳ ${i + 1}/${all.length}`;
 
       if (isVideo(item.name)) {
         const meta = await getFileStat(item.fileid);
@@ -281,7 +281,7 @@ bulkDeleteBtn.addEventListener('click', async () => {
   let ok = 0, failed = 0;
   for (let i = 0; i < photos.length; i++) {
     const photo = photos[i];
-    bulkDeleteBtn.title = `Deleting ${i + 1}/${photos.length}…`;
+    bulkDeleteBtn.textContent = `⏳ ${i + 1}/${photos.length}`;
     try {
       await deleteFile(photo.fileid);
       await Promise.all([deleteRecord(photo.fileid), deleteOrphan(photo.fileid), removeVideoMetaEntry(photo.fileid), removeOrganizedEntry(photo.fileid), removeIgnoredEntry(photo.fileid)]);
@@ -303,7 +303,7 @@ const THUMB_RETRY_DELAYS = [500, 1500, 4000]; // ms — fetchThumbSrc returns nu
 
 function purgeStaleFile(tile) {
   const { fileid } = tile._item;
-  const idx = [...track.children].indexOf(tile);
+  const idx = tileIndex(tile);
   if (idx === -1) return;
   // Shift down selection indices for items after the removed tile.
   const shifted = new Set();
@@ -316,6 +316,9 @@ function purgeStaleFile(tile) {
   items.splice(idx, 1);
   tile.remove();
   if (total != null) total--;
+  // The purged row is deleted from the DB below, so everything after it shifts
+  // down by one — without this the next page fetch would skip an item.
+  offset = Math.max(0, offset - 1);
   countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
   updateBulkBar();
   removeMarker(fileid);
@@ -348,7 +351,14 @@ function toggleTileSelected(tile, index) {
   updateBulkBar();
 }
 
-function makeTile(item, index) {
+// Index is derived at event time, not captured at creation: purgeStaleFile
+// splices `items`, which would leave every later tile's captured index stale
+// (wrong slideshow start, wrong photo selected/deleted in select mode).
+function tileIndex(tile) {
+  return [...track.children].indexOf(tile);
+}
+
+function makeTile(item) {
   const tile = document.createElement('div');
   tile.className = 'grid-tile';
   const check = document.createElement('span');
@@ -371,8 +381,10 @@ function makeTile(item, index) {
     pressTimer = setTimeout(() => {
       didLongPress = true;
       pressTimer = null;
+      const idx = tileIndex(tile);
+      if (idx === -1) return;
       if (!selectMode) setSelectMode(true);
-      toggleTileSelected(tile, index);
+      toggleTileSelected(tile, idx);
     }, 500);
   });
   const cancelPress = () => { clearTimeout(pressTimer); pressTimer = null; };
@@ -385,8 +397,10 @@ function makeTile(item, index) {
 
   tile.addEventListener('click', () => {
     if (didLongPress) { didLongPress = false; return; }
-    if (selectMode) { toggleTileSelected(tile, index); return; }
-    const fetcher = fetchPageFn, seed = items, idx = index, t = total;
+    const idx = tileIndex(tile);
+    if (idx === -1) return;
+    if (selectMode) { toggleTileSelected(tile, idx); return; }
+    const fetcher = fetchPageFn, seed = items, t = total;
     // Grid view (z-index 3500) stays open underneath the slideshow (4000).
     // On a plain dismissal the slideshow just hides, revealing the grid as-is.
     // On a handoff to geotag/fix-date the map needs to be fully visible, so
@@ -405,10 +419,9 @@ async function loadNextPage() {
     const page = await fetchPageFn(offset, PAGE_SIZE);
     offset += page.length;
     if (page.length < PAGE_SIZE) done = true;
-    const startIdx = items.length;
     items.push(...page);
     const frag = document.createDocumentFragment();
-    page.forEach((item, i) => frag.appendChild(makeTile(item, startIdx + i)));
+    page.forEach(item => frag.appendChild(makeTile(item)));
     track.appendChild(frag);
     countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
   } finally {

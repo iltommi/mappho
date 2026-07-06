@@ -37,8 +37,8 @@ export function setApiHost(host) {
 }
 
 export function logout() {
+  // Keep HOST_KEY — the datacenter choice should survive a disconnect.
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(HOST_KEY);
 }
 
 export function handleCallback() {}
@@ -85,7 +85,9 @@ export async function loginWithPassword(email, password) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   });
-  log('login response', data);
+  // Never log the full response — it contains the auth token and the debug
+  // log is user-shareable.
+  log('login response', { result: data.result, error: data.error });
 
   if (data.result === 2297) throw new TwoFactorRequired(data.token);
   if (data.result !== 0) throw new Error(data.error ?? `pCloud error ${data.result}`);
@@ -95,19 +97,19 @@ export async function loginWithPassword(email, password) {
   localStorage.setItem(TOKEN_KEY, authToken);
 }
 
-export async function loginWithTFA(tfaToken, code) {
+export async function loginWithTFA(tfaToken, code, trustDevice = false) {
   const url = new URL(`${getApiHost()}/tfa_login`);
   url.searchParams.set('token', tfaToken);
   url.searchParams.set('code', code.replace(/\D/g, ''));
-  url.searchParams.set('trustdevice', 'false');
+  url.searchParams.set('trustdevice', trustDevice ? 'true' : 'false');
 
   log('tfa_login request', { token: tfaToken.slice(0, 8) + '…', code });
   const data = await pcloudFetch(url);
-  log('tfa_login response', data);
+  log('tfa_login response', { result: data.result, error: data.error });
 
   if (data.result !== 0) throw new Error(data.error ?? `TFA error ${data.result}`);
 
   const authToken = data.auth ?? data.token ?? data.authtoken;
-  if (!authToken) throw new Error('No auth token in TFA response. Full response logged above.');
+  if (!authToken) throw new Error('No auth token in TFA response.');
   localStorage.setItem(TOKEN_KEY, authToken);
 }

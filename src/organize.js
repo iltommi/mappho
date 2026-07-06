@@ -310,9 +310,14 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       // pCloud returns success for a re-delete, the subsequent copyFile call would
       // create an untracked duplicate and leave newFileid un-indexed.
       await deleteMapphoIndexEntry(oldHash);
-      await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: existing.name });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: existing.name });
+      // newHash can be null when the post-edit stat failed; hash is the store's
+      // keyPath, so a put would throw. Dropping the entry is safe — the next
+      // index rebuild re-adds the file from the Photos/ listing.
+      if (newHash) {
+        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: existing.name });
+        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: existing.name });
+      }
       _hashDirty = true;
       flushOrganizeIndex();
       return existing.name;
@@ -332,9 +337,11 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       _takenNames.delete(existing.name);
       _takenNames.add(newName);
       await deleteMapphoIndexEntry(oldHash);
-      await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: newName });
       _hashMap.delete(oldHash);
-      _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: newName });
+      if (newHash) {
+        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: newName });
+        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: newName });
+      }
       _hashDirty = true;
       flushOrganizeIndex();
       return newName;

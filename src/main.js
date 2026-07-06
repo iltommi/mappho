@@ -4,7 +4,7 @@ import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, save
 const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
-import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
+import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
@@ -38,19 +38,18 @@ let scanCancelled = false;
 let _rebuildSeenHashes = null; // Set<string> — active only during rebuildScan, deduplicates Photos/ by content hash
 let retryQueue = [];
 let retryContext = null; // { prevStats, prevTotal } from the scan that produced the queue
+// Stats shown in the Settings/Info popup.
 let topbarGeotagged      = 0;
 let topbarDated          = 0;
 let topbarUnknown        = 0;
 let topbarLocatedUndated = 0;
 let topbarTotal          = 0;
-function updateTopbar() { /* stats available via Info popup */ }
 
 function setScanStatus(scanned, geotagged, dated, total = null, cached = 0) {
   const progress = total ? `${scanned}/${total}` : `${scanned}`;
   const dupNote  = cached > 0 ? ` ${cached}🔁` : '';
   setStatus(`${progress}. ${geotagged}📍 ${dated}📅${dupNote}`);
 }
-function clearScanStatus() { /* status bar stays; last message persists, then auto-hides */ }
 
 async function reloadTopbarCounts() {
   const [total, ignored, orphans, noDate] = await Promise.all([
@@ -60,10 +59,9 @@ async function reloadTopbarCounts() {
   topbarGeotagged = total - ignored - orphans;
   topbarDated     = orphans - noDate;
   topbarUnknown   = noDate;
-  updateTopbar();
   // Full cursor scan — runs without blocking the caller
   countLocatedUndated()
-    .then(n => { topbarLocatedUndated = n; updateTopbar(); })
+    .then(n => { topbarLocatedUndated = n; })
     .catch(e => log('reloadTopbarCounts', `countLocatedUndated error: ${e.message}`));
 }
 
@@ -88,57 +86,6 @@ stopScanBtn.addEventListener('click', () => {
 const menuFab = document.getElementById('menu-fab');
 const overflowMenu = document.getElementById('overflow-menu');
 
-
-async function getOrphanListing() {
-  const range = getActiveFilterRange();
-  if (range) {
-    return {
-      total: await countOrphansInRange(range.from, range.to),
-      fetcher: (offset, limit) => getOrphansPage(offset, limit, range.from, range.to),
-      range,
-    };
-  }
-  return { total: await countOrphans(), fetcher: (offset, limit) => getOrphansPage(offset, limit), range: null };
-}
-
-async function openOrphanSlideshow() {
-  const { total, fetcher, range } = await getOrphanListing();
-  log('No location', `total orphans=${await countOrphans()}, in range=${total}`);
-  if (!total) {
-    showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
-    return;
-  }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
-    openOrphanSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, openOrphanSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, openOrphanSlideshow));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openLazySlideshow(fetcher, total);
-}
-
-async function openOrphanGrid() {
-  const { total, fetcher, range } = await getOrphanListing();
-  if (!total) {
-    showBriefStatus(range ? 'No unlocated photos in this date range.' : 'No photos without location — scan a folder first.');
-    return;
-  }
-  async function reopenSlideshow() {
-    const savedIdx = getCurrentSlideshowIndex();
-    const { total: t, fetcher: f } = await getOrphanListing();
-    if (!t) { showBriefStatus(range ? 'All photos in range have locations!' : 'All photos located!'); return; }
-    openLazySlideshow(f, t, { startIndex: Math.min(savedIdx, t - 1) });
-  }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
-    reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total, { reopen: openOrphanGrid });
-}
 
 async function openNodatetimeGrid() {
   const allOrphans = await countOrphans();
@@ -208,7 +155,7 @@ async function applyFixDateToPhoto(photo, ts) {
     const heicBuf = await downloadFullFile(fileid);
     log('Fix date', `convert to JPEG (${heicBuf.byteLength}B)`);
     const jpegBuf = await heicToJpeg(heicBuf);
-    const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model });
+    const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model, resetOrientation: true });
     newName = name.replace(/\.heic$/i, '.jpg');
     log('Fix date', 'stat for parent folder');
     const { parentfolderid } = await getFileStat(fileid);
@@ -275,7 +222,9 @@ async function applyFixDateToPhoto(photo, ts) {
   await deleteRecord(fileid);
   await deleteOrphan(fileid);
   if (cached) await putCached({ ...cached, fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached.hash ?? null });
-  else await putOrphan({ fileid: newFileid, name: canonicalName, ts, hash: newHash });
+  // Photos without GPS live in both stores; without this the photo would
+  // drop out of the no-location lists until the next app restart re-migrates it.
+  if (!cached || cached.lat == null) await putOrphan({ fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached?.hash ?? null });
   log('Fix date', `done → newFileid=${newFileid} name=${canonicalName}`);
   return { oldFileid: fileid, newFileid, newName: canonicalName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
 }
@@ -287,7 +236,7 @@ function startFixDate(photo, onDone) {
   fixDateOnDone = onDone;
   const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
   const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
-  fixDateInput.value     = seed.toISOString().split('T')[0];
+  fixDateInput.value     = toDateStr(seed.getTime());
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = 'none';
   fixDateHint.textContent    = 'Change date for this photo';
@@ -318,7 +267,7 @@ function startBulkFixDate(photos, onDone) {
   fixDatePhotos = photos;
   fixDateOnDone = onDone;
   const seed = _lastFixDateTs ? new Date(_lastFixDateTs) : new Date();
-  fixDateInput.value     = seed.toISOString().split('T')[0];
+  fixDateInput.value     = toDateStr(seed.getTime());
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = '';
@@ -350,9 +299,7 @@ fixDateSaveBtn.addEventListener('click', () => {
   if (mode === 'time') {
     if (!fixDateTimeInput.value) return;
     const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
-    const existingDate = hasOwnDate
-      ? new Date(photo.ts).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+    const existingDate = hasOwnDate ? toDateStr(photo.ts) : toDateStr(Date.now());
     ts = new Date(`${existingDate}T${fixDateTimeInput.value}`).getTime();
   } else {
     if (!fixDateInput.value) return;
@@ -634,10 +581,13 @@ async function openFolderPicker() {
 
   // Validate saved folders in the background — remove any that no longer exist on pCloud.
   for (const [key, f] of [...fpSelected.entries()]) {
-    const exists = await folderExists(f.id);
-    if (!exists) {
-      fpSelected.delete(key);
-      fpRender();
+    try {
+      if (!(await folderExists(f.id))) {
+        fpSelected.delete(key);
+        fpRender();
+      }
+    } catch {
+      // Network error — keep the folder rather than pruning the saved selection.
     }
   }
 }
@@ -645,7 +595,10 @@ async function openFolderPicker() {
 function closeFolderPicker() {
   folderPicker.style.display = 'none';
   const folders = [...fpSelected.values()];
-  if (!folders.length) return;
+  if (!folders.length) {
+    showBriefStatus('No folders selected — keeping the previous selection.');
+    return;
+  }
   const oldIds = new Set(getSelectedFolders().map(f => f.id));
   saveSelectedFolders(folders);
   updateFolderBtn();
@@ -694,7 +647,6 @@ eraseCacheBtn.addEventListener('click', async () => {
   topbarLocatedUndated = 0;
   topbarTotal          = 0;
   sessionGeotagged = 0;
-  updateTopbar();
   log('Cache erased');
   setStatus('Cache erased — pick a folder to scan.');
 });
@@ -834,6 +786,7 @@ async function openDatedOrphanGrid() {
     reopenSlideshow();
   }));
   setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
+  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   openGrid(fetcher, total, { reopen: openDatedOrphanGrid });
 }
@@ -894,7 +847,7 @@ loginForm.addEventListener('submit', async (e) => {
   loginError.textContent = '';
   try {
     if (pendingTfaToken) {
-      await loginWithTFA(pendingTfaToken, totpInput.value);
+      await loginWithTFA(pendingTfaToken, totpInput.value, document.getElementById('trust-device').checked);
     } else {
       await loginWithPassword(
         document.getElementById('email').value,
@@ -908,6 +861,7 @@ loginForm.addEventListener('submit', async (e) => {
       pendingTfaToken = err.tfaToken;
       totpInput.style.display = '';
       totpInput.required = true;
+      document.getElementById('trust-device-label').style.display = '';
       totpInput.focus();
       if (err.tfaToken) {
         loginError.textContent = 'Enter the code from your authenticator app.';
@@ -982,7 +936,6 @@ async function startScan() {
   localStorage.setItem(STARTUP_TIMING_KEY, String(Date.now() - _startupStart));
   setProgress(100);
   setTimeout(() => setProgress(0), 500);
-  updateTopbar();
   showBriefStatus(cached.length > 0
     ? `Cache loaded — ${cachedGeo} geotagged, ${cached.length - cachedGeo} without location.`
     : 'Cache empty — open the menu and pick a folder to scan.');
@@ -1004,6 +957,13 @@ let _organizeLock = Promise.resolve(); // serialises concurrent organizeFile cal
 
 let scanOperationInProgress = false;
 
+// True only for pCloud auth-failure result codes (1000 log in required,
+// 2000 log in failed, 2094/2095 invalid auth). Matching bare substrings like
+// '2000' would also hit "Request timed out after 20000ms".
+function isAuthError(e) {
+  return /pCloud (1000|2000|2094|2095):/.test(e?.message ?? '');
+}
+
 async function runScan() {
   if (scanOperationInProgress) { showBriefStatus('A scan is already in progress.'); return; }
   scanOperationInProgress = true;
@@ -1015,8 +975,7 @@ async function runScan() {
   try {
     await scan();
   } catch (e) {
-    clearScanStatus();
-    if (e.message?.includes('1000') || e.message?.includes('2000') || e.message?.includes('auth')) {
+    if (isAuthError(e)) {
       logout();
       setStatus('Session expired — please reconnect.');
       location.reload();
@@ -1041,8 +1000,7 @@ async function runRebuild() {
   try {
     await rebuildScan();
   } catch (e) {
-    clearScanStatus();
-    if (e.message?.includes('1000') || e.message?.includes('2000') || e.message?.includes('auth')) {
+    if (isAuthError(e)) {
       logout();
       setStatus('Session expired — please reconnect.');
       location.reload();
@@ -1104,7 +1062,6 @@ async function rebuildScan() {
   flushPhotoIndex(root);
   await flushAll();
 
-  clearScanStatus();
   await reloadTopbarCounts();
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   applyIgnored().catch(e => log('Ignored apply error', e.message));
@@ -1263,7 +1220,6 @@ async function scan() {
   _organizeRoot = null;
   flushAll().catch(e => log('Sync flush error', e.message));
 
-  clearScanStatus();
   await reloadTopbarCounts();
   applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   applyIgnored().catch(e => log('Ignored apply error', e.message));
@@ -1295,17 +1251,6 @@ const CONCURRENCY_WINDOW = 10;
 const HIGH_FAILURE_RATE = 0.4;
 const LOW_FAILURE_RATE  = 0.1;
 
-// Pause while the app is backgrounded. Android throttles the WebView JS thread
-// and may abort CapacitorHttp requests when backgrounded, causing CDN downloads
-// to fail silently. We wait for the page to become visible before dispatching
-// each new file so in-flight requests (already on native threads) can finish
-// cleanly without new ones piling up behind them.
-async function waitForForeground() {
-  while (document.hidden) {
-    await new Promise(r => setTimeout(r, 1000));
-  }
-}
-
 async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
   let concurrency = MAX_CONCURRENCY;
   const recentOutcomes = [];
@@ -1315,8 +1260,12 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
       log('in-flight', `${inFlight.size} pending: ${[...inFlight.values()].join(', ')}`);
   }, 15000);
 
+  // Pause while the app is backgrounded. Android throttles the WebView JS
+  // thread and may abort CapacitorHttp requests when backgrounded, so wait for
+  // visibility before dispatching each new file; in-flight requests (already on
+  // native threads) can finish cleanly without new ones piling up behind them.
   for (const file of files) {
-    await waitForForeground();
+    await waitForVisible();
     if (scanCancelled) break;
     stats.scanned++;
     setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
@@ -1341,7 +1290,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
       inFlight.delete(p);
       stats.completed++;
       setProgress((stats.completed / total) * 100);
-      setScanStatus(stats.scanned, stats.geotagged, stats.dated, total);
+      setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
     });
     pool.add(p);
     inFlight.set(p, file.name);
@@ -1373,8 +1322,8 @@ function showRetryDialog(files) {
       <div id="retry-actions">
         <button id="retry-yes">Retry</button>
         <button id="retry-copy">Copy list</button>
-        <button id="retry-no">Dismiss</button>
-        <button id="retry-discard">Cancel &amp; Discard</button>
+        <button id="retry-no">Later</button>
+        <button id="retry-discard">Discard list</button>
       </div>
     </div>`;
   document.body.appendChild(dialog);
@@ -1394,6 +1343,8 @@ function showRetryDialog(files) {
   });
   document.getElementById('retry-yes').addEventListener('click', async () => {
     dialog.remove();
+    if (scanOperationInProgress) { showBriefStatus('A scan is already in progress.'); return; }
+    scanOperationInProgress = true;
     const ctx = retryContext;
     const total = ctx?.prevTotal ?? files.length;
     const succeeded = total - files.length;
@@ -1411,8 +1362,8 @@ function showRetryDialog(files) {
       await Promise.all(pool);
     } finally {
       stopScanBtn.style.display = 'none';
+      scanOperationInProgress = false;
     }
-    clearScanStatus();
     await reloadTopbarCounts();
     retryQueue = stillFailed;
     retryContext = stillFailed.length > 0 ? { prevStats: { ...stats }, prevTotal: total } : null;
@@ -1440,10 +1391,29 @@ async function main() {
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
   setGeotagStatusFn(setStatus);
   setEditHandler((photo, thumbSrc) => {
-    openPhotoEdit(photo, thumbSrc, ({ newFileid, newName, thumbSrc: newThumb }) => {
+    openPhotoEdit(photo, thumbSrc, async ({ newFileid, newName, newHash, thumbSrc: newThumb }) => {
+      // Migrate the cache record to the new fileid — overwriteFile replaced the
+      // file, so a stale record would 2009-purge on the next thumbnail load.
+      try {
+        if (newFileid !== photo.fileid) {
+          const cached = await getCached(photo.fileid);
+          await deleteRecord(photo.fileid);
+          await deleteOrphan(photo.fileid);
+          const hash = newHash ?? cached?.hash ?? null;
+          if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, hash });
+          if (!cached || cached.lat == null) await putOrphan({ fileid: newFileid, name: newName, ts: cached?.ts ?? photo.ts, hash });
+          if (cached?.lat != null) {
+            removeMarker(photo.fileid);
+            addMarker({ fileid: newFileid, name: newName, lat: cached.lat, lng: cached.lng, ts: cached.ts });
+          }
+        }
+      } catch (e) {
+        log('Photo edit cache update error', e.message);
+      }
       updateCurrentSlideshowItem({ fileid: newFileid, name: newName, ts: photo.ts });
       refreshSlideshowImage(newFileid, newThumb);
       reloadTopbarCounts();
+      flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
       showBriefStatus('✅ Photo saved');
     });
   });
