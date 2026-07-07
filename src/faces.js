@@ -60,7 +60,12 @@ function load() {
   if (!_loading) {
     _loading = (async () => {
       try {
-        if ((await countFaces()) > 0 && readMeta()) return;
+        const local = await countFaces();
+        if (local > 0 && readMeta()) {
+          log('Faces', `using local mirror — ${local} entries`);
+          return;
+        }
+        log('Faces', 'local mirror empty — downloading from pCloud');
         const stat = await statByPath(REMOTE_PATH);
         await replaceFromRemote(stat);
       } catch (e) {
@@ -82,15 +87,18 @@ export async function refreshFaces() {
   if (_loading) await _loading;
   _loading = (async () => {
     let stat = null;
-    try { stat = await statByPath(REMOTE_PATH); } catch { return; }
+    try { stat = await statByPath(REMOTE_PATH); } catch { log('Faces', 'no faces.json on pCloud'); return; }
     try {
       const known = localStorage.getItem(REMOTE_HASH_KEY);
-      const empty = (await countFaces()) === 0 || !readMeta();
+      const local = await countFaces();
+      const empty = local === 0 || !readMeta();
       if (empty || String(stat.hash ?? '') !== known) {
+        log('Faces', empty ? 'local mirror empty — downloading' : 'remote faces.json changed — re-downloading');
         await replaceFromRemote(stat);
       } else {
+        log('Faces', `mirror up to date — ${local} entries`);
         localStorage.setItem(FILEID_KEY, String(stat.fileid)); // track fileid drift
-        if (localStorage.getItem(DIRTY_KEY)) flushFaces();
+        if (localStorage.getItem(DIRTY_KEY)) { log('Faces', 'pending edits found — resuming upload'); flushFaces(); }
       }
     } catch (e) {
       log('Faces', `refresh failed: ${e.message}`);
@@ -153,7 +161,7 @@ export async function renameFacesEntry(oldHash, { newHash = null, name = null, p
   const key = normFacesHash(oldHash);
   if (!key) return;
   const entry = await getFacesEntry(key);
-  if (!entry) return;
+  if (!entry) { log('Faces', `no entry for hash ${key} — nothing to update`); return; }
   const newKey  = normFacesHash(newHash) ?? key;
   const newName = name ?? entry.name;
   const folderPart = entry.path?.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/') + 1) : '';
@@ -171,7 +179,7 @@ export async function removeFacesEntry(hash) {
   const key = normFacesHash(hash);
   if (!key) return;
   const entry = await getFacesEntry(key);
-  if (!entry) return;
+  if (!entry) { log('Faces', `no entry for hash ${key} — nothing to remove`); return; }
   await deleteFacesEntry(key);
   markDirty();
   log('Faces', `removed entry for deleted ${entry.name}`);
@@ -181,7 +189,11 @@ export async function removeFacesEntry(hash) {
 export async function getFacesForHash(hash) {
   await load();
   const key = normFacesHash(hash);
-  return key ? ((await getFacesEntry(key)) ?? null) : null;
+  const entry = key ? ((await getFacesEntry(key)) ?? null) : null;
+  log('Faces', entry
+    ? `lookup ${key}: ${entry.name} — ${entry.faces?.length ?? 0} face(s)`
+    : `lookup ${key ?? '(no hash)'}: no entry`);
+  return entry;
 }
 
 export function getFacesPeople() {
@@ -193,7 +205,8 @@ export function getFacesPeople() {
 // Cached until a mutation or remote refresh invalidates it.
 export async function getPeopleStats() {
   await load();
-  if (_stats) return _stats;
+  if (_stats) { log('Faces', `stats from cache — ${_stats.peopleCount} people`); return _stats; }
+  const t0 = Date.now();
   const entries = await getAllFaces();
   const counts = new Map(); // person id (string) → photo count
   for (const e of entries) {
@@ -210,5 +223,6 @@ export async function getPeopleStats() {
     .map(([id, count]) => ({ id, name: people[id] ?? `#${id}`, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   _stats = { peopleCount: list.length, list };
+  log('Faces', `stats computed in ${Date.now() - t0}ms — ${list.length} people across ${entries.length} photos`);
   return _stats;
 }
