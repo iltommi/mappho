@@ -10,3 +10,6 @@ dist/
 /test.*
 /dup_name_state.json
 /*.jpg
+
+# Personal data — the app reads this from pCloud Photos/, never from the repo
+/faces.json
