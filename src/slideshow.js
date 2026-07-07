@@ -1,5 +1,5 @@
 import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
-import { deleteRecord, deleteOrphan, getCached } from './db.js';
+import { deleteRecord, deleteOrphan, getCached, UNDATED_TS } from './db.js';
 import { getFacesForHash, getFacesPeople } from './faces.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -125,6 +125,7 @@ async function refreshFacesState() {
   _facesEntry = null;
   facesBtn.style.display = 'none';
   hideFacesOverlay();
+  updateCounter();
   if (!photo || isVideo(photo.name)) return;
   let hash = photo.hash;
   if (hash == null) hash = (await getCached(photo.fileid))?.hash;
@@ -134,6 +135,7 @@ async function refreshFacesState() {
   if (!entry?.faces?.length || !entry.width || !entry.height) return;
   _facesEntry = entry;
   facesBtn.style.display = '';
+  updateCounter(); // append the 👥 count next to the date
   if (facesMode) renderFacesOverlay();
 }
 
@@ -165,7 +167,9 @@ function renderFacesOverlay() {
     box.appendChild(label);
     facesOverlay.appendChild(box);
   }
-  facesOverlay.style.display = '';
+  // Explicit 'block': the stylesheet default is display:none, so clearing the
+  // inline style would hide the overlay again.
+  facesOverlay.style.display = 'block';
 }
 
 facesBtn.addEventListener('click', () => {
@@ -699,8 +703,9 @@ function updateCounter() {
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts } = photos[current];
-  const dateStr = ts ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
-  const parts = [`${current + 1} / ${total}`, dateStr].filter(Boolean);
+  const dateStr  = (ts && ts < UNDATED_TS) ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
+  const facesStr = _facesEntry?.faces?.length ? `👥 ${_facesEntry.faces.length}` : '';
+  const parts = [`${current + 1} / ${total}`, dateStr, facesStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
   const single = total === 1;
   prevBtn.style.display = single ? 'none' : '';
