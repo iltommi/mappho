@@ -1414,7 +1414,7 @@ body.filter-open #map { top: 40px; }
   padding: 8px 0;
 }
 
-#info-popup {
+#info-popup, #people-popup {
   position: fixed;
   inset: 0;
   z-index: 5000;
@@ -1423,14 +1423,14 @@ body.filter-open #map { top: 40px; }
   align-items: center;
   justify-content: center;
 }
-#info-popup-inner {
+#info-popup-inner, #people-popup-inner {
   background: #1e293b;
   border-radius: 14px;
   width: min(320px, 90vw);
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,.6);
 }
-#info-popup-header {
+#info-popup-header, #people-popup-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1440,7 +1440,7 @@ body.filter-open #map { top: 40px; }
   color: #e2e8f0;
   border-bottom: 1px solid #334155;
 }
-#info-popup-header button {
+#info-popup-header button, #people-popup-header button {
   background: none;
   border: none;
   color: #94a3b8;
@@ -1451,6 +1451,11 @@ body.filter-open #map { top: 40px; }
 }
 #info-rows {
   padding: 12px 0 8px;
+}
+#people-rows {
+  padding: 12px 0 8px;
+  max-height: min(65vh, 480px);
+  overflow-y: auto;
 }
 .info-row {
   display: flex;

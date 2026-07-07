@@ -23,6 +23,7 @@ const DIRTY_KEY       = 'mappho_faces_dirty';      // survives restarts so pendi
 
 let _loaded  = false;
 let _loading = null;
+let _stats   = null; // cached getPeopleStats() result; null after any mutation
 
 // pCloud hashes are uint64, but the app receives them from JSON as JS numbers,
 // which round above 2^53. Normalising through Number() puts externally written
@@ -47,6 +48,7 @@ async function replaceFromRemote(stat) {
   localStorage.setItem(FILEID_KEY, String(stat.fileid));
   localStorage.setItem(REMOTE_HASH_KEY, String(stat.hash ?? ''));
   localStorage.removeItem(DIRTY_KEY);
+  _stats = null;
   log('Faces', `loaded ${data.entries.length} entries, ${Object.keys(data.people ?? {}).length} people`);
 }
 
@@ -99,6 +101,7 @@ export async function refreshFaces() {
 
 function markDirty() {
   localStorage.setItem(DIRTY_KEY, '1');
+  _stats = null;
   flushFaces();
 }
 
@@ -183,4 +186,29 @@ export async function getFacesForHash(hash) {
 
 export function getFacesPeople() {
   return readMeta()?.people ?? {};
+}
+
+// Aggregates recognised people with their photo counts (a person appearing
+// several times in one photo counts once). Sorted by count, then name.
+// Cached until a mutation or remote refresh invalidates it.
+export async function getPeopleStats() {
+  await load();
+  if (_stats) return _stats;
+  const entries = await getAllFaces();
+  const counts = new Map(); // person id (string) → photo count
+  for (const e of entries) {
+    const seen = new Set();
+    for (const f of e.faces ?? []) {
+      const pid = String(f.person);
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      counts.set(pid, (counts.get(pid) ?? 0) + 1);
+    }
+  }
+  const people = getFacesPeople();
+  const list = [...counts.entries()]
+    .map(([id, count]) => ({ id, name: people[id] ?? `#${id}`, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  _stats = { peopleCount: list.length, list };
+  return _stats;
 }

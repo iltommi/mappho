@@ -16,7 +16,7 @@ import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
-import { refreshFaces } from './faces.js';
+import { refreshFaces, getPeopleStats } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -732,6 +732,8 @@ const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 const infoPopupClose = document.getElementById('info-popup-close');
 
+let _peopleCount = null; // people recognised in faces.json; null = unknown/none
+
 function renderInfoRows() {
   const X = (e) => `<span class="icon-x">${e}</span>`;
   const rows = [
@@ -742,6 +744,7 @@ function renderInfoRows() {
     { icon: X('📅') + X('📍'),     label: 'Nothing',         value: topbarUnknown,                          action: 'unknown' },
     { icon: '🚫',                   label: 'Ignored',         value: topbarIgnored,                          action: 'ignored' },
   ];
+  if (_peopleCount) rows.push({ icon: '👤', label: 'People', value: _peopleCount, action: 'people' });
   infoRowsEl.innerHTML = rows.map(r =>
     r.action
       ? `<div class="info-row info-row-btn" data-action="${r.action}">
@@ -764,9 +767,33 @@ function renderInfoRows() {
         openLocatedUndatedGrid().catch(e => { log('Located undated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
       } else if (el.dataset.action === 'ignored') {
         openIgnoredGrid().catch(e => { log('Ignored grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      } else if (el.dataset.action === 'people') {
+        openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
       }
     });
   });
+}
+
+// ── People popup ──────────────────────────────────────────────────────────────
+
+const peoplePopup  = document.getElementById('people-popup');
+const peopleRowsEl = document.getElementById('people-rows');
+document.getElementById('people-popup-close').addEventListener('click', () => { peoplePopup.style.display = 'none'; });
+peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) peoplePopup.style.display = 'none'; });
+
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function openPeoplePopup() {
+  const { list } = await getPeopleStats();
+  if (!list.length) { showBriefStatus('No people recognised — faces.json not available.'); return; }
+  infoPopup.style.display = 'none';
+  peopleRowsEl.innerHTML = list.map(p =>
+    `<div class="info-row">
+       <span class="info-row-label">👤 ${escapeHtml(p.name)}</span>
+       <span class="info-row-value">${p.count}</span>
+     </div>`
+  ).join('');
+  peoplePopup.style.display = 'flex';
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden
@@ -794,6 +821,14 @@ function openInfoPopup() {
   overflowMenu.classList.remove('open');
   renderInfoRows();
   infoPopup.style.display = 'flex';
+  // People count resolves async (first call may scan the faces mirror);
+  // re-render the still-open popup when it changes.
+  getPeopleStats().then(({ peopleCount }) => {
+    const n = peopleCount || null;
+    if (n === _peopleCount) return;
+    _peopleCount = n;
+    if (infoPopup.style.display !== 'none') renderInfoRows();
+  }).catch(e => log('People stats error', e.message));
 }
 
 async function openDatedOrphanGrid() {
