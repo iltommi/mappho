@@ -200,6 +200,16 @@ export function getFacesPeople() {
   return readMeta()?.people ?? {};
 }
 
+// Returns the faces entries of every photo a person appears in.
+export async function getEntriesForPerson(personId) {
+  await load();
+  const pid = String(personId);
+  const all = await getAllFaces();
+  const matched = all.filter(e => (e.faces ?? []).some(f => String(f.person) === pid));
+  log('Faces', `person ${pid}: ${matched.length} photos in mirror`);
+  return matched;
+}
+
 // Aggregates recognised people with their photo counts (a person appearing
 // several times in one photo counts once). Sorted by count, then name.
 // Cached until a mutation or remote refresh invalidates it.

@@ -112,6 +112,12 @@ let offset      = 0;
 let done        = false;
 let loadingPage = false;
 let reopenFn    = null;
+let gridTitle   = '';
+
+function updateCount() {
+  const counts = total != null ? `${items.length} / ${total}` : `${items.length}+`;
+  countEl.textContent = gridTitle ? `${gridTitle} · ${counts}` : counts;
+}
 
 let pageObserver  = null;
 let thumbObserver = null;
@@ -125,6 +131,7 @@ function close() {
   items       = [];
   fetchPageFn = null;
   reopenFn    = null;
+  gridTitle   = '';
   pageObserver?.disconnect();
   thumbObserver?.disconnect();
   exitSelectMode();
@@ -319,7 +326,7 @@ function purgeStaleFile(tile) {
   // The purged row is deleted from the DB below, so everything after it shifts
   // down by one — without this the next page fetch would skip an item.
   offset = Math.max(0, offset - 1);
-  countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
+  updateCount();
   updateBulkBar();
   removeMarker(fileid);
   Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
@@ -423,7 +430,7 @@ async function loadNextPage() {
     const frag = document.createDocumentFragment();
     page.forEach(item => frag.appendChild(makeTile(item)));
     track.appendChild(frag);
-    countEl.textContent = total != null ? `${items.length} / ${total}` : `${items.length}+`;
+    updateCount();
   } finally {
     loadingPage = false;
     updateScrubber();
@@ -433,15 +440,16 @@ async function loadNextPage() {
 // `reopen`, if given, is called after a bulk action completes (success or
 // cancel) to refresh and reopen the grid with fresh data — the underlying
 // list (e.g. "no location") shrinks once photos get geotagged.
-export async function openGrid(fetchPage, totalCount, { reopen = null } = {}) {
+export async function openGrid(fetchPage, totalCount, { reopen = null, title = '' } = {}) {
   fetchPageFn = fetchPage;
   total       = totalCount ?? null;
   reopenFn    = reopen;
+  gridTitle   = title;
   items       = [];
   offset      = 0;
   done        = false;
   track.innerHTML = '';
-  countEl.textContent = '';
+  updateCount();
   setSelectMode(false);
 
   thumbObserver = new IntersectionObserver(entries => {

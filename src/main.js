@@ -16,7 +16,7 @@ import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
-import { refreshFaces, getPeopleStats } from './faces.js';
+import { refreshFaces, getPeopleStats, getEntriesForPerson } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -787,13 +787,51 @@ async function openPeoplePopup() {
   const { list } = await getPeopleStats();
   if (!list.length) { showBriefStatus('No people recognised — faces.json not available.'); return; }
   infoPopup.style.display = 'none';
-  peopleRowsEl.innerHTML = list.map(p =>
-    `<div class="info-row">
+  peopleRowsEl.innerHTML = list.map((p, i) =>
+    `<div class="info-row info-row-btn" data-idx="${i}">
        <span class="info-row-label">👤 ${escapeHtml(p.name)}</span>
        <span class="info-row-value">${p.count}</span>
      </div>`
   ).join('');
+  peopleRowsEl.querySelectorAll('.info-row-btn').forEach(el => {
+    el.addEventListener('click', () => {
+      const person = list[Number(el.dataset.idx)];
+      if (!person) return;
+      peoplePopup.style.display = 'none';
+      openPersonGrid(person).catch(e => { log('Person grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+    });
+  });
   peoplePopup.style.display = 'flex';
+}
+
+// Grid of all photos a person appears in. Faces entries are joined to cached
+// photo records by content hash — the grid needs fileids for thumbnails.
+async function openPersonGrid(person) {
+  const entries = await getEntriesForPerson(person.id);
+  if (!entries.length) { showBriefStatus(`No photos found for ${person.name}.`); return; }
+  const byHash = new Map();
+  for (const r of await getAllCached()) {
+    if (r.hash != null && !r.ignored) byHash.set(String(r.hash), r);
+  }
+  const items = [];
+  let missing = 0;
+  for (const e of entries) {
+    const rec = byHash.get(e.hash);
+    if (rec) items.push(rec); else missing++;
+  }
+  if (missing) log('People grid', `${person.name}: ${missing} of ${entries.length} entries have no cached record`);
+  if (!items.length) { showBriefStatus(`No cached photos for ${person.name} — run a scan or rebuild first.`); return; }
+  items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+
+  // In-place edit handlers (like the map marker slideshow) — no list reopen.
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  }));
+  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setFixTimeHandler(photo => startFixTime(photo, () => {}));
+  setIgnoreHandler(null);
+  openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
+    { title: `👤 ${person.name}` });
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden

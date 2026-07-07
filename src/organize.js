@@ -288,7 +288,7 @@ export async function removeOrganizedEntry(fileid) {
   if (foundName) _takenNames.delete(foundName);
   _hashDirty = true;
   await deleteMapphoIndexEntry(foundHash);
-  removeFacesEntry(foundHash).catch(e => log('Faces remove error', e.message));
+  await removeFacesEntry(foundHash).catch(e => log('Faces remove error', e.message));
   flushOrganizeIndex();
 }
 
@@ -338,7 +338,7 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
       }
       _hashDirty = true;
       flushOrganizeIndex();
-      renameFacesEntry(oldHash, { newHash, name: keptName })
+      await renameFacesEntry(oldHash, { newHash, name: keptName })
         .catch(e => log('Faces sync error', e.message));
       return keptName;
     } else {
@@ -366,7 +366,7 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
       _hashDirty = true;
       flushOrganizeIndex();
       const facesPath = `${hasDate ? monthPathOf(ts) : UNKNOWN_DATE_FOLDER}/${targetName}`;
-      renameFacesEntry(oldHash, { newHash, name: targetName, path: facesPath })
+      await renameFacesEntry(oldHash, { newHash, name: targetName, path: facesPath })
         .catch(e => log('Faces sync error', e.message));
       return targetName;
     }
