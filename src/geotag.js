@@ -174,7 +174,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     await deleteFile(fileid);
 
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
-    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });
+    await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs, newName: jpegName });
     const orgName = await ensureInPhotos({ fileid: newFileid, name: jpegName, ts: realTs, hash: newHash ?? null });
     await deleteRecord(fileid);
     await deleteOrphan(fileid);

@@ -16,6 +16,7 @@ import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
+import { refreshFaces } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -168,7 +169,7 @@ async function applyFixDateToPhoto(photo, ts) {
     log('Fix date', 'stat new file');
     ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
     log('Fix date', 'sync organize');
-    syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts });
+    syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newName });
   } else {
     log('Fix date', 'stat (jpeg)');
     const stat = await getFileStat(fileid).catch(() => ({}));
@@ -959,6 +960,8 @@ async function startScan() {
 
   await applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   await applyIgnored().catch(e => log('Ignored apply error', e.message));
+  // Faces mirror sync runs in the background — 4.5 MB download on first run.
+  refreshFaces().catch(e => log('Faces refresh error', e.message));
 
   _stopStartupAnimation();
   localStorage.setItem(STARTUP_TIMING_KEY, String(Date.now() - _startupStart));

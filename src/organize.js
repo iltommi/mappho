@@ -1,5 +1,6 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
 import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
+import { renameFacesEntry, removeFacesEntry } from './faces.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
@@ -81,6 +82,13 @@ function fmtBase(ts) {
   const d = new Date(ts);
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`;
+}
+
+// Photos/-relative folder path for a timestamp, e.g. '2024/03' — mirrors the
+// folder structure getMapphoMonthFolder creates. Used for faces.json paths.
+function monthPathOf(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function extOf(name) {
@@ -280,13 +288,17 @@ export async function removeOrganizedEntry(fileid) {
   if (foundName) _takenNames.delete(foundName);
   _hashDirty = true;
   await deleteMapphoIndexEntry(foundHash);
+  removeFacesEntry(foundHash).catch(e => log('Faces remove error', e.message));
   flushOrganizeIndex();
 }
 
 // ── Edit-time sync ─────────────────────────────────────────────────────────────
-// Called after a content-mutating edit (geotag/fix-date). If the pre-edit hash
-// was already in Photos/, refresh that slot without waiting for the next scan.
-export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
+// Called after a content-mutating edit (geotag/fix-date/photo edit). If the
+// pre-edit hash was already in Photos/, refresh that slot without waiting for
+// the next scan, and keep the faces database keyed to the new hash/name.
+// `newName` is the actual filename the caller gave newFileid when it differs
+// from the indexed one (HEIC→JPEG conversions upload x.jpg in place of x.heic).
+export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newName = null }) {
   oldHash = normHash(oldHash);
   newHash = normHash(newHash);
   if (!oldHash) return;
@@ -300,27 +312,35 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       ? await getMapphoMonthFolder(rootFolderId, ts)
       : await getMapphoUnknownFolder(rootFolderId);
 
-    if (monthFolderId === existing.folderid && newHash === oldHash) return existing.name;
+    if (monthFolderId === existing.folderid && newHash === oldHash
+        && (newName == null || newName === existing.name)) return existing.name;
 
     if (monthFolderId === existing.folderid) {
       // Same folder, content changed (GPS injected or EXIF date updated).
       // overwriteFile deleted existing.fileid and uploaded newFileid to the same
-      // folder under the same name, so newFileid is already correctly placed.
-      // Do NOT try to delete existing.fileid here — it is already gone, and if
-      // pCloud returns success for a re-delete, the subsequent copyFile call would
-      // create an untracked duplicate and leave newFileid un-indexed.
+      // folder, so newFileid is already correctly placed. Do NOT try to delete
+      // existing.fileid here — it is already gone, and if pCloud returns success
+      // for a re-delete, the subsequent copyFile call would create an untracked
+      // duplicate and leave newFileid un-indexed.
+      const keptName = newName ?? existing.name;
       await deleteMapphoIndexEntry(oldHash);
       _hashMap.delete(oldHash);
       // newHash can be null when the post-edit stat failed; hash is the store's
       // keyPath, so a put would throw. Dropping the entry is safe — the next
       // index rebuild re-adds the file from the Photos/ listing.
       if (newHash) {
-        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: existing.name });
-        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: existing.name });
+        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: keptName });
+        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: keptName });
+      }
+      if (keptName !== existing.name) {
+        _takenNames.delete(existing.name);
+        _takenNames.add(keptName);
       }
       _hashDirty = true;
       flushOrganizeIndex();
-      return existing.name;
+      renameFacesEntry(oldHash, { newHash, name: keptName })
+        .catch(e => log('Faces sync error', e.message));
+      return keptName;
     } else {
       // Different folder — move to the correct month and give it a date-based name.
       //
@@ -328,23 +348,27 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts }) {
       // so existing.fileid is already gone.  We move newFileid to the target folder.
       // For MP4: the file is never replaced (newFileid === existing.fileid), so we
       // rename the file in place.  In that case we must not attempt a separate delete.
-      const newName = hasDate ? nextName(ts, extOf(existing.name)) : existing.name;
+      const ext = extOf(newName ?? existing.name);
+      const targetName = hasDate ? nextName(ts, ext) : (newName ?? existing.name);
       const fileToMove = newFileid !== existing.fileid ? newFileid : existing.fileid;
-      await renameFile(fileToMove, { tofolderid: monthFolderId, toname: newName });
+      await renameFile(fileToMove, { tofolderid: monthFolderId, toname: targetName });
       if (newFileid !== existing.fileid) {
         try { await deleteFile(existing.fileid); } catch {}
       }
       _takenNames.delete(existing.name);
-      _takenNames.add(newName);
+      _takenNames.add(targetName);
       await deleteMapphoIndexEntry(oldHash);
       _hashMap.delete(oldHash);
       if (newHash) {
-        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: newName });
-        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: newName });
+        await putMapphoIndexEntry({ hash: newHash, fileid: newFileid, folderid: monthFolderId, name: targetName });
+        _hashMap.set(newHash, { fileid: newFileid, folderid: monthFolderId, name: targetName });
       }
       _hashDirty = true;
       flushOrganizeIndex();
-      return newName;
+      const facesPath = `${hasDate ? monthPathOf(ts) : UNKNOWN_DATE_FOLDER}/${targetName}`;
+      renameFacesEntry(oldHash, { newHash, name: targetName, path: facesPath })
+        .catch(e => log('Faces sync error', e.message));
+      return targetName;
     }
   } catch (e) {
     log('Mappho sync error', e.message);
