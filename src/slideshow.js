@@ -1,5 +1,6 @@
 import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
-import { deleteRecord, deleteOrphan } from './db.js';
+import { deleteRecord, deleteOrphan, getCached } from './db.js';
+import { getFacesForHash, getFacesPeople } from './faces.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
@@ -41,6 +42,8 @@ const exifBtn     = document.getElementById('ss-exif-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
 const deleteBtn   = document.getElementById('ss-delete-btn');
 const wrap        = document.getElementById('ss-img-wrap');
+const facesBtn     = document.getElementById('ss-faces-btn');
+const facesOverlay = document.getElementById('ss-faces-overlay');
 
 let geotagHandler    = null;
 let fixDateHandler   = null;
@@ -98,7 +101,83 @@ function applyImgTransform(animate) {
   curImg.style.transition = animate ? 'transform 0.22s ease-out' : 'none';
   curImg.style.transform  = (imgScale === 1 && imgTx === 0 && imgTy === 0)
     ? '' : `translate(${imgTx}px, ${imgTy}px) scale(${imgScale})`;
+  // Face boxes only map onto the untransformed image; hide while zoomed/panned.
+  if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) facesOverlay.style.display = 'none';
+  else if (facesMode && _facesEntry) renderFacesOverlay();
 }
+
+// ── Faces overlay ─────────────────────────────────────────────────────────────
+
+let facesMode   = false; // user toggled the 👥 button; sticky across navigation
+let _facesEntry = null;  // faces.json entry for the current photo, null = none
+let _facesReq   = 0;
+
+function hideFacesOverlay() {
+  facesOverlay.style.display = 'none';
+  facesOverlay.innerHTML = '';
+}
+
+// Resolves the faces entry for the current photo and shows/hides the 👥
+// button. Called on every slide change.
+async function refreshFacesState() {
+  const photo = photos[current];
+  const req = ++_facesReq;
+  _facesEntry = null;
+  facesBtn.style.display = 'none';
+  hideFacesOverlay();
+  if (!photo || isVideo(photo.name)) return;
+  let hash = photo.hash;
+  if (hash == null) hash = (await getCached(photo.fileid))?.hash;
+  if (req !== _facesReq || hash == null) return;
+  const entry = await getFacesForHash(hash);
+  if (req !== _facesReq) return;
+  if (!entry?.faces?.length || !entry.width || !entry.height) return;
+  _facesEntry = entry;
+  facesBtn.style.display = '';
+  if (facesMode) renderFacesOverlay();
+}
+
+// Draws rectangles + name labels over the current image. Face coordinates are
+// in original-image pixels; they are scaled onto the displayed thumbnail and
+// positioned in pane coordinates so they ride along during swipe animations.
+function renderFacesOverlay() {
+  facesOverlay.innerHTML = '';
+  if (!facesMode || !_facesEntry) { facesOverlay.style.display = 'none'; return; }
+  if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) { facesOverlay.style.display = 'none'; return; }
+  if (curImg.style.display === 'none' || !curImg.naturalWidth) { facesOverlay.style.display = 'none'; return; }
+  const imgRect  = curImg.getBoundingClientRect();
+  const paneRect = facesOverlay.parentElement.getBoundingClientRect();
+  if (!imgRect.width || !imgRect.height) { facesOverlay.style.display = 'none'; return; }
+  const sx = imgRect.width  / _facesEntry.width;
+  const sy = imgRect.height / _facesEntry.height;
+  const ox = imgRect.left - paneRect.left;
+  const oy = imgRect.top  - paneRect.top;
+  const people = getFacesPeople();
+  for (const f of _facesEntry.faces ?? []) {
+    const t = oy + f.y * sy;
+    const box = document.createElement('div');
+    box.className = 'ss-face-box';
+    box.style.cssText = `left:${ox + f.x * sx}px;top:${t}px;width:${f.w * sx}px;height:${f.h * sy}px`;
+    const label = document.createElement('span');
+    label.className = 'ss-face-label';
+    label.textContent = people[String(f.person)] ?? `#${f.person}`;
+    if (t > 22) { label.style.bottom = '100%'; label.style.top = 'auto'; } // above the box when there's room
+    box.appendChild(label);
+    facesOverlay.appendChild(box);
+  }
+  facesOverlay.style.display = '';
+}
+
+facesBtn.addEventListener('click', () => {
+  facesMode = !facesMode;
+  facesBtn.classList.toggle('active', facesMode);
+  renderFacesOverlay();
+});
+
+// Boxes need the image's final layout — (re)draw once the thumb has loaded.
+curImg.addEventListener('load', () => {
+  if (facesMode && _facesEntry) requestAnimationFrame(renderFacesOverlay);
+});
 
 function resetImgZoom(animate) {
   imgScale = 1; imgTx = 0; imgTy = 0;
@@ -147,6 +226,12 @@ function close({ handoff = false } = {}) {
   fixTimeBtn.style.display = 'none';
   editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
+  facesMode = false;
+  facesBtn.classList.remove('active');
+  facesBtn.style.display = 'none';
+  _facesEntry = null;
+  _facesReq++;
+  hideFacesOverlay();
   photos = [];
   imgCache.clear();
   resetLazy();
@@ -637,6 +722,7 @@ function updateCaption() {
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   editBtn.style.display  = (editHandler && !isVideo(name) && !/\.heic$/i.test(name)) ? '' : 'none';
   shareBtn.style.display = '';
+  refreshFacesState().catch(() => {});
 
   if (!isVideo(name)) {
     let folderName = '';
@@ -710,6 +796,9 @@ export function updateCurrentSlideshowItem({ fileid, name, ts }) {
     imgCache.delete(old.fileid);
   }
   photos[current] = { ...old, fileid, name, ts };
+  // The edit replaced the file, so the carried hash is stale — drop it and let
+  // the faces lookup fall back to the freshly updated cache record.
+  if (old.fileid !== fileid) delete photos[current].hash;
   updateCaption();
 }
 
