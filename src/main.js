@@ -859,8 +859,12 @@ function openInfoPopup() {
   overflowMenu.classList.remove('open');
   renderInfoRows();
   infoPopup.style.display = 'flex';
-  // People count resolves async (first call may scan the faces mirror);
-  // re-render the still-open popup when it changes.
+  refreshPeopleCount();
+}
+
+// Re-derives the cached people count and re-renders Settings if it's open
+// and the count actually changed (e.g. after a background faces.json refresh).
+function refreshPeopleCount() {
   getPeopleStats().then(({ peopleCount }) => {
     const n = peopleCount || null;
     if (n === _peopleCount) return;
@@ -1034,6 +1038,7 @@ async function startScan() {
   await applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   await applyIgnored().catch(e => log('Ignored apply error', e.message));
   // Faces mirror sync runs in the background — 4.5 MB download on first run.
+  _lastFacesRefresh = Date.now(); // primes the resume-listener cooldown
   refreshFaces().catch(e => log('Faces refresh error', e.message));
 
   _stopStartupAnimation();
@@ -1537,6 +1542,28 @@ async function main() {
   }
 
   await startScan();
+  setupFacesResumeSync();
+}
+
+const FACES_RESUME_COOLDOWN_MS = 2 * 60 * 1000; // avoid re-checking on every brief app-switch
+let _lastFacesRefresh = 0;
+
+// The external tool runs on a laptop, not the phone — the only way the app
+// learns a fresh faces.json exists is by checking on resume. A plain startup
+// check (already done in startScan) misses regenerations that happen while
+// the app is merely backgrounded, not fully restarted.
+function setupFacesResumeSync() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!getToken()) return;
+    const now = Date.now();
+    if (now - _lastFacesRefresh < FACES_RESUME_COOLDOWN_MS) return;
+    _lastFacesRefresh = now;
+    log('Faces', 'app resumed — checking for a newer faces.json');
+    refreshFaces()
+      .then(refreshPeopleCount)
+      .catch(e => log('Faces refresh error', e.message));
+  });
 }
 
 main();
