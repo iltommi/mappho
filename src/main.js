@@ -88,6 +88,10 @@ stopScanBtn.addEventListener('click', () => {
 });
 const menuFab = document.getElementById('menu-fab');
 const overflowMenu = document.getElementById('overflow-menu');
+const peopleFab = document.getElementById('people-fab');
+peopleFab.addEventListener('click', () => {
+  openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
+});
 
 
 async function openNodatetimeGrid() {
@@ -939,6 +943,7 @@ function showApp() {
   loginOverlay.style.display = 'none';
   menuFab.style.display = '';
   document.getElementById('fix-position-only-btn').style.display = '';
+  peopleFab.style.display = '';
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
