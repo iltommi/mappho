@@ -1,6 +1,6 @@
 import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
 import { deleteRecord, deleteOrphan, getCached, UNDATED_TS } from './db.js';
-import { getFacesForHash, getFacesPeople } from './faces.js';
+import { getFacesForHash, getFacesPeople, getFaceRegions } from './faces.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
@@ -103,14 +103,14 @@ function applyImgTransform(animate) {
     ? '' : `translate(${imgTx}px, ${imgTy}px) scale(${imgScale})`;
   // Face boxes only map onto the untransformed image; hide while zoomed/panned.
   if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) facesOverlay.style.display = 'none';
-  else if (facesMode && _facesEntry) renderFacesOverlay();
+  else if (facesMode && _facesRegions.length) renderFacesOverlay();
 }
 
 // ── Faces overlay ─────────────────────────────────────────────────────────────
 
-let facesMode   = false; // user toggled the 👥 button; sticky across navigation
-let _facesEntry = null;  // faces.json entry for the current photo, null = none
-let _facesReq   = 0;
+let facesMode     = false; // user toggled the 👥 button; sticky across navigation
+let _facesRegions = [];    // normalised regions for the current photo
+let _facesReq     = 0;
 
 function hideFacesOverlay() {
   facesOverlay.style.display = 'none';
@@ -122,7 +122,7 @@ function hideFacesOverlay() {
 async function refreshFacesState() {
   const photo = photos[current];
   const req = ++_facesReq;
-  _facesEntry = null;
+  _facesRegions = [];
   facesBtn.style.display = 'none';
   hideFacesOverlay();
   updateCounter();
@@ -132,37 +132,38 @@ async function refreshFacesState() {
   if (req !== _facesReq || hash == null) return;
   const entry = await getFacesForHash(hash);
   if (req !== _facesReq) return;
-  if (!entry?.faces?.length || !entry.width || !entry.height) return;
-  _facesEntry = entry;
+  const regions = getFaceRegions(entry);
+  if (!regions.length) return;
+  _facesRegions = regions;
   facesBtn.style.display = '';
   updateCounter(); // append the 👥 count next to the date
   if (facesMode) renderFacesOverlay();
 }
 
-// Draws rectangles + name labels over the current image. Face coordinates are
-// in original-image pixels; they are scaled onto the displayed thumbnail and
-// positioned in pane coordinates so they ride along during swipe animations.
+// Draws rectangles + name labels over the current image. Regions come from
+// getFaceRegions() in normalised [0,1] units with cx/cy at the region centre
+// (MWG semantics); they are scaled onto the displayed thumbnail and positioned
+// in pane coordinates so they ride along during swipe animations.
 function renderFacesOverlay() {
   facesOverlay.innerHTML = '';
-  if (!facesMode || !_facesEntry) { facesOverlay.style.display = 'none'; return; }
+  if (!facesMode || !_facesRegions.length) { facesOverlay.style.display = 'none'; return; }
   if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) { facesOverlay.style.display = 'none'; return; }
   if (curImg.style.display === 'none' || !curImg.naturalWidth) { facesOverlay.style.display = 'none'; return; }
   const imgRect  = curImg.getBoundingClientRect();
   const paneRect = facesOverlay.parentElement.getBoundingClientRect();
   if (!imgRect.width || !imgRect.height) { facesOverlay.style.display = 'none'; return; }
-  const sx = imgRect.width  / _facesEntry.width;
-  const sy = imgRect.height / _facesEntry.height;
   const ox = imgRect.left - paneRect.left;
   const oy = imgRect.top  - paneRect.top;
   const people = getFacesPeople();
-  for (const f of _facesEntry.faces ?? []) {
-    const t = oy + f.y * sy;
+  for (const r of _facesRegions) {
+    const t = oy + (r.cy - r.h / 2) * imgRect.height;
     const box = document.createElement('div');
     box.className = 'ss-face-box';
-    box.style.cssText = `left:${ox + f.x * sx}px;top:${t}px;width:${f.w * sx}px;height:${f.h * sy}px`;
+    box.style.cssText = `left:${ox + (r.cx - r.w / 2) * imgRect.width}px;top:${t}px;`
+      + `width:${r.w * imgRect.width}px;height:${r.h * imgRect.height}px`;
     const label = document.createElement('span');
     label.className = 'ss-face-label';
-    label.textContent = people[String(f.person)] ?? `#${f.person}`;
+    label.textContent = people[String(r.person)] ?? `#${r.person}`;
     if (t > 22) { label.style.bottom = '100%'; label.style.top = 'auto'; } // above the box when there's room
     box.appendChild(label);
     facesOverlay.appendChild(box);
@@ -180,7 +181,7 @@ facesBtn.addEventListener('click', () => {
 
 // Boxes need the image's final layout — (re)draw once the thumb has loaded.
 curImg.addEventListener('load', () => {
-  if (facesMode && _facesEntry) requestAnimationFrame(renderFacesOverlay);
+  if (facesMode && _facesRegions.length) requestAnimationFrame(renderFacesOverlay);
 });
 
 function resetImgZoom(animate) {
@@ -233,7 +234,7 @@ function close({ handoff = false } = {}) {
   facesMode = false;
   facesBtn.classList.remove('active');
   facesBtn.style.display = 'none';
-  _facesEntry = null;
+  _facesRegions = [];
   _facesReq++;
   hideFacesOverlay();
   photos = [];
@@ -704,7 +705,7 @@ function updateCounter() {
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts } = photos[current];
   const dateStr  = (ts && ts < UNDATED_TS) ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
-  const facesStr = _facesEntry?.faces?.length ? `👥 ${_facesEntry.faces.length}` : '';
+  const facesStr = _facesRegions.length ? `👥 ${_facesRegions.length}` : '';
   const parts = [`${current + 1} / ${total}`, dateStr, facesStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
   const single = total === 1;

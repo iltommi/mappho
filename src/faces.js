@@ -44,7 +44,10 @@ async function replaceFromRemote(stat) {
   if (!Array.isArray(data?.entries)) throw new Error('malformed faces.json');
   await clearFaces();
   await bulkPutFaces(data.entries.filter(e => e.hash != null).map(e => ({ ...e, hash: normFacesHash(e.hash) })));
-  localStorage.setItem(META_KEY, JSON.stringify({ version: data.version ?? 1, generated_at: data.generated_at ?? null, people: data.people ?? {} }));
+  // Keep every top-level field except entries (version, generated_at, people,
+  // skipped_no_dimensions, …) so write-backs don't drop tool metadata.
+  const { entries: _entries, ...meta } = data;
+  localStorage.setItem(META_KEY, JSON.stringify(meta));
   localStorage.setItem(FILEID_KEY, String(stat.fileid));
   localStorage.setItem(REMOTE_HASH_KEY, String(stat.hash ?? ''));
   localStorage.removeItem(DIRTY_KEY);
@@ -130,14 +133,12 @@ async function uploadFaces() {
   }
   const entries = await getAllFaces();
   if (!entries.length) { localStorage.removeItem(DIRTY_KEY); return; }
-  const meta = readMeta() ?? { version: 1, generated_at: null, people: {} };
-  // generated_at stays the external tool's timestamp; modified_at records the
-  // app-side maintenance edits layered on top of that generation.
+  const meta = readMeta() ?? { version: 2, generated_at: null, people: {} };
+  // All tool metadata is passed through; modified_at records the app-side
+  // maintenance edits layered on top of the tool's generated_at.
   const json = JSON.stringify({
-    version: meta.version,
-    generated_at: meta.generated_at,
+    ...meta,
     modified_at: new Date().toISOString(),
-    people: meta.people,
     entries,
   });
   const folderId = stat?.parentfolderid ?? (await statByPath('/Photos')).folderid;
@@ -185,13 +186,37 @@ export async function removeFacesEntry(hash) {
   log('Faces', `removed entry for deleted ${entry.name}`);
 }
 
+// Normalises an entry's face regions to { person, cx, cy, w, h } with all
+// coordinates in [0,1] and cx/cy at the region CENTRE (MWG stArea semantics).
+// Supports the MWG v2 schema (regions[].area, normalized, centre-based) and
+// the legacy v1 schema (faces[] in pixels, top-left, with entry width/height)
+// so mirrors that haven't refreshed yet keep working.
+export function getFaceRegions(entry) {
+  if (!entry) return [];
+  if (Array.isArray(entry.regions)) {
+    return entry.regions
+      .filter(r => r?.area)
+      .map(r => ({ person: r.person, cx: r.area.x, cy: r.area.y, w: r.area.w, h: r.area.h }));
+  }
+  if (Array.isArray(entry.faces) && entry.width && entry.height) {
+    return entry.faces.map(f => ({
+      person: f.person,
+      cx: (f.x + f.w / 2) / entry.width,
+      cy: (f.y + f.h / 2) / entry.height,
+      w: f.w / entry.width,
+      h: f.h / entry.height,
+    }));
+  }
+  return [];
+}
+
 // Lookup APIs for future UI (person filter, name captions, face overlays).
 export async function getFacesForHash(hash) {
   await load();
   const key = normFacesHash(hash);
   const entry = key ? ((await getFacesEntry(key)) ?? null) : null;
   log('Faces', entry
-    ? `lookup ${key}: ${entry.name} — ${entry.faces?.length ?? 0} face(s)`
+    ? `lookup ${key}: ${entry.name} — ${getFaceRegions(entry).length} face(s)`
     : `lookup ${key ?? '(no hash)'}: no entry`);
   return entry;
 }
@@ -205,7 +230,7 @@ export async function getEntriesForPerson(personId) {
   await load();
   const pid = String(personId);
   const all = await getAllFaces();
-  const matched = all.filter(e => (e.faces ?? []).some(f => String(f.person) === pid));
+  const matched = all.filter(e => getFaceRegions(e).some(f => String(f.person) === pid));
   log('Faces', `person ${pid}: ${matched.length} photos in mirror`);
   return matched;
 }
@@ -221,7 +246,7 @@ export async function getPeopleStats() {
   const counts = new Map(); // person id (string) → photo count
   for (const e of entries) {
     const seen = new Set();
-    for (const f of e.faces ?? []) {
+    for (const f of getFaceRegions(e)) {
       const pid = String(f.person);
       if (seen.has(pid)) continue;
       seen.add(pid);
