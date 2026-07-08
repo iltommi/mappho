@@ -140,10 +140,20 @@ async function refreshFacesState() {
   if (facesMode) renderFacesOverlay();
 }
 
+const FACE_LABEL_GAP = 3; // px — minimum clearance enforced between labels
+
 // Draws rectangles + name labels over the current image. Regions come from
 // getFaceRegions() in normalised [0,1] units with cx/cy at the region centre
 // (MWG semantics); they are scaled onto the displayed thumbnail and positioned
 // in pane coordinates so they ride along during swipe animations.
+//
+// Labels are positioned in two passes: first every box/label is created and
+// appended (so the browser lays out each label's natural width for its text),
+// then each label is placed near its box and nudged downward past any
+// already-placed label it would otherwise overlap — a label can end up
+// several faces below its box in a dense cluster, but never on top of another
+// name. Only label-vs-label overlap is resolved; a label sitting over a
+// neighbouring face's box is fine.
 function renderFacesOverlay() {
   facesOverlay.innerHTML = '';
   if (!facesMode || !_facesRegions.length) { facesOverlay.style.display = 'none'; return; }
@@ -155,19 +165,44 @@ function renderFacesOverlay() {
   const ox = imgRect.left - paneRect.left;
   const oy = imgRect.top  - paneRect.top;
   const people = getFacesPeople();
+
+  const labels = []; // { el, boxTop, boxLeft }
   for (const r of _facesRegions) {
-    const t = oy + (r.cy - r.h / 2) * imgRect.height;
+    const boxTop  = oy + (r.cy - r.h / 2) * imgRect.height;
+    const boxLeft = ox + (r.cx - r.w / 2) * imgRect.width;
     const box = document.createElement('div');
     box.className = 'ss-face-box';
-    box.style.cssText = `left:${ox + (r.cx - r.w / 2) * imgRect.width}px;top:${t}px;`
-      + `width:${r.w * imgRect.width}px;height:${r.h * imgRect.height}px`;
+    box.style.cssText = `left:${boxLeft}px;top:${boxTop}px;width:${r.w * imgRect.width}px;height:${r.h * imgRect.height}px`;
+    facesOverlay.appendChild(box);
+
     const label = document.createElement('span');
     label.className = 'ss-face-label';
     label.textContent = people[String(r.person)] ?? `#${r.person}`;
-    if (t > 22) { label.style.bottom = '100%'; label.style.top = 'auto'; } // above the box when there's room
-    box.appendChild(label);
-    facesOverlay.appendChild(box);
+    facesOverlay.appendChild(label);
+    labels.push({ el: label, boxTop, boxLeft });
   }
+
+  const placed = [];
+  for (const { el, boxTop, boxLeft } of labels) {
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = Math.max(ox, Math.min(boxLeft - 2, ox + imgRect.width - w));
+    let top  = boxTop > h + 4 ? boxTop - h - 2 : boxTop + 2; // above the box when there's room, else inside it
+
+    let moved = true, guard = 0;
+    while (moved && guard++ < 60) {
+      moved = false;
+      for (const p of placed) {
+        const overlaps = left < p.left + p.width + FACE_LABEL_GAP && left + w + FACE_LABEL_GAP > p.left
+          && top < p.top + p.height + FACE_LABEL_GAP && top + h + FACE_LABEL_GAP > p.top;
+        if (overlaps) { top = p.top + p.height + FACE_LABEL_GAP; moved = true; }
+      }
+    }
+
+    el.style.left = `${left}px`;
+    el.style.top  = `${top}px`;
+    placed.push({ left, top, width: w, height: h });
+  }
+
   // Explicit 'block': the stylesheet default is display:none, so clearing the
   // inline style would hide the overlay again.
   facesOverlay.style.display = 'block';
