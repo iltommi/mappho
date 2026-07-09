@@ -210,6 +210,16 @@ export async function getOrphansPage(offset, limit, fromTs = null, toTs = null) 
   return results;
 }
 
+// Returns every orphan (no GPS) with ts in [fromTs, toTs], unpaginated. Meant
+// for small, inherently bounded ranges — e.g. "every dated-but-unlocated
+// photo from one calendar day" — where a full fetch is cheap and pagination
+// would just get in the way of selecting the whole set at once.
+export async function getOrphansInRange(fromTs, toTs) {
+  const d = await db();
+  const tx = d.transaction(ORPHAN_STORE, 'readonly');
+  return tx.store.index('by_ts').getAll(IDBKeyRange.bound(fromTs, toTs));
+}
+
 export async function countOrphansInRange(fromTs, toTs) {
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readonly');

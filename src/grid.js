@@ -21,6 +21,7 @@ const scrollEl   = document.getElementById('grid-scroll');
 const bulkBar    = document.getElementById('grid-bulk-bar');
 const bulkCountEl  = document.getElementById('grid-bulk-count');
 const bulkGeotagBtn   = document.getElementById('grid-bulk-geotag');
+const bulkSameDayBtn  = document.getElementById('grid-bulk-sameday');
 const bulkFixDateBtn  = document.getElementById('grid-bulk-fixdate');
 const bulkShareBtn    = document.getElementById('grid-bulk-share');
 const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
@@ -105,14 +106,15 @@ export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
 const PAGE_SIZE  = 60;
 const THUMB_SIZE = '256x256';
 
-let items       = [];
-let fetchPageFn = null;
-let total       = null;
-let offset      = 0;
-let done        = false;
-let loadingPage = false;
-let reopenFn    = null;
-let gridTitle   = '';
+let items        = [];
+let fetchPageFn  = null;
+let total        = null;
+let offset       = 0;
+let done         = false;
+let loadingPage  = false;
+let reopenFn     = null;
+let gridTitle    = '';
+let sameDayFetch = null; // (anchorPhoto) => Promise<Photo[]> — set per-open via openGrid()'s options
 
 function updateCount() {
   const counts = total != null ? `${items.length} / ${total}` : `${items.length}+`;
@@ -128,10 +130,11 @@ const selected = new Set(); // indices into `items`
 function close() {
   el.classList.remove('open');
   track.innerHTML = '';
-  items       = [];
-  fetchPageFn = null;
-  reopenFn    = null;
-  gridTitle   = '';
+  items        = [];
+  fetchPageFn  = null;
+  reopenFn     = null;
+  gridTitle    = '';
+  sameDayFetch = null;
   pageObserver?.disconnect();
   thumbObserver?.disconnect();
   exitSelectMode();
@@ -150,6 +153,8 @@ function updateBulkBar() {
   bulkFixDateBtn.disabled  = selected.size === 0;
   bulkShareBtn.disabled    = selected.size === 0;
   bulkDeleteBtn.disabled   = selected.size === 0;
+  bulkSameDayBtn.style.display = sameDayFetch ? '' : 'none';
+  bulkSameDayBtn.disabled  = selected.size !== 1; // needs exactly one anchor photo to read a date from
 }
 
 function setSelectMode(on) {
@@ -157,6 +162,10 @@ function setSelectMode(on) {
   selectBtn.classList.toggle('active', on);
   selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
   bulkBar.style.display = on ? 'flex' : 'none';
+  // The header's ✕ closes the whole grid — confusingly similar to "Cancel
+  // select" right below it once select mode is active, so hide it and let
+  // Cancel select be the only way back out of that mode.
+  closeBtn.style.display = on ? 'none' : '';
   el.classList.toggle('select-mode', on);
   positionScrubber();
   if (!on) {
@@ -179,6 +188,31 @@ bulkGeotagBtn.addEventListener('click', () => {
   close();
   startBulkGeotagging(photos, ({ success, count, failed }) => {
     if (success) log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
+    reopen?.();
+  });
+});
+
+bulkSameDayBtn.addEventListener('click', async () => {
+  if (selected.size !== 1 || !sameDayFetch) return;
+  const anchor = items[[...selected][0]];
+  const reopen = reopenFn;
+  bulkSameDayBtn.disabled = true;
+  const origIcon = bulkSameDayBtn.textContent;
+  bulkSameDayBtn.textContent = '⏳';
+  let dayPhotos = [];
+  try {
+    dayPhotos = await sameDayFetch(anchor);
+  } catch (e) {
+    log('Same-day fetch error', e.message);
+  }
+  if (!dayPhotos.length) {
+    bulkSameDayBtn.textContent = '❌';
+    setTimeout(() => { bulkSameDayBtn.textContent = origIcon; bulkSameDayBtn.disabled = selected.size !== 1; }, 1500);
+    return;
+  }
+  close();
+  startBulkGeotagging(dayPhotos, ({ success, count, failed }) => {
+    if (success) log('Same-day geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
     reopen?.();
   });
 });
@@ -440,14 +474,15 @@ async function loadNextPage() {
 // `reopen`, if given, is called after a bulk action completes (success or
 // cancel) to refresh and reopen the grid with fresh data — the underlying
 // list (e.g. "no location") shrinks once photos get geotagged.
-export async function openGrid(fetchPage, totalCount, { reopen = null, title = '' } = {}) {
-  fetchPageFn = fetchPage;
-  total       = totalCount ?? null;
-  reopenFn    = reopen;
-  gridTitle   = title;
-  items       = [];
-  offset      = 0;
-  done        = false;
+export async function openGrid(fetchPage, totalCount, { reopen = null, title = '', sameDayFetch: sdf = null } = {}) {
+  fetchPageFn  = fetchPage;
+  total        = totalCount ?? null;
+  reopenFn     = reopen;
+  gridTitle    = title;
+  sameDayFetch = sdf;
+  items        = [];
+  offset       = 0;
+  done         = false;
   track.innerHTML = '';
   updateCount();
   setSelectMode(false);

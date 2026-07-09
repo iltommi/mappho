@@ -20,7 +20,7 @@ import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, unignorePhoto, clearOrphans, getOrphansPage, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -950,6 +950,15 @@ function refreshPeopleCount() {
   }).catch(e => log('People stats error', e.message));
 }
 
+// [start, end] ms bounds of the local calendar day containing ts.
+function localDayBounds(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  const from = d.getTime();
+  d.setHours(23, 59, 59, 999);
+  return { from, to: d.getTime() };
+}
+
 async function openDatedOrphanGrid() {
   const range = getActiveFilterRange();
   const from = range?.from ?? 1;
@@ -970,7 +979,18 @@ async function openDatedOrphanGrid() {
   setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
   setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total, { reopen: openDatedOrphanGrid });
+  openGrid(fetcher, total, {
+    reopen: openDatedOrphanGrid,
+    // Every photo in this grid already has a date but no location — "same
+    // day" picks a single tile as the anchor and pulls in every other dated,
+    // unlocated photo from that same calendar day so one pin can be applied
+    // to the whole batch at once.
+    sameDayFetch: anchor => {
+      if (anchor.ts == null || anchor.ts >= UNDATED_TS) return Promise.resolve([]);
+      const { from: dayFrom, to: dayTo } = localDayBounds(anchor.ts);
+      return getOrphansInRange(dayFrom, dayTo);
+    },
+  });
 }
 
 infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
