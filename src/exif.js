@@ -123,19 +123,41 @@ function fmtExifDate(ts) {
   return `${d.getFullYear()}:${p(d.getMonth()+1)}:${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Inject GPS, date, make and model into a JPEG ArrayBuffer.
-// Pass resetOrientation:true only for canvas-produced JPEGs (pixels already
-// upright); on original camera files it would clobber a real rotation tag.
-export function injectExif(jpegBuffer, { lat, lng, ts, make, model, resetOrientation = false } = {}) {
-  const bytes = new Uint8Array(jpegBuffer);
+function bufferToBinary(buffer) {
+  const bytes = new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.length; i += 8192) {
     binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
   }
+  return binary;
+}
 
-  let exifObj;
-  try   { exifObj = piexif.load(binary); }
-  catch { exifObj = { '0th': {}, Exif: {}, GPS: {}, Interop: {}, '1st': {} }; }
+// Inject GPS, date, make and model into a JPEG ArrayBuffer.
+// Pass resetOrientation:true only for canvas-produced JPEGs (pixels already
+// upright); on original camera files it would clobber a real rotation tag.
+// Pass preserveFrom (the pre-edit original file's ArrayBuffer) when
+// `jpegBuffer` was itself produced by re-encoding through a canvas — canvas
+// output carries no EXIF of its own, so without this every camera tag
+// (make/model, exposure, lens, GPS altitude, ...) would be silently lost on
+// every edit instead of just the handful of fields this function sets.
+export function injectExif(jpegBuffer, { lat, lng, ts, make, model, resetOrientation = false, preserveFrom = null } = {}) {
+  const binary = bufferToBinary(jpegBuffer);
+
+  let exifObj = null;
+  if (preserveFrom) {
+    try { exifObj = piexif.load(bufferToBinary(preserveFrom)); } catch { /* fall through */ }
+    if (exifObj) {
+      // The embedded EXIF thumbnail (IFD1) is a separate mini preview JPEG —
+      // carrying it through unchanged would show the pre-edit image in any
+      // viewer that renders it instead of the main image.
+      exifObj['1st'] = {};
+      exifObj['thumbnail'] = null;
+    }
+  }
+  if (!exifObj) {
+    try   { exifObj = piexif.load(binary); }
+    catch { exifObj = { '0th': {}, Exif: {}, GPS: {}, Interop: {}, '1st': {} }; }
+  }
 
   if (lat != null && lng != null) {
     exifObj.GPS[piexif.GPSIFD.GPSLatitudeRef]  = lat >= 0 ? 'N' : 'S';
@@ -157,7 +179,32 @@ export function injectExif(jpegBuffer, { lat, lng, ts, make, model, resetOrienta
   if (model) exifObj['0th'][piexif.ImageIFD.Model] = model;
   if (resetOrientation) exifObj['0th'][piexif.ImageIFD.Orientation] = 1;
 
-  const exifBytes = piexif.dump(exifObj);
+  let exifBytes;
+  try {
+    exifBytes = piexif.dump(exifObj);
+  } catch (e) {
+    // A preserved original's EXIF can in principle be malformed or too large
+    // for piexifjs to re-dump (e.g. an oversized MakerNote) — fall back to
+    // just the fields this call actually set rather than failing the save.
+    if (!preserveFrom) throw e;
+    const minimal = { '0th': {}, Exif: {}, GPS: {}, Interop: {}, '1st': {} };
+    if (lat != null && lng != null) {
+      minimal.GPS[piexif.GPSIFD.GPSLatitudeRef]  = lat >= 0 ? 'N' : 'S';
+      minimal.GPS[piexif.GPSIFD.GPSLatitude]     = toDMS(Math.abs(lat));
+      minimal.GPS[piexif.GPSIFD.GPSLongitudeRef] = lng >= 0 ? 'E' : 'W';
+      minimal.GPS[piexif.GPSIFD.GPSLongitude]    = toDMS(Math.abs(lng));
+    }
+    if (ts) {
+      const dateStr = fmtExifDate(ts);
+      if (dateStr) {
+        minimal['0th'][piexif.ImageIFD.DateTime]         = dateStr;
+        minimal['Exif'][piexif.ExifIFD.DateTimeOriginal]  = dateStr;
+        minimal['Exif'][piexif.ExifIFD.DateTimeDigitized] = dateStr;
+      }
+    }
+    if (resetOrientation) minimal['0th'][piexif.ImageIFD.Orientation] = 1;
+    exifBytes = piexif.dump(minimal);
+  }
   const modified  = piexif.insert(exifBytes, binary);
   const out = new Uint8Array(modified.length);
   for (let i = 0; i < modified.length; i++) out[i] = modified.charCodeAt(i);

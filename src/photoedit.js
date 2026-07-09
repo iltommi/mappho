@@ -114,7 +114,11 @@ saveBtn.addEventListener('click', async () => {
       c.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.92));
     let outBuf = await outBlob.arrayBuffer();
 
-    outBuf = injectExif(outBuf, { ts: photo.ts, lat: photo.lat, lng: photo.lng, resetOrientation: true });
+    // preserveFrom carries forward the original file's camera EXIF (make/
+    // model, exposure, lens, ...) that the canvas re-encode above discarded —
+    // buf is still valid here, the Blob/createImageBitmap calls above copied
+    // it rather than consuming it.
+    outBuf = injectExif(outBuf, { ts: photo.ts, lat: photo.lat, lng: photo.lng, resetOrientation: true, preserveFrom: buf });
 
     const { hash: oldHash } = await getFileStat(photo.fileid).catch(() => ({}));
     const newFileid = await overwriteFile(photo.fileid, outBuf);
