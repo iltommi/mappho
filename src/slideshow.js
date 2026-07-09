@@ -738,10 +738,11 @@ function updateCounter() {
   const total = lazyTotal != null
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
-  const { ts } = photos[current];
-  const dateStr  = (ts && ts < UNDATED_TS) ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
-  const facesStr = _facesRegions.length ? `👥 ${_facesRegions.length}` : '';
-  const parts = [`${current + 1} / ${total}`, dateStr, facesStr].filter(Boolean);
+  const { ts, lat } = photos[current];
+  const dateStr = (ts && ts < UNDATED_TS) ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
+  const metaStr = [lat != null ? '📍' : '', _facesRegions.length ? `👥 ${_facesRegions.length}` : '']
+    .filter(Boolean).join(' ');
+  const parts = [`${current + 1} / ${total}`, dateStr, metaStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
   const single = total === 1;
   prevBtn.style.display = single ? 'none' : '';
@@ -829,14 +830,21 @@ async function go(index) {
 
 // Patches the current slide's metadata in-place after an edit (fix-date, geotag).
 // Transfers the thumbnail cache from old fileid to new so no re-fetch is needed.
-export function updateCurrentSlideshowItem({ fileid, name, ts }) {
+// lat/lng are optional — fix-date/photo-edit callers omit them, which leaves
+// whatever the slide already had untouched instead of clobbering it with
+// undefined; geotag callers pass the newly-saved coordinates.
+export function updateCurrentSlideshowItem({ fileid, name, ts, lat, lng }) {
   if (!photos.length || !el.classList.contains('open')) return;
   const old = photos[current];
   if (old.fileid !== fileid && imgCache.has(old.fileid)) {
     imgCache.set(fileid, imgCache.get(old.fileid));
     imgCache.delete(old.fileid);
   }
-  photos[current] = { ...old, fileid, name, ts };
+  photos[current] = {
+    ...old, fileid, name, ts,
+    ...(lat !== undefined ? { lat } : {}),
+    ...(lng !== undefined ? { lng } : {}),
+  };
   // The edit replaced the file, so the carried hash is stale — drop it and let
   // the faces lookup fall back to the freshly updated cache record.
   if (old.fileid !== fileid) delete photos[current].hash;

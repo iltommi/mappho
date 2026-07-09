@@ -893,8 +893,11 @@ async function openPeopleGrid(people) {
   items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
   // In-place edit handlers (like the map marker slideshow) — no list reopen.
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => {
+    if (r.success) {
+      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
+      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
+    }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setFixTimeHandler(photo => startFixTime(photo, () => {}));
@@ -1603,8 +1606,11 @@ async function main() {
     if (retryQueue.length > 0) showRetryDialog(retryQueue);
   });
 
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => {
+    if (r.success) {
+      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
+      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
+    }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
@@ -1638,8 +1644,11 @@ async function main() {
   });
 
   // Handlers for map marker slideshow — update in place, no redirect.
-  setMarkerGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setMarkerGeotagHandler(photo => startGeotagging(photo, r => {
+    if (r.success) {
+      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
+      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
+    }
   }));
   setMarkerFixDateHandler(photo => startFixDate(photo, () => {}));
   setMarkerFixTimeHandler(photo => startFixTime(photo, () => {}));

@@ -147,7 +147,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     await putCached({ fileid, name, lat, lng, ts: realTs, hash: photo.hash ?? null });
     addMarker({ fileid, name, lat, lng, ts: realTs });
     await setVideoMetaEntry(fileid, { lat, lng, ts: realTs });
-    return;
+    return { oldFileid: fileid, newFileid: fileid, newName: name, ts: realTs, lat, lng };
   }
 
   if (isHeic) {
@@ -181,7 +181,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     await putCached({ fileid: newFileid, name: orgName ?? jpegName, lat, lng, ts: realTs, hash: newHash ?? null });
     addMarker({ fileid: newFileid, name: orgName ?? jpegName, lat, lng, ts: realTs });
     log('Geotag', `Done — HEIC replaced by ${orgName ?? jpegName} (fileid ${newFileid})`);
-    return;
+    return { oldFileid: fileid, newFileid, newName: orgName ?? jpegName, ts: realTs, lat, lng };
   }
 
   const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
@@ -209,6 +209,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   await putCached({ fileid: newFileid, name: orgName ?? name, lat, lng, ts: realTs, hash: newHash ?? null });
   addMarker({ fileid: newFileid, name: orgName ?? name, lat, lng, ts: realTs });
   log('Geotag', `Saved — new fileid ${newFileid}${orgName ? ` → organized as ${orgName}` : ''}`);
+  return { oldFileid: fileid, newFileid, newName: orgName ?? name, ts: realTs, lat, lng };
 }
 
 saveBtn.addEventListener('click', async () => {
@@ -227,10 +228,10 @@ saveBtn.addEventListener('click', async () => {
   saveBtn.disabled    = true;
   saveBtn.textContent = '⏳ Saving…';
   try {
-    await applyGeotagToPhoto(pendingPhoto, lat, lng);
+    const r = await applyGeotagToPhoto(pendingPhoto, lat, lng);
     finish();
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-    onDone?.({ success: true });
+    onDone?.({ success: true, ...r });
   } catch (e) {
     log('Geotag error', e.message);
     hintEl.textContent  = `Error: ${e.message}`;

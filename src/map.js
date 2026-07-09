@@ -275,7 +275,7 @@ function _buildMarker(fileid, name, lat, lng, ts) {
 
   marker.bindPopup(div, { maxWidth: 280 });
   markerIndex.push({ marker, ts: ts ?? null, name });
-  markerData.set(marker, { fileid, name, ts: ts ?? null });
+  markerData.set(marker, { fileid, name, lat, lng, ts: ts ?? null });
   return marker;
 }
 
