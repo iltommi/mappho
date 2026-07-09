@@ -192,25 +192,33 @@ bulkGeotagBtn.addEventListener('click', () => {
   });
 });
 
-// Replaces the current tile set with exactly `photos`, all pre-selected —
-// used by "Same day" to narrow the view to the calendar day(s) covered by
-// the current selection and select every matching photo for a single bulk
-// action. Stays in select mode; the user reviews/adjusts the selection and
-// picks a bulk action themselves (typically 📍, but nothing forces that).
-function loadFixedSet(photos) {
-  track.innerHTML = '';
-  items  = photos;
-  offset = photos.length;
-  total  = photos.length;
-  done   = true;
-  const frag = document.createDocumentFragment();
-  photos.forEach(item => frag.appendChild(makeTile(item)));
-  track.appendChild(frag);
-  updateCount();
-  selected.clear();
-  items.forEach((_, i) => selected.add(i));
-  [...track.children].forEach(tile => tile.classList.add('selected'));
-  scrollEl.scrollTop = 0;
+// Marks every one of `photos` as selected without disturbing the current
+// view — tiles already loaded are just flagged selected in place; any not
+// yet loaded (not on an already-fetched page) are appended to the end and
+// then flagged too. Used by "Same day" to extend the existing selection to
+// the calendar day(s) it covers, instead of replacing the tile view.
+//
+// Appending falls outside the normal offset-based page sequence, so further
+// lazy-loading is disabled afterward (`done = true`) to avoid the next
+// scroll-triggered fetch skipping or duplicating photos around that seam.
+function selectMatching(photos) {
+  const existingIds = new Set(items.map(it => it.fileid));
+  const toAppend = photos.filter(p => !existingIds.has(p.fileid));
+  if (toAppend.length) {
+    const frag = document.createDocumentFragment();
+    toAppend.forEach(item => frag.appendChild(makeTile(item)));
+    track.appendChild(frag);
+    items.push(...toAppend);
+    total = items.length;
+    done  = true;
+    updateCount();
+  }
+  const matchIds = new Set(photos.map(p => p.fileid));
+  items.forEach((it, idx) => {
+    if (!matchIds.has(it.fileid)) return;
+    selected.add(idx);
+    tileAt(idx)?.classList.add('selected');
+  });
   updateBulkBar();
   updateScrubber();
 }
@@ -232,7 +240,7 @@ sameDayBtn.addEventListener('click', async () => {
   }
   sameDayBtn.textContent = origLabel;
   if (!dayPhotos.length) { sameDayBtn.disabled = !selected.size; return; }
-  loadFixedSet(dayPhotos);
+  selectMatching(dayPhotos);
 });
 
 bulkFixDateBtn.addEventListener('click', () => {
