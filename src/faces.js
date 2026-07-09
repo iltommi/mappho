@@ -225,13 +225,18 @@ export function getFacesPeople() {
   return readMeta()?.people ?? {};
 }
 
-// Returns the faces entries of every photo a person appears in.
-export async function getEntriesForPerson(personId) {
+// Returns the faces entries of every photo where ALL given people appear
+// together (AND across ids) — a single id is the plain "this person's photos" case.
+export async function getEntriesForPeople(personIds) {
   await load();
-  const pid = String(personId);
+  const ids = personIds.map(String);
+  if (!ids.length) return [];
   const all = await getAllFaces();
-  const matched = all.filter(e => getFaceRegions(e).some(f => String(f.person) === pid));
-  log('Faces', `person ${pid}: ${matched.length} photos in mirror`);
+  const matched = all.filter(e => {
+    const present = new Set(getFaceRegions(e).map(f => String(f.person)));
+    return ids.every(id => present.has(id));
+  });
+  log('Faces', `people [${ids.join(',')}]: ${matched.length} photos in mirror (AND)`);
   return matched;
 }
 

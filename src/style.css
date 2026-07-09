@@ -1533,6 +1533,46 @@ body.filter-open #map { top: 40px; }
   text-align: center;
 }
 
+.people-row .info-row-label { flex: 1; min-width: 0; }
+.people-row-check {
+  width: 18px;
+  height: 18px;
+  accent-color: #0ea5e9;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.people-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#people-select-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #16213e;
+  border-top: 1px solid #334155;
+}
+#people-select-count {
+  font-size: .82rem;
+  color: #94a3b8;
+}
+#people-select-ok {
+  border: none;
+  border-radius: 8px;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: .85rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+#people-select-ok:hover { background: #0284c7; }
+
 #people-search-row {
   position: relative;
   flex: 1;

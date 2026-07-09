@@ -16,7 +16,7 @@ import { openGrid, setBulkFixDateHandler } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
-import { refreshFaces, getPeopleStats, getEntriesForPerson } from './faces.js';
+import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -780,15 +780,25 @@ function renderInfoRows() {
 
 // ── People popup ──────────────────────────────────────────────────────────────
 
-const peoplePopup      = document.getElementById('people-popup');
-const peopleRowsEl     = document.getElementById('people-rows');
+const peoplePopup       = document.getElementById('people-popup');
+const peopleRowsEl      = document.getElementById('people-rows');
 const peopleSearchInput = document.getElementById('people-search-input');
+const peopleSelectBar   = document.getElementById('people-select-bar');
+const peopleSelectCount = document.getElementById('people-select-count');
+const peopleSelectOkBtn = document.getElementById('people-select-ok');
 document.getElementById('people-popup-close').addEventListener('click', () => { peoplePopup.style.display = 'none'; });
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) peoplePopup.style.display = 'none'; });
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-let _peopleList = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+let _peopleList     = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+let _peopleSelected = new Map(); // id -> {id, name} — persists across search filtering
+
+function updatePeopleSelectBar() {
+  const n = _peopleSelected.size;
+  peopleSelectCount.textContent = n ? `${n} selected` : '';
+  peopleSelectBar.style.display = n ? 'flex' : 'none';
+}
 
 function renderPeopleRows(filterText) {
   const q = filterText.trim().toLowerCase();
@@ -804,11 +814,35 @@ function renderPeopleRows(filterText) {
   const frag = document.createDocumentFragment();
   for (const p of filtered) {
     const row = document.createElement('div');
-    row.className = 'info-row info-row-btn';
-    row.innerHTML = `<span class="info-row-label">👤 ${escapeHtml(p.name)}</span><span class="info-row-value">${p.count}</span>`;
+    row.className = 'info-row people-row info-row-btn';
+
+    const label = document.createElement('span');
+    label.className = 'info-row-label';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'people-row-check';
+    check.checked = _peopleSelected.has(p.id);
+    const name = document.createElement('span');
+    name.className = 'people-row-name';
+    name.textContent = `👤 ${p.name}`;
+    label.append(check, name);
+
+    const value = document.createElement('span');
+    value.className = 'info-row-value';
+    value.textContent = p.count;
+
+    row.append(label, value);
+
+    check.addEventListener('click', e => {
+      e.stopPropagation(); // don't also trigger the row's "open this person's grid" tap
+      if (check.checked) _peopleSelected.set(p.id, p);
+      else _peopleSelected.delete(p.id);
+      updatePeopleSelectBar();
+    });
+
     row.addEventListener('click', () => {
       peoplePopup.style.display = 'none';
-      openPersonGrid(p).catch(e => { log('Person grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      openPeopleGrid([p]).catch(e => { log('People grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
     });
     frag.appendChild(row);
   }
@@ -817,21 +851,33 @@ function renderPeopleRows(filterText) {
 
 peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
 
+peopleSelectOkBtn.addEventListener('click', () => {
+  if (!_peopleSelected.size) return;
+  const people = [..._peopleSelected.values()];
+  peoplePopup.style.display = 'none';
+  openPeopleGrid(people).catch(e => { log('People grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+});
+
 async function openPeoplePopup() {
   const { list } = await getPeopleStats();
   if (!list.length) { showBriefStatus('No people recognised — faces.json not available.'); return; }
   infoPopup.style.display = 'none';
   _peopleList = list;
+  _peopleSelected = new Map();
   peopleSearchInput.value = '';
+  updatePeopleSelectBar();
   renderPeopleRows('');
   peoplePopup.style.display = 'flex';
 }
 
-// Grid of all photos a person appears in. Faces entries are joined to cached
-// photo records by content hash — the grid needs fileids for thumbnails.
-async function openPersonGrid(person) {
-  const entries = await getEntriesForPerson(person.id);
-  if (!entries.length) { showBriefStatus(`No photos found for ${person.name}.`); return; }
+// Grid of all photos where EVERY given person appears together (AND — a
+// single-person array is the plain "this person's photos" case). Faces
+// entries are joined to cached photo records by content hash — the grid
+// needs fileids for thumbnails.
+async function openPeopleGrid(people) {
+  const entries = await getEntriesForPeople(people.map(p => p.id));
+  const label = people.map(p => p.name).join(' + ');
+  if (!entries.length) { showBriefStatus(`No photos found for ${label}.`); return; }
   const byHash = new Map();
   for (const r of await getAllCached()) {
     if (r.hash != null && !r.ignored) byHash.set(String(r.hash), r);
@@ -842,8 +888,8 @@ async function openPersonGrid(person) {
     const rec = byHash.get(e.hash);
     if (rec) items.push(rec); else missing++;
   }
-  if (missing) log('People grid', `${person.name}: ${missing} of ${entries.length} entries have no cached record`);
-  if (!items.length) { showBriefStatus(`No cached photos for ${person.name} — run a scan or rebuild first.`); return; }
+  if (missing) log('People grid', `${label}: ${missing} of ${entries.length} entries have no cached record`);
+  if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return; }
   items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
   // In-place edit handlers (like the map marker slideshow) — no list reopen.
@@ -854,7 +900,7 @@ async function openPersonGrid(person) {
   setFixTimeHandler(photo => startFixTime(photo, () => {}));
   setIgnoreHandler(null);
   openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
-    { title: `👤 ${person.name}` });
+    { title: `👤 ${label}` });
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden
