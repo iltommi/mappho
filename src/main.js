@@ -780,31 +780,50 @@ function renderInfoRows() {
 
 // ── People popup ──────────────────────────────────────────────────────────────
 
-const peoplePopup  = document.getElementById('people-popup');
-const peopleRowsEl = document.getElementById('people-rows');
+const peoplePopup      = document.getElementById('people-popup');
+const peopleRowsEl     = document.getElementById('people-rows');
+const peopleSearchInput = document.getElementById('people-search-input');
 document.getElementById('people-popup-close').addEventListener('click', () => { peoplePopup.style.display = 'none'; });
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) peoplePopup.style.display = 'none'; });
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+let _peopleList = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+
+function renderPeopleRows(filterText) {
+  const q = filterText.trim().toLowerCase();
+  const filtered = q ? _peopleList.filter(p => p.name.toLowerCase().includes(q)) : _peopleList;
+  peopleRowsEl.innerHTML = '';
+  if (!filtered.length) {
+    const empty = document.createElement('p');
+    empty.className = 'people-empty';
+    empty.textContent = 'No matches.';
+    peopleRowsEl.appendChild(empty);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const p of filtered) {
+    const row = document.createElement('div');
+    row.className = 'info-row info-row-btn';
+    row.innerHTML = `<span class="info-row-label">👤 ${escapeHtml(p.name)}</span><span class="info-row-value">${p.count}</span>`;
+    row.addEventListener('click', () => {
+      peoplePopup.style.display = 'none';
+      openPersonGrid(p).catch(e => { log('Person grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+    });
+    frag.appendChild(row);
+  }
+  peopleRowsEl.appendChild(frag);
+}
+
+peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
+
 async function openPeoplePopup() {
   const { list } = await getPeopleStats();
   if (!list.length) { showBriefStatus('No people recognised — faces.json not available.'); return; }
   infoPopup.style.display = 'none';
-  peopleRowsEl.innerHTML = list.map((p, i) =>
-    `<div class="info-row info-row-btn" data-idx="${i}">
-       <span class="info-row-label">👤 ${escapeHtml(p.name)}</span>
-       <span class="info-row-value">${p.count}</span>
-     </div>`
-  ).join('');
-  peopleRowsEl.querySelectorAll('.info-row-btn').forEach(el => {
-    el.addEventListener('click', () => {
-      const person = list[Number(el.dataset.idx)];
-      if (!person) return;
-      peoplePopup.style.display = 'none';
-      openPersonGrid(person).catch(e => { log('Person grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
-    });
-  });
+  _peopleList = list;
+  peopleSearchInput.value = '';
+  renderPeopleRows('');
   peoplePopup.style.display = 'flex';
 }
 

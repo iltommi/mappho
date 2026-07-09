@@ -1526,6 +1526,40 @@ body.filter-open #map { top: 40px; }
   max-height: min(65vh, 480px);
   overflow-y: auto;
 }
+.people-empty {
+  padding: 14px 20px;
+  color: #94a3b8;
+  font-size: .85rem;
+  text-align: center;
+}
+
+#people-search-row {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+}
+#people-search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: .8rem;
+  color: #64748b;
+  pointer-events: none;
+}
+#people-search-input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: .88rem;
+  font-weight: 400;
+  padding: 7px 10px 7px 30px;
+  outline: none;
+}
+#people-search-input:focus { border-color: #3b82f6; }
 .info-row {
   display: flex;
   align-items: center;
