@@ -982,13 +982,22 @@ async function openDatedOrphanGrid() {
   openGrid(fetcher, total, {
     reopen: openDatedOrphanGrid,
     // Every photo in this grid already has a date but no location — "same
-    // day" picks a single tile as the anchor and pulls in every other dated,
-    // unlocated photo from that same calendar day so one pin can be applied
-    // to the whole batch at once.
-    sameDayFetch: anchor => {
-      if (anchor.ts == null || anchor.ts >= UNDATED_TS) return Promise.resolve([]);
-      const { from: dayFrom, to: dayTo } = localDayBounds(anchor.ts);
-      return getOrphansInRange(dayFrom, dayTo);
+    // day" treats every currently-selected tile as an anchor, resolves the
+    // (possibly several) distinct calendar days among them, and pulls in
+    // every other dated, unlocated photo from each of those days so one pin
+    // can be applied to the whole combined batch at once.
+    sameDayFetch: async anchors => {
+      const dayRanges = new Map(); // local midnight ts -> {from, to}, dedupes anchors landing on the same day
+      for (const a of anchors) {
+        if (a.ts == null || a.ts >= UNDATED_TS) continue;
+        const { from, to } = localDayBounds(a.ts);
+        dayRanges.set(from, { from, to });
+      }
+      if (!dayRanges.size) return [];
+      const lists = await Promise.all([...dayRanges.values()].map(r => getOrphansInRange(r.from, r.to)));
+      const byId = new Map();
+      for (const list of lists) for (const p of list) byId.set(p.fileid, p);
+      return [...byId.values()];
     },
   });
 }

@@ -114,7 +114,7 @@ let done         = false;
 let loadingPage  = false;
 let reopenFn     = null;
 let gridTitle    = '';
-let sameDayFetch = null; // (anchorPhoto) => Promise<Photo[]> — set per-open via openGrid()'s options
+let sameDayFetch = null; // (anchorPhotos: Photo[]) => Promise<Photo[]> — set per-open via openGrid()'s options
 
 function updateCount() {
   const counts = total != null ? `${items.length} / ${total}` : `${items.length}+`;
@@ -153,7 +153,7 @@ function updateBulkBar() {
   bulkFixDateBtn.disabled  = selected.size === 0;
   bulkShareBtn.disabled    = selected.size === 0;
   bulkDeleteBtn.disabled   = selected.size === 0;
-  sameDayBtn.disabled      = selected.size !== 1; // needs exactly one anchor photo to read a date from
+  sameDayBtn.disabled      = selected.size === 0; // needs at least one selected photo to read a date from
 }
 
 function setSelectMode(on) {
@@ -193,10 +193,10 @@ bulkGeotagBtn.addEventListener('click', () => {
 });
 
 // Replaces the current tile set with exactly `photos`, all pre-selected —
-// used by "Same day" to narrow the view to one calendar day's photos and
-// select every one of them for a single bulk action. Stays in select mode;
-// the user reviews/adjusts the selection and picks a bulk action themselves
-// (typically 📍, but nothing forces that).
+// used by "Same day" to narrow the view to the calendar day(s) covered by
+// the current selection and select every matching photo for a single bulk
+// action. Stays in select mode; the user reviews/adjusts the selection and
+// picks a bulk action themselves (typically 📍, but nothing forces that).
 function loadFixedSet(photos) {
   track.innerHTML = '';
   items  = photos;
@@ -215,20 +215,23 @@ function loadFixedSet(photos) {
   updateScrubber();
 }
 
+// Every currently-selected photo is an anchor — sameDayFetch resolves the
+// (possibly several) distinct calendar days among them and returns the
+// union of matching photos across all of those days.
 sameDayBtn.addEventListener('click', async () => {
-  if (selected.size !== 1 || !sameDayFetch) return;
-  const anchor = items[[...selected][0]];
+  if (!selected.size || !sameDayFetch) return;
+  const anchors = [...selected].map(i => items[i]);
   sameDayBtn.disabled = true;
   const origLabel = sameDayBtn.textContent;
   sameDayBtn.textContent = '…';
   let dayPhotos = [];
   try {
-    dayPhotos = await sameDayFetch(anchor);
+    dayPhotos = await sameDayFetch(anchors);
   } catch (e) {
     log('Same-day fetch error', e.message);
   }
   sameDayBtn.textContent = origLabel;
-  if (!dayPhotos.length) { sameDayBtn.disabled = selected.size !== 1; return; }
+  if (!dayPhotos.length) { sameDayBtn.disabled = !selected.size; return; }
   loadFixedSet(dayPhotos);
 });
 
