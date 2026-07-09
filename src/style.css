@@ -626,7 +626,7 @@ body.filter-open #map { top: 40px; }
   font-size: .78rem;
   color: #94a3b8;
 }
-#grid-select-btn {
+#grid-select-btn, #grid-sameday-btn {
   border: none;
   border-radius: 8px;
   background: rgba(255,255,255,.08);
@@ -639,6 +639,7 @@ body.filter-open #map { top: 40px; }
   background: #0ea5e9;
   color: #fff;
 }
+#grid-sameday-btn:disabled { opacity: .4; cursor: default; }
 
 #grid-scroll {
   flex: 1;
@@ -768,7 +769,7 @@ body.filter-open #map { top: 40px; }
   display: flex;
   gap: 10px;
 }
-#grid-bulk-geotag, #grid-bulk-sameday, #grid-bulk-fixdate, #grid-bulk-share, #grid-bulk-delete, #grid-bulk-cancel {
+#grid-bulk-geotag, #grid-bulk-fixdate, #grid-bulk-share, #grid-bulk-delete, #grid-bulk-cancel {
   width: 44px;
   height: 44px;
   padding: 0;
@@ -785,10 +786,6 @@ body.filter-open #map { top: 40px; }
   background: #16a34a;
   color: #fff;
 }
-#grid-bulk-sameday {
-  background: #0e7490;
-  color: #fff;
-}
 #grid-bulk-fixdate {
   background: #6d28d9;
   color: #fff;
@@ -797,7 +794,7 @@ body.filter-open #map { top: 40px; }
   background: #2563eb;
   color: #fff;
 }
-#grid-bulk-geotag:disabled, #grid-bulk-sameday:disabled, #grid-bulk-fixdate:disabled, #grid-bulk-share:disabled, #grid-bulk-delete:disabled { opacity: .45; cursor: default; }
+#grid-bulk-geotag:disabled, #grid-bulk-fixdate:disabled, #grid-bulk-share:disabled, #grid-bulk-delete:disabled { opacity: .45; cursor: default; }
 #grid-bulk-delete {
   background: #dc2626;
   color: #fff;

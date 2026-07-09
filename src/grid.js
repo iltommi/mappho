@@ -21,7 +21,7 @@ const scrollEl   = document.getElementById('grid-scroll');
 const bulkBar    = document.getElementById('grid-bulk-bar');
 const bulkCountEl  = document.getElementById('grid-bulk-count');
 const bulkGeotagBtn   = document.getElementById('grid-bulk-geotag');
-const bulkSameDayBtn  = document.getElementById('grid-bulk-sameday');
+const sameDayBtn      = document.getElementById('grid-sameday-btn');
 const bulkFixDateBtn  = document.getElementById('grid-bulk-fixdate');
 const bulkShareBtn    = document.getElementById('grid-bulk-share');
 const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
@@ -153,8 +153,7 @@ function updateBulkBar() {
   bulkFixDateBtn.disabled  = selected.size === 0;
   bulkShareBtn.disabled    = selected.size === 0;
   bulkDeleteBtn.disabled   = selected.size === 0;
-  bulkSameDayBtn.style.display = sameDayFetch ? '' : 'none';
-  bulkSameDayBtn.disabled  = selected.size !== 1; // needs exactly one anchor photo to read a date from
+  sameDayBtn.disabled      = selected.size !== 1; // needs exactly one anchor photo to read a date from
 }
 
 function setSelectMode(on) {
@@ -162,8 +161,9 @@ function setSelectMode(on) {
   selectBtn.classList.toggle('active', on);
   selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
   bulkBar.style.display = on ? 'flex' : 'none';
+  sameDayBtn.style.display = (on && sameDayFetch) ? '' : 'none';
   // The header's ✕ closes the whole grid — confusingly similar to "Cancel
-  // select" right below it once select mode is active, so hide it and let
+  // select" right next to it once select mode is active, so hide it and let
   // Cancel select be the only way back out of that mode.
   closeBtn.style.display = on ? 'none' : '';
   el.classList.toggle('select-mode', on);
@@ -192,29 +192,44 @@ bulkGeotagBtn.addEventListener('click', () => {
   });
 });
 
-bulkSameDayBtn.addEventListener('click', async () => {
+// Replaces the current tile set with exactly `photos`, all pre-selected —
+// used by "Same day" to narrow the view to one calendar day's photos and
+// select every one of them for a single bulk action. Stays in select mode;
+// the user reviews/adjusts the selection and picks a bulk action themselves
+// (typically 📍, but nothing forces that).
+function loadFixedSet(photos) {
+  track.innerHTML = '';
+  items  = photos;
+  offset = photos.length;
+  total  = photos.length;
+  done   = true;
+  const frag = document.createDocumentFragment();
+  photos.forEach(item => frag.appendChild(makeTile(item)));
+  track.appendChild(frag);
+  updateCount();
+  selected.clear();
+  items.forEach((_, i) => selected.add(i));
+  [...track.children].forEach(tile => tile.classList.add('selected'));
+  scrollEl.scrollTop = 0;
+  updateBulkBar();
+  updateScrubber();
+}
+
+sameDayBtn.addEventListener('click', async () => {
   if (selected.size !== 1 || !sameDayFetch) return;
   const anchor = items[[...selected][0]];
-  const reopen = reopenFn;
-  bulkSameDayBtn.disabled = true;
-  const origIcon = bulkSameDayBtn.textContent;
-  bulkSameDayBtn.textContent = '⏳';
+  sameDayBtn.disabled = true;
+  const origLabel = sameDayBtn.textContent;
+  sameDayBtn.textContent = '…';
   let dayPhotos = [];
   try {
     dayPhotos = await sameDayFetch(anchor);
   } catch (e) {
     log('Same-day fetch error', e.message);
   }
-  if (!dayPhotos.length) {
-    bulkSameDayBtn.textContent = '❌';
-    setTimeout(() => { bulkSameDayBtn.textContent = origIcon; bulkSameDayBtn.disabled = selected.size !== 1; }, 1500);
-    return;
-  }
-  close();
-  startBulkGeotagging(dayPhotos, ({ success, count, failed }) => {
-    if (success) log('Same-day geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
-    reopen?.();
-  });
+  sameDayBtn.textContent = origLabel;
+  if (!dayPhotos.length) { sameDayBtn.disabled = selected.size !== 1; return; }
+  loadFixedSet(dayPhotos);
 });
 
 bulkFixDateBtn.addEventListener('click', () => {
