@@ -103,17 +103,23 @@ export async function heicToJpeg(heicBuffer) {
   }
 }
 
-// Fetch Make and Model from a HEIC file's EXIF for metadata preservation.
-export async function extractHeicMeta(fileid) {
+// Wraps a HEIC's raw TIFF/EXIF bytes (from fetchHeicExifTiff) with the
+// "Exif\0\0" header piexif.load() requires to recognise standalone TIFF data
+// rather than a full JPEG. The result is directly usable as injectExif's
+// preserveFrom, so a HEIC→JPEG conversion (geotag/fix-date) carries forward
+// the original's full EXIF — make/model, exposure, lens, GPS altitude, etc.
+// — the same way a JPEG-to-JPEG edit does, instead of losing everything but
+// whatever fields the caller explicitly re-injects.
+export async function fetchHeicExifForPreserve(fileid) {
   try {
     const tiff = await fetchHeicExifTiff(fileid);
-    if (!tiff) return {};
-    const parsed = await exifr.parse(new Uint8Array(tiff), {
-      ifd0: true, exif: false, gps: false, translateValues: false,
-      pick: ['Make', 'Model'],
-    });
-    return parsed ?? {};
-  } catch { return {}; }
+    if (!tiff) return null;
+    const tiffBytes = new Uint8Array(tiff);
+    const out = new Uint8Array(tiffBytes.length + 6);
+    out.set([0x45, 0x78, 0x69, 0x66, 0x00, 0x00], 0); // "Exif\0\0"
+    out.set(tiffBytes, 6);
+    return out.buffer;
+  } catch { return null; }
 }
 
 function fmtExifDate(ts) {

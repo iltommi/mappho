@@ -6,7 +6,7 @@ const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
-import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, extractHeicMeta } from './exif.js';
+import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex } from './slideshow.js';
@@ -155,14 +155,14 @@ async function applyFixDateToPhoto(photo, ts) {
     syncedName = await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
     log('Fix date', 'extract HEIC meta');
-    const meta = await extractHeicMeta(fileid);
+    const preserveFrom = await fetchHeicExifForPreserve(fileid);
     log('Fix date', 'stat (heic)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
     log('Fix date', 'download HEIC');
     const heicBuf = await downloadFullFile(fileid);
     log('Fix date', `convert to JPEG (${heicBuf.byteLength}B)`);
     const jpegBuf = await heicToJpeg(heicBuf);
-    const jpegWithExif = injectExif(jpegBuf, { ts, make: meta.Make, model: meta.Model, resetOrientation: true });
+    const jpegWithExif = injectExif(jpegBuf, { ts, resetOrientation: true, preserveFrom });
     newName = name.replace(/\.heic$/i, '.jpg');
     log('Fix date', 'stat for parent folder');
     const { parentfolderid } = await getFileStat(fileid);

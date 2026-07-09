@@ -1,4 +1,4 @@
-import { parseDateFromFilename, injectGPS, heicToJpeg, extractHeicMeta, injectExif } from './exif.js';
+import { parseDateFromFilename, injectGPS, heicToJpeg, fetchHeicExifForPreserve, injectExif } from './exif.js';
 import { deleteRecord, deleteOrphan, putCached, UNDATED_TS, findClosestGeotagged } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker } from './map.js';
@@ -151,8 +151,8 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   }
 
   if (isHeic) {
-    log('Geotag', `HEIC → JPEG: fetching metadata…`);
-    const meta = await extractHeicMeta(fileid);
+    log('Geotag', `HEIC → JPEG: fetching original EXIF…`);
+    const preserveFrom = await fetchHeicExifForPreserve(fileid);
 
     log('Geotag', `Downloading ${name}…`);
     const heicBuf = await downloadFullFile(fileid);
@@ -161,7 +161,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const jpegBuf = await heicToJpeg(heicBuf);
 
     log('Geotag', `Injecting EXIF (${lat.toFixed(5)}, ${lng.toFixed(5)})…`);
-    const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, make: meta.Make, model: meta.Model, resetOrientation: true });
+    const jpegWithExif = injectExif(jpegBuf, { lat, lng, ts: realTs, resetOrientation: true, preserveFrom });
 
     const jpegName = name.replace(/\.heic$/i, '.jpg');
     const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
