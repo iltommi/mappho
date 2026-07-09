@@ -866,14 +866,22 @@ function openInfoPopup() {
   refreshPeopleCount();
 }
 
-// Re-derives the cached people count and re-renders Settings if it's open
-// and the count actually changed (e.g. after a background faces.json refresh).
+// Grayed out until the faces mirror has actually resolved a nonzero count —
+// covers both "still reading the db" (initial null) and "no people found".
+function updatePeopleFabState() {
+  peopleFab.disabled = !_peopleCount;
+}
+
+// Re-derives the cached people count, updates the Persons FAB, and re-renders
+// Settings if it's open and the count actually changed (e.g. after a
+// background faces.json refresh).
 function refreshPeopleCount() {
   getPeopleStats().then(({ peopleCount }) => {
     const n = peopleCount || null;
-    if (n === _peopleCount) return;
+    const changed = n !== _peopleCount;
     _peopleCount = n;
-    if (infoPopup.style.display !== 'none') renderInfoRows();
+    updatePeopleFabState();
+    if (changed && infoPopup.style.display !== 'none') renderInfoRows();
   }).catch(e => log('People stats error', e.message));
 }
 
@@ -944,6 +952,7 @@ function showApp() {
   menuFab.style.display = '';
   document.getElementById('fix-position-only-btn').style.display = '';
   peopleFab.style.display = '';
+  peopleFab.disabled = true; // grayed out until the faces mirror resolves a count
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
@@ -1044,7 +1053,9 @@ async function startScan() {
   await applyIgnored().catch(e => log('Ignored apply error', e.message));
   // Faces mirror sync runs in the background — 4.5 MB download on first run.
   _lastFacesRefresh = Date.now(); // primes the resume-listener cooldown
-  refreshFaces().catch(e => log('Faces refresh error', e.message));
+  refreshFaces()
+    .then(refreshPeopleCount) // enables/grays the Persons FAB once resolved, without waiting for Settings to be opened
+    .catch(e => log('Faces refresh error', e.message));
 
   _stopStartupAnimation();
   localStorage.setItem(STARTUP_TIMING_KEY, String(Date.now() - _startupStart));

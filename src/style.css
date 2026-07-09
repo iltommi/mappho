@@ -75,6 +75,8 @@ html, body {
   justify-content: center;
 }
 #people-fab:hover { opacity: 1; background: #334155; }
+#people-fab:disabled { opacity: .35; cursor: default; }
+#people-fab:disabled:hover { background: #1e293b; }
 
 
 /* Folder picker overlay */
