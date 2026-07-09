@@ -87,7 +87,13 @@ saveBtn.addEventListener('click', async () => {
   try {
     const buf = await downloadFullFile(photo.fileid);
 
-    const bmp = await createImageBitmap(new Blob([buf], { type: 'image/jpeg' }));
+    // Explicit imageOrientation — without it, some WebView versions decode
+    // the raw sensor pixels and ignore EXIF Orientation entirely, while the
+    // on-screen preview (a plain <img>) always auto-rotates. Without this,
+    // that mismatch would bake the wrong rotation into the saved file, and
+    // saveBtn's unconditional Orientation:1 stamp leaves no EXIF trail to
+    // recover the original orientation from afterward.
+    const bmp = await createImageBitmap(new Blob([buf], { type: 'image/jpeg' }), { imageOrientation: 'from-image' });
     const isOdd = _rotation === 90 || _rotation === 270;
     const sw = bmp.width, sh = bmp.height;
     const cw = isOdd ? sh : sw, ch = isOdd ? sw : sh;
