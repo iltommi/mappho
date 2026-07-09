@@ -144,8 +144,8 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     removeMarker(fileid);
     await deleteRecord(fileid);
     await deleteOrphan(fileid);
-    await putCached({ fileid, name, lat, lng, ts: realTs, hash: photo.hash ?? null });
-    addMarker({ fileid, name, lat, lng, ts: realTs });
+    await putCached({ fileid, name, lat, lng, ts: realTs, hash: photo.hash ?? null, rotation: photo.rotation ?? null });
+    addMarker({ fileid, name, lat, lng, ts: realTs, rotation: photo.rotation ?? null });
     await setVideoMetaEntry(fileid, { lat, lng, ts: realTs });
     return { oldFileid: fileid, newFileid: fileid, newName: name, ts: realTs, lat, lng };
   }

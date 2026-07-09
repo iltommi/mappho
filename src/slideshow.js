@@ -676,7 +676,7 @@ async function navigate(dir) {
   if (!curImg.style.display || curImg.style.display === 'none') {
     let src;
     try {
-      src = await fetchCached(photos[current].fileid, photos[current].name);
+      src = await fetchCached(photos[current].fileid, photos[current].name, photos[current].rotation);
     } catch (e) {
       if (e.pcloudResult === 2009) { await purgeAndAdvance(current); return; }
       throw e;
@@ -692,11 +692,11 @@ async function navigate(dir) {
 
 // ── Cache / preload ───────────────────────────────────────────────────────────
 
-async function fetchCached(fileid, name = '') {
+async function fetchCached(fileid, name = '', rotation = 0) {
   if (imgCache.has(fileid)) return imgCache.get(fileid);
   let src;
   if (isVideo(name)) {
-    src = (await fetchThumbSrc(fileid, '512x512')) ?? VIDEO_PLACEHOLDER;
+    src = (await fetchThumbSrc(fileid, '512x512', rotation)) ?? VIDEO_PLACEHOLDER;
   } else {
     src = await fetchThumbSrc(fileid, '512x512');
   }
@@ -728,8 +728,8 @@ function loadSidePanes() {
   const nIdx = (current + 1) % photos.length;
   prevImg.src = '';
   nextImg.src = '';
-  if (photos[pIdx]) fetchCached(photos[pIdx].fileid, photos[pIdx].name).then(s => { if (s) prevImg.src = s; }).catch(() => {});
-  if (photos[nIdx]) fetchCached(photos[nIdx].fileid, photos[nIdx].name).then(s => { if (s) nextImg.src = s; }).catch(() => {});
+  if (photos[pIdx]) fetchCached(photos[pIdx].fileid, photos[pIdx].name, photos[pIdx].rotation).then(s => { if (s) prevImg.src = s; }).catch(() => {});
+  if (photos[nIdx]) fetchCached(photos[nIdx].fileid, photos[nIdx].name, photos[nIdx].rotation).then(s => { if (s) nextImg.src = s; }).catch(() => {});
 }
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
@@ -812,7 +812,7 @@ async function go(index) {
 
   let src;
   try {
-    src = await fetchCached(photos[current].fileid, photos[current].name);
+    src = await fetchCached(photos[current].fileid, photos[current].name, photos[current].rotation);
   } catch (e) {
     if (e.pcloudResult === 2009) { await purgeAndAdvance(current); return; }
     throw e;

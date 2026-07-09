@@ -394,10 +394,10 @@ function purgeStaleFile(tile) {
 }
 
 async function loadThumb(tile, attempt = 0) {
-  const { fileid } = tile._item;
+  const { fileid, rotation } = tile._item;
   let got2009 = false;
   try {
-    const src = await fetchThumbSrc(fileid, THUMB_SIZE);
+    const src = await fetchThumbSrc(fileid, THUMB_SIZE, rotation ?? 0);
     if (src) { tile._img.src = src; tile._img.classList.add('loaded'); return; }
   } catch (e) {
     // Don't purge on the first 2009 — CDN may not have propagated a freshly

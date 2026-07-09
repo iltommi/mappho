@@ -108,15 +108,15 @@ export async function clearNonIgnored() {
 // Orphans: photos without GPS, indexed by ts for sorted pagination.
 // ts is stored as ts ?? UNDATED_TS so null dates sort to the end and remain indexable.
 
-export async function putOrphan({ fileid, name, ts, hash }) {
-  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? UNDATED_TS, hash: hash ?? null });
+export async function putOrphan({ fileid, name, ts, hash, rotation }) {
+  return (await db()).put(ORPHAN_STORE, { fileid, name, ts: ts ?? UNDATED_TS, hash: hash ?? null, rotation: rotation ?? null });
 }
 
 export async function bulkPutOrphans(records) {
   if (!records.length) return;
   const d = await db();
   const tx = d.transaction(ORPHAN_STORE, 'readwrite');
-  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? UNDATED_TS, hash: r.hash ?? null });
+  for (const r of records) tx.store.put({ fileid: r.fileid, name: r.name, ts: r.ts ?? UNDATED_TS, hash: r.hash ?? null, rotation: r.rotation ?? null });
   await tx.done;
 }
 

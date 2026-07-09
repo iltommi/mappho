@@ -231,7 +231,7 @@ async function applyFixDateToPhoto(photo, ts) {
   if (cached) await putCached({ ...cached, fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached.hash ?? null });
   // Photos without GPS live in both stores; without this the photo would
   // drop out of the no-location lists until the next app restart re-migrates it.
-  if (!cached || cached.lat == null) await putOrphan({ fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached?.hash ?? null });
+  if (!cached || cached.lat == null) await putOrphan({ fileid: newFileid, name: canonicalName, ts, hash: newHash ?? cached?.hash ?? null, rotation: cached?.rotation ?? null });
   log('Fix date', `done → newFileid=${newFileid} name=${canonicalName}`);
   return { oldFileid: fileid, newFileid, newName: canonicalName, ts, lat: cached?.lat ?? null, lng: cached?.lng ?? null };
 }
@@ -1362,7 +1362,7 @@ async function processFile(file, stats) {
     return false;
   }
   const hasGps = exif.lat != null && !isNaN(exif.lat) && exif.lng != null && !isNaN(exif.lng);
-  const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null, hash: file.hash != null ? String(file.hash) : null };
+  const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null, hash: file.hash != null ? String(file.hash) : null, rotation: exif.rotation ?? null };
 
   // Organize: serialize name-pick + rename so concurrent processFile calls
   // don't race on _takenNames / _nameCounters.

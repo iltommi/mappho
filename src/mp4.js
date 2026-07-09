@@ -21,10 +21,45 @@ export function extractMP4Meta(buffer) {
     return null;
   }
 
+  function findAllBoxes(start, stop, type) {
+    const found = [];
+    let p = start;
+    while (p + 8 <= stop) {
+      const sz = u32(p);
+      if (sz < 8) break;
+      if (s4(p + 4) === type) found.push({ ps: p + 8, end: Math.min(p + sz, stop) });
+      p += sz;
+    }
+    return found;
+  }
+
   const moov = findBox(0, end, 'moov');
   if (!moov) return {};
 
   const result = {};
+
+  // trak/tkhd: rotation from the track's transformation matrix. Real-world
+  // camera apps only ever emit axis-aligned 0/90/180/270 rotations even
+  // though the matrix format technically supports arbitrary transforms, so
+  // atan2(b, a) rounded to the nearest 90° recovers it reliably (this is the
+  // same value exiftool reports as the composite "Rotation" tag). pCloud's
+  // getthumb does not appear to apply this to the video poster it generates,
+  // so it's corrected for client-side wherever a thumbnail is displayed.
+  for (const trak of findAllBoxes(moov.ps, moov.end, 'trak')) {
+    const tkhd = findBox(trak.ps, trak.end, 'tkhd');
+    if (!tkhd) continue;
+    const ver = u8(tkhd.ps);
+    const matrixOff = tkhd.ps + (ver === 1 ? 52 : 40);
+    if (matrixOff + 44 > end) continue;
+    const width  = u32(matrixOff + 36) / 65536;
+    const height = u32(matrixOff + 40) / 65536;
+    if (width <= 0 || height <= 0) continue; // audio/other non-visual tracks have 0x0 here
+    const s32 = o => view.getInt32(o, false);
+    const a = s32(matrixOff) / 65536, b = s32(matrixOff + 4) / 65536;
+    const deg = (Math.round(Math.atan2(b, a) * 180 / Math.PI / 90) * 90 + 360) % 360;
+    if (deg) result.rotation = deg;
+    break; // first video track found
+  }
 
   // mvhd: creation time in seconds since 1904-01-01 (QuickTime epoch)
   const mvhd = findBox(moov.ps, moov.end, 'mvhd');

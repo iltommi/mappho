@@ -314,7 +314,31 @@ export async function downloadJsonFile(fileid) {
 }
 
 
-export async function fetchThumbSrc(fileid, size = '512x512') {
+// Rotates a data: URL by `deg` (0/90/180/270) via canvas, swapping the
+// canvas width/height for 90/270 so the result renders upright. pCloud's
+// getthumb does not apply a video's tkhd rotation matrix to the poster it
+// generates, so callers pass the video's stored rotation (see mp4.js) to
+// correct it here, once, rather than in every place a thumbnail is shown.
+async function rotateDataUrl(dataUrl, deg) {
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload  = () => resolve(im);
+    im.onerror = () => reject(new Error('rotateDataUrl: image decode failed'));
+    im.src = dataUrl;
+  });
+  const odd = deg === 90 || deg === 270;
+  const cw = odd ? img.naturalHeight : img.naturalWidth;
+  const ch = odd ? img.naturalWidth  : img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = cw; canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(cw / 2, ch / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+export async function fetchThumbSrc(fileid, size = '512x512', rotation = 0) {
   if (!/^\d+$/.test(String(fileid))) return null;
   const url = new URL(`${getApiHost()}/getthumb`);
   url.searchParams.set('auth', getToken());
@@ -336,7 +360,10 @@ export async function fetchThumbSrc(fileid, size = '512x512') {
       throw err;
     }
     const b64 = (typeof raw === 'string' ? raw : bufToBase64(raw)).replace(/\s/g, '');
-    return `data:image/jpeg;base64,${b64}`;
+    const dataUrl = `data:image/jpeg;base64,${b64}`;
+    if (!rotation) return dataUrl;
+    try { return await rotateDataUrl(dataUrl, rotation); }
+    catch (e) { log('fetchThumb rotate error', e.message); return dataUrl; }
   } catch (e) {
     if (e.pcloudResult) throw e; // propagate pCloud errors (e.g. 2009 file not found)
     log('fetchThumb error', e.message);

@@ -205,7 +205,7 @@ export function initMap() {
   map.addLayer(cluster);
 }
 
-function _buildMarker(fileid, name, lat, lng, ts) {
+function _buildMarker(fileid, name, lat, lng, ts, rotation) {
   const marker  = L.marker([lat, lng]);
   const div     = document.createElement('div');
   div.className = 'photo-popup';
@@ -230,7 +230,7 @@ function _buildMarker(fileid, name, lat, lng, ts) {
       openSlideshow([markerData.get(marker)], 0);
     }
 
-    fetchThumbSrc(fileid).then(src => {
+    fetchThumbSrc(fileid, '512x512', rotation ?? 0).then(src => {
       loading.remove();
       if (src) {
         const img = document.createElement('img');
@@ -275,14 +275,14 @@ function _buildMarker(fileid, name, lat, lng, ts) {
 
   marker.bindPopup(div, { maxWidth: 280 });
   markerIndex.push({ marker, ts: ts ?? null, name });
-  markerData.set(marker, { fileid, name, lat, lng, ts: ts ?? null });
+  markerData.set(marker, { fileid, name, lat, lng, ts: ts ?? null, rotation: rotation ?? null });
   return marker;
 }
 
-export function addMarker({ fileid, name, lat, lng, ts }) {
+export function addMarker({ fileid, name, lat, lng, ts, rotation }) {
   if (addedIds.has(fileid)) return;
   addedIds.add(fileid);
-  const marker = _buildMarker(fileid, name, lat, lng, ts);
+  const marker = _buildMarker(fileid, name, lat, lng, ts, rotation);
   cluster.addLayer(marker);
   if (heatmapActive && heatLayer) {
     heatLayer.addLatLng([lat, lng]);
@@ -294,10 +294,10 @@ export function addMarker({ fileid, name, lat, lng, ts }) {
 // cluster pass (with chunkedLoading) instead of 40k individual refreshes.
 export function bulkAddMarkers(records) {
   const toAdd = [];
-  for (const { fileid, name, lat, lng, ts } of records) {
+  for (const { fileid, name, lat, lng, ts, rotation } of records) {
     if (addedIds.has(fileid)) continue;
     addedIds.add(fileid);
-    toAdd.push(_buildMarker(fileid, name, lat, lng, ts));
+    toAdd.push(_buildMarker(fileid, name, lat, lng, ts, rotation));
   }
   if (toAdd.length) cluster.addLayers(toAdd);
 }
