@@ -12,7 +12,7 @@ import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleH
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex } from './slideshow.js';
 import { openPhotoEdit } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
-import { openGrid, setBulkFixDateHandler } from './grid.js';
+import { openGrid, setBulkFixDateHandler, setAfterBulkGeotagCallback } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
@@ -1597,6 +1597,7 @@ async function main() {
   startSyncTimer();
   initMap();
   setAfterDeleteCallback(() => reloadTopbarCounts());
+  setAfterBulkGeotagCallback(() => reloadTopbarCounts());
   document.getElementById('retry-menu-btn').addEventListener('click', () => {
     if (retryQueue.length > 0) showRetryDialog(retryQueue);
   });

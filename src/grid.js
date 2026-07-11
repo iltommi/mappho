@@ -103,6 +103,13 @@ scrollEl.addEventListener('scroll', updateScrubber, { passive: true });
 let bulkFixDateHandler = null;
 export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
 
+// Bulk geotag is triggered straight from grid.js (startBulkGeotagging is
+// imported directly from geotag.js, not proxied through main.js like fix-date
+// is), so unlike bulk fix-date there's no natural place for it to refresh the
+// Settings counters itself. Mirrors slideshow.js's setAfterDeleteCallback.
+let afterBulkGeotagCb = null;
+export function setAfterBulkGeotagCallback(fn) { afterBulkGeotagCb = fn; }
+
 const PAGE_SIZE  = 60;
 const THUMB_SIZE = '256x256';
 
@@ -187,7 +194,7 @@ bulkGeotagBtn.addEventListener('click', () => {
   const reopen = reopenFn;
   close();
   startBulkGeotagging(photos, ({ success, count, failed }) => {
-    if (success) log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`);
+    if (success) { log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`); afterBulkGeotagCb?.(); }
     reopen?.();
   });
 });
