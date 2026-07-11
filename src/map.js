@@ -10,6 +10,7 @@ import { isVideo } from './mp4.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid } from './grid.js';
+import { sameDayFromList } from './dayrange.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -173,7 +174,8 @@ export function initMap() {
         setFixDateHandler(markerFixDateHandler);
         setFixTimeHandler(markerFixTimeHandler);
         setIgnoreHandler(null);
-        openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length);
+        openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length,
+          { sameDayFetch: sameDayFromList(photos) });
       });
     }, 500);
   }, { capture: true });

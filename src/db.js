@@ -160,6 +160,15 @@ export async function getIgnoredPage(offset, limit) {
   return results;
 }
 
+// Returns every ignored photo, unpaginated. Ignored records aren't indexed
+// by ts on their own, so "Same day" filters this full set client-side —
+// fine since the ignored set is a deliberately curated, generally small one.
+export async function getAllIgnored() {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  return tx.store.index('by_ignored').getAll(IDBKeyRange.only(1));
+}
+
 // Clears the ignored flag and, for photos without GPS, restores the orphan row
 // so the photo reappears in the fix-up lists. Returns the updated record.
 export async function unignorePhoto(fileid) {

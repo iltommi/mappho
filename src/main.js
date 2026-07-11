@@ -20,7 +20,8 @@ import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { distinctDayRanges, sameDayFromList } from './dayrange.js';
 import './style.css';
 
 const authBtn = document.getElementById('auth-btn');
@@ -903,7 +904,7 @@ async function openPeopleGrid(people) {
   setFixTimeHandler(photo => startFixTime(photo, () => {}));
   setIgnoreHandler(null);
   openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
-    { title: `👤 ${label}` });
+    { title: `👤 ${label}`, sameDayFetch: sameDayFromList(items) });
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden
@@ -924,7 +925,15 @@ async function openIgnoredGrid() {
     await reloadTopbarCounts();
     showBriefStatus('♻️ Photo restored');
   }, { icon: '♻️', title: 'Restore' });
-  openGrid(fetcher, total, { reopen: openIgnoredGrid });
+  openGrid(fetcher, total, {
+    reopen: openIgnoredGrid,
+    sameDayFetch: async anchors => {
+      const ranges = distinctDayRanges(anchors);
+      if (!ranges.length) return [];
+      const all = await getAllIgnored();
+      return all.filter(p => p.ts != null && p.ts < UNDATED_TS && ranges.some(r => p.ts >= r.from && p.ts <= r.to));
+    },
+  });
 }
 
 function openInfoPopup() {
@@ -951,15 +960,6 @@ function refreshPeopleCount() {
     updatePeopleFabState();
     if (changed && infoPopup.style.display !== 'none') renderInfoRows();
   }).catch(e => log('People stats error', e.message));
-}
-
-// [start, end] ms bounds of the local calendar day containing ts.
-function localDayBounds(ts) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  const from = d.getTime();
-  d.setHours(23, 59, 59, 999);
-  return { from, to: d.getTime() };
 }
 
 async function openDatedOrphanGrid() {
@@ -990,14 +990,9 @@ async function openDatedOrphanGrid() {
     // every other dated, unlocated photo from each of those days so one pin
     // can be applied to the whole combined batch at once.
     sameDayFetch: async anchors => {
-      const dayRanges = new Map(); // local midnight ts -> {from, to}, dedupes anchors landing on the same day
-      for (const a of anchors) {
-        if (a.ts == null || a.ts >= UNDATED_TS) continue;
-        const { from, to } = localDayBounds(a.ts);
-        dayRanges.set(from, { from, to });
-      }
-      if (!dayRanges.size) return [];
-      const lists = await Promise.all([...dayRanges.values()].map(r => getOrphansInRange(r.from, r.to)));
+      const ranges = distinctDayRanges(anchors);
+      if (!ranges.length) return [];
+      const lists = await Promise.all(ranges.map(r => getOrphansInRange(r.from, r.to)));
       const byId = new Map();
       for (const list of lists) for (const p of list) byId.set(p.fileid, p);
       return [...byId.values()];
