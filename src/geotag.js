@@ -17,6 +17,8 @@ const cancelBtn  = document.getElementById('pin-drop-cancel');
 const searchInput = document.getElementById('pin-drop-search');
 const searchBtn   = document.getElementById('pin-drop-search-btn');
 const resultsEl   = document.getElementById('pin-drop-results');
+const skipExistingLabel = document.getElementById('pin-drop-skip-existing-label');
+const skipExistingBox   = document.getElementById('pin-drop-skip-existing');
 
 let _statusFn = null;
 export function setGeotagStatusFn(fn) { _statusFn = fn; }
@@ -123,6 +125,16 @@ export async function startBulkGeotagging(photos, callback) {
   bar.style.display   = 'flex';
   document.body.classList.add('action-bar-open');
 
+  // Only relevant (and only shown) when the selection actually mixes
+  // located and unlocated photos — e.g. "Same day" pulled in photos that
+  // were already geotagged alongside ones that weren't. Defaults to
+  // checked: safer for a selection built by a helper like that, and a
+  // no-op for the common case (a Fix-position selection) where nothing in
+  // the list has a location yet anyway.
+  const hasExisting = photos.some(p => p.lat != null);
+  skipExistingLabel.style.display = hasExisting ? 'flex' : 'none';
+  skipExistingBox.checked = true;
+
   enterPinDropMode({
     initialPin: null,
     onPlace: ({ lat, lng }) => {
@@ -217,10 +229,18 @@ saveBtn.addEventListener('click', async () => {
   const { lat, lng } = pendingLatLng;
 
   if (mode === 'bulk') {
-    const list = pendingPhotos;
-    const cb   = onDone;
+    const all = pendingPhotos;
+    const cb  = onDone;
+    const skipExisting = skipExistingLabel.style.display !== 'none' && skipExistingBox.checked;
+    const list = skipExisting ? all.filter(p => p.lat == null) : all;
+    const skipped = all.length - list.length;
     finish();
-    _runBulkGeotag(list, lat, lng, cb);
+    if (!list.length) {
+      _statusFn?.(`📍 All ${skipped} photo${skipped === 1 ? '' : 's'} already had a location — nothing to do.`);
+      cb?.({ success: false, count: 0, failed: 0, skipped });
+      return;
+    }
+    _runBulkGeotag(list, lat, lng, cb, skipped);
     return;
   }
 
@@ -252,13 +272,14 @@ function finish() {
   document.body.classList.remove('action-bar-open');
   resultsEl.innerHTML = '';
   searchInput.value   = '';
+  skipExistingLabel.style.display = 'none';
   mode          = null;
   pendingPhoto  = null;
   pendingPhotos = null;
   pendingLatLng = null;
 }
 
-async function _runBulkGeotag(list, lat, lng, cb) {
+async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   let ok = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
@@ -275,15 +296,16 @@ async function _runBulkGeotag(list, lat, lng, cb) {
   }
   flushPhotoIndex();
 
+  const skipNote = skipped > 0 ? ` (${skipped} already located, skipped)` : '';
   if (failedItems.length > 0) {
-    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed`, 0);
+    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed${skipNote}`, 0);
   } else {
-    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}`, 4000);
+    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}${skipNote}`, 4000);
   }
 
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
   }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, skipped });
 }
