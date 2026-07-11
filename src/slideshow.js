@@ -1,6 +1,7 @@
 import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
 import { deleteRecord, deleteOrphan, getCached, UNDATED_TS } from './db.js';
 import { getFacesForHash, getFacesPeople, getFaceRegions } from './faces.js';
+import { isFlagged, toggleFlag } from './flags.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
@@ -39,6 +40,7 @@ const fixTimeBtn  = document.getElementById('ss-fixtime-btn');
 const editBtn     = document.getElementById('ss-edit-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
+const flagBtn     = document.getElementById('ss-flag-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
 const deleteBtn   = document.getElementById('ss-delete-btn');
 const wrap        = document.getElementById('ss-img-wrap');
@@ -117,6 +119,30 @@ function hideFacesOverlay() {
   facesOverlay.innerHTML = '';
 }
 
+// photo.hash isn't always populated on the object handed to the slideshow
+// (e.g. map-marker-triggered items) — fall back to the cache record.
+async function resolvePhotoHash(photo) {
+  if (photo.hash != null) return photo.hash;
+  return (await getCached(photo.fileid))?.hash ?? null;
+}
+
+let _flagReq = 0;
+
+// Shows/hides the 🚩 button and reflects the current photo's flagged state.
+// Called on every slide change.
+async function refreshFlagState() {
+  const photo = photos[current];
+  const req = ++_flagReq;
+  flagBtn.classList.remove('active');
+  if (!photo || isVideo(photo.name)) { flagBtn.style.display = 'none'; return; }
+  flagBtn.style.display = '';
+  const hash = await resolvePhotoHash(photo);
+  if (req !== _flagReq || hash == null) return;
+  const flagged = await isFlagged(hash);
+  if (req !== _flagReq) return;
+  flagBtn.classList.toggle('active', flagged);
+}
+
 // Resolves the faces entry for the current photo and shows/hides the 👥
 // button. Called on every slide change.
 async function refreshFacesState() {
@@ -127,8 +153,7 @@ async function refreshFacesState() {
   hideFacesOverlay();
   updateCounter();
   if (!photo || isVideo(photo.name)) return;
-  let hash = photo.hash;
-  if (hash == null) hash = (await getCached(photo.fileid))?.hash;
+  const hash = await resolvePhotoHash(photo);
   if (req !== _facesReq || hash == null) return;
   const entry = await getFacesForHash(hash);
   if (req !== _facesReq) return;
@@ -272,6 +297,9 @@ function close({ handoff = false } = {}) {
   _facesRegions = [];
   _facesReq++;
   hideFacesOverlay();
+  flagBtn.classList.remove('active');
+  flagBtn.style.display = 'none';
+  _flagReq++;
   photos = [];
   imgCache.clear();
   resetLazy();
@@ -338,6 +366,17 @@ exifBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (photo) showExif(photo.fileid, photo.name);
 });
+
+flagBtn.addEventListener('click', async () => {
+  const photo = photos[current];
+  if (!photo) return;
+  const hash = await resolvePhotoHash(photo);
+  if (hash == null) return;
+  const flagged = await toggleFlag({ hash, name: photo.name });
+  if (photos[current]?.fileid !== photo.fileid) return; // navigated away mid-toggle
+  flagBtn.classList.toggle('active', flagged);
+});
+
 closeBtn.addEventListener('click', close);
 
 // ── Share ─────────────────────────────────────────────────────────────────────
@@ -765,6 +804,7 @@ function updateCaption() {
   editBtn.style.display  = (editHandler && !isVideo(name) && !/\.heic$/i.test(name)) ? '' : 'none';
   shareBtn.style.display = '';
   refreshFacesState().catch(() => {});
+  refreshFlagState().catch(() => {});
 
   if (!isVideo(name)) {
     let folderName = '';

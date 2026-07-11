@@ -1447,6 +1447,8 @@ body.filter-open #map { top: 40px; }
 
 #ss-ignore-btn  { color: #fcd34d; }
 
+#ss-flag-btn.active { background: #b91c1c; }
+
 #ss-delete-btn  { color: #fca5a5; }
 #ss-delete-btn.confirm { background: #b91c1c; color: #fff; }
 

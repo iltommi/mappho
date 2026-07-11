@@ -1,6 +1,7 @@
 import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
 import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
 import { renameFacesEntry, removeFacesEntry } from './faces.js';
+import { renameFlagEntry, removeFlagEntry } from './flags.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
@@ -289,6 +290,7 @@ export async function removeOrganizedEntry(fileid) {
   _hashDirty = true;
   await deleteMapphoIndexEntry(foundHash);
   await removeFacesEntry(foundHash).catch(e => log('Faces remove error', e.message));
+  await removeFlagEntry(foundHash).catch(e => log('Flags remove error', e.message));
   flushOrganizeIndex();
 }
 
@@ -340,6 +342,8 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
       flushOrganizeIndex();
       await renameFacesEntry(oldHash, { newHash, name: keptName })
         .catch(e => log('Faces sync error', e.message));
+      await renameFlagEntry(oldHash, { newHash, name: keptName })
+        .catch(e => log('Flags sync error', e.message));
       return keptName;
     } else {
       // Different folder — move to the correct month and give it a date-based name.
@@ -368,6 +372,8 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
       const facesPath = `${hasDate ? monthPathOf(ts) : UNKNOWN_DATE_FOLDER}/${targetName}`;
       await renameFacesEntry(oldHash, { newHash, name: targetName, path: facesPath })
         .catch(e => log('Faces sync error', e.message));
+      await renameFlagEntry(oldHash, { newHash, name: targetName, path: facesPath })
+        .catch(e => log('Flags sync error', e.message));
       return targetName;
     }
   } catch (e) {

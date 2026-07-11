@@ -17,6 +17,7 @@ import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonth
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
+import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -1148,6 +1149,7 @@ async function startScan() {
   refreshFaces()
     .then(refreshPeopleCount) // enables/grays the Persons FAB once resolved, without waiting for Settings to be opened
     .catch(e => log('Faces refresh error', e.message));
+  refreshFlags().catch(e => log('Flags refresh error', e.message));
 
   _stopStartupAnimation();
   localStorage.setItem(STARTUP_TIMING_KEY, String(Date.now() - _startupStart));
@@ -1678,6 +1680,7 @@ function setupFacesResumeSync() {
     refreshFaces()
       .then(refreshPeopleCount)
       .catch(e => log('Faces refresh error', e.message));
+    refreshFlags().catch(e => log('Flags refresh error', e.message));
   });
 }
 
