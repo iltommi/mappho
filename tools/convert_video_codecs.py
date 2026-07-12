@@ -136,8 +136,13 @@ def probe_streams(path: Path):
 
 # ── per-file worker ───────────────────────────────────────────────────────────
 
-def process_one(f, remote, path, hostname, token, dry_run):
-    """Returns a dict with 'kind': 'converted' | 'skipped' | 'error'."""
+def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
+    """Returns a dict with 'kind': 'converted' | 'skipped' | 'error'.
+
+    on_start(rel, size_mb), if given, is called right before the ffmpeg
+    encode begins — an encode can run for minutes with no other output,
+    which otherwise looks indistinguishable from a hang.
+    """
     rel  = f['Path']
     name = PurePosixPath(rel).name
 
@@ -160,6 +165,9 @@ def process_one(f, remote, path, hostname, token, dry_run):
 
         audio_codec = audio.get('codec_name') if audio else None
         audio_args = ['-c:a', 'copy'] if audio_codec == 'aac' else ['-c:a', 'aac', '-b:a', '128k']
+
+        if on_start:
+            on_start(rel, local_src.stat().st_size / 1e6)
 
         local_out = Path(tmpdir) / f'{name}.converted.mp4'
         t0 = time.monotonic()
@@ -284,7 +292,10 @@ def main():
     try:
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             futures = {
-                executor.submit(process_one, f, args.remote, args.path, hostname, token, args.dry_run): f
+                executor.submit(
+                    process_one, f, args.remote, args.path, hostname, token, args.dry_run,
+                    lambda rel, mb: log(f'  ⏳ encoding {rel} ({mb:.1f} MB)…'),
+                ): f
                 for f in pending
             }
             for future in as_completed(futures):
