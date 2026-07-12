@@ -335,7 +335,7 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
     updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts });
     _lastFixDateTs = ts;
     await reloadTopbarCounts().catch(e => log('Fix date', `reloadTopbarCounts error: ${e.message}`));
-    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+    flushPhotoIndex();
     onDone?.(r);
   } catch (e) {
     log('Fix date error', e.message);
@@ -373,7 +373,7 @@ async function _runBulkFixDate(list, ts, cb) {
   }
 
   try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
-  flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+  flushPhotoIndex();
 
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
@@ -1632,7 +1632,7 @@ async function main() {
       updateCurrentSlideshowItem({ fileid: newFileid, name: newName, ts: photo.ts });
       refreshSlideshowImage(newFileid, newThumb);
       reloadTopbarCounts();
-      flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+      flushPhotoIndex();
       showBriefStatus('✅ Photo saved');
     });
   });

@@ -250,7 +250,7 @@ saveBtn.addEventListener('click', async () => {
   try {
     const r = await applyGeotagToPhoto(pendingPhoto, lat, lng);
     finish();
-    flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
+    flushPhotoIndex();
     onDone?.({ success: true, ...r });
   } catch (e) {
     log('Geotag error', e.message);
