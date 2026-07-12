@@ -13,3 +13,13 @@ dist/
 
 # Personal data — the app reads this from pCloud Photos/, never from the repo
 /faces.json
+
+# rclone mount point for tools/ scripts (make mount) — never repo content
+/Photos/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Resumable-run state files written by tools/*.py
+/*_state.json

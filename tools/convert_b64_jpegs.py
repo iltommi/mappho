@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
 convert_b64_jpegs.py — Find JPEG files stored as base64 text on pCloud and
-re-upload them as proper binary JPEGs (in-place, same filename and fileid).
+re-upload them as proper binary JPEGs (same filename, same folder — but a
+new fileid; see replace_file_content()).
 
 Some older uploads ended up with the file content being the base64 text of the
 JPEG rather than the binary JPEG itself.  pCloud cannot thumbnail these files.
 This script detects them (head starts with '/9j', the base64 encoding of the
-JPEG SOI marker 0xFF 0xD8), decodes them, and re-uploads the binary in-place.
-EXIF data is preserved unchanged — it is embedded in the JPEG and survives the
-decode intact.
+JPEG SOI marker 0xFF 0xD8), decodes them, and re-uploads the binary in place
+of the original. EXIF data is preserved unchanged — it is embedded in the
+JPEG and survives the decode intact.
+
+The replacement changes both fileid and content hash, so after running this,
+open Mappho and do Settings → Rebuild from Photos to refresh hash-index.json
+and the local cache.
 
 Run unattended; progress is saved so you can stop and resume at any time.
 
@@ -28,6 +33,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import PurePosixPath
@@ -82,18 +88,34 @@ def download_full(remote, path, rel_path):
     return r.stdout if r.returncode == 0 and r.stdout else None
 
 
-def upload_inplace(hostname, token, file_id, name, jpeg_data):
-    """Overwrite an existing pCloud file in-place (same fileid, no delete)."""
-    fid      = file_id.lstrip('f') if isinstance(file_id, str) else file_id
+def _pcloud_api(hostname, token, method, params, timeout=60):
+    qs = '&'.join(f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items())
+    url = f'https://{hostname}/{method}?{qs}&access_token={token}'
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        result = json.loads(resp.read())
+    if result.get('result') != 0:
+        raise RuntimeError(f'pCloud {method} error {result.get("result")}: {result.get("error", result)}')
+    return result
+
+
+def stat_file(hostname, token, file_id):
+    """Returns (name, parentfolderid) for a fileid."""
+    fid = file_id.lstrip('f') if isinstance(file_id, str) else file_id
+    meta = _pcloud_api(hostname, token, 'stat', {'fileid': fid})['metadata']
+    return meta['name'], meta['parentfolderid']
+
+
+def upload_to_folder(hostname, token, folderid, filename, jpeg_data):
+    """Uploads jpeg_data as filename into folderid. Returns the new fileid."""
     boundary = b'BndB64Conv9Ma4YwXk'
     body = (
         b'--' + boundary + b'\r\n'
         b'Content-Disposition: form-data; name="file"; filename="'
-        + name.encode() + b'"\r\nContent-Type: image/jpeg\r\n\r\n'
+        + filename.encode() + b'"\r\nContent-Type: image/jpeg\r\n\r\n'
         + jpeg_data
         + b'\r\n--' + boundary + b'--\r\n'
     )
-    url = f'https://{hostname}/uploadfile?fileid={fid}&access_token={token}&nopartial=1'
+    url = f'https://{hostname}/uploadfile?folderid={folderid}&access_token={token}&nopartial=1'
     req = urllib.request.Request(
         url, data=body, method='POST',
         headers={'Content-Type': f'multipart/form-data; boundary={boundary.decode()}'},
@@ -102,6 +124,28 @@ def upload_inplace(hostname, token, file_id, name, jpeg_data):
         result = json.loads(resp.read())
     if result.get('result') != 0:
         raise RuntimeError(f'pCloud error {result.get("result")}: {result.get("error", result)}')
+    meta = (result.get('metadata') or [{}])[0]
+    new_fileid = meta.get('fileid')
+    if new_fileid is None:
+        raise RuntimeError(f'upload succeeded but response had no fileid: {meta}')
+    return new_fileid
+
+
+def replace_file_content(hostname, token, file_id, jpeg_data):
+    """Replaces file_id's content, mirroring pcloud.js's overwriteFile():
+    upload under a temp name in the file's own folder, delete the original,
+    rename the temp upload into place. pCloud's uploadfile?fileid=X does NOT
+    overwrite content in place — verified it silently creates an unrelated
+    file in account root instead, ignoring the fileid entirely. So this
+    returns a NEW fileid; the original one is gone.
+    """
+    name, folderid = stat_file(hostname, token, file_id)
+    tmp_name = f'{name}.mappho-tmp'
+    new_fileid = upload_to_folder(hostname, token, folderid, tmp_name, jpeg_data)
+    fid = file_id.lstrip('f') if isinstance(file_id, str) else file_id
+    _pcloud_api(hostname, token, 'deletefile', {'fileid': fid})
+    _pcloud_api(hostname, token, 'renamefile', {'fileid': new_fileid, 'toname': name})
+    return new_fileid
 
 
 # ── base64 detection / decoding ───────────────────────────────────────────────
@@ -150,7 +194,7 @@ def probe_and_convert(f, remote, path, hostname, token):
         return {'kind': 'error', 'rel': rel, 'msg': 'not valid base64 JPEG after decode'}
 
     try:
-        upload_inplace(hostname, token, f['ID'], name, jpeg)
+        replace_file_content(hostname, token, f['ID'], jpeg)
         return {'kind': 'converted', 'rel': rel,
                 'b64_kb': len(raw) // 1024, 'jpeg_kb': len(jpeg) // 1024}
     except Exception as e:

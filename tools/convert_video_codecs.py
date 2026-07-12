@@ -11,17 +11,23 @@ supported, but no picture ever renders. convert_avi.py doesn't catch these
 because it only looks at the .avi extension, not the codec inside an
 already-.mp4 file.
 
-Uploads are done via pCloud's uploadfile?fileid=<id>, which overwrites the
-existing file's content in place and keeps its fileid — the same trick
-convert_b64_jpegs.py uses. That matters: Mappho keys temporary-meta.json
-(video GPS/date) and ignored.json by fileid, so preserving it means those
-stay valid with no extra work. The file's pCloud content hash does change
-though (different bytes), which makes Mappho's hash-index.json stale for
-converted files — this script does not try to patch that shared JSON
-itself (real risk of racing the app's own writes to it). Simplest fix:
-after running this, open Mappho and do Settings → Rebuild from Photos —
-it already re-derives hash-index.json and the local cache from a fresh
-listing of Photos/, picking up the new hashes for free.
+Uploads use the same upload-temp -> delete-original -> rename-into-place
+sequence as Mappho's own overwriteFile() in src/pcloud.js: stat the file
+for its name+parentfolderid, upload the converted bytes under a temp name
+in that same folder, delete the original, then rename the temp upload into
+place. This means the file gets a NEW fileid (pCloud's uploadfile?fileid=X
+does NOT overwrite content in place the way an earlier version of this
+script — and convert_b64_jpegs.py's upload_inplace() — assumed; verified
+the hard way: it silently uploads a new file to account ROOT instead,
+ignoring the fileid entirely). Both fileid and content hash change, which
+makes Mappho's hash-index.json and any fileid-keyed temporary-meta.json/
+ignored.json entries stale for converted files — this script does not try
+to patch that shared JSON itself (real risk of racing the app's own writes
+to it). Simplest fix: after running this, open Mappho and do Settings ->
+Rebuild from Photos — it already re-derives hash-index.json and the local
+cache from a fresh listing of Photos/, picking up the new fileids/hashes
+for free. If you'd manually geotagged or ignored any of the converted
+videos before running this, re-check those after rebuilding.
 
 Downloads the full file locally before probing/converting — some of these
 recordings have their moov atom at the very end of the file, so a partial
@@ -46,6 +52,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
@@ -94,8 +101,25 @@ def download_full(remote, path, rel_path, dest: Path) -> bool:
     return r.returncode == 0 and dest.exists()
 
 
-def upload_inplace(hostname, token, file_id, name, data: bytes):
-    """Overwrite an existing pCloud file in-place (same fileid, no delete).
+def _pcloud_api(hostname, token, method, params, timeout=60):
+    qs = '&'.join(f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items())
+    url = f'https://{hostname}/{method}?{qs}&access_token={token}'
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        result = json.loads(resp.read())
+    if result.get('result') != 0:
+        raise RuntimeError(f'pCloud {method} error {result.get("result")}: {result.get("error", result)}')
+    return result
+
+
+def stat_file(hostname, token, file_id):
+    """Returns (name, parentfolderid) for a fileid."""
+    fid = file_id.lstrip('f') if isinstance(file_id, str) else file_id
+    meta = _pcloud_api(hostname, token, 'stat', {'fileid': fid})['metadata']
+    return meta['name'], meta['parentfolderid']
+
+
+def upload_to_folder(hostname, token, folderid, filename, data: bytes):
+    """Uploads data as filename into folderid. Returns the new fileid.
 
     Verifies the upload against pCloud's own reported size for the new file
     rather than trusting result==0 alone — a file was found, after a run
@@ -105,7 +129,6 @@ def upload_inplace(hostname, token, file_id, name, data: bytes):
     a real gap between "the API call didn't raise" and "the content is
     actually what we sent."
     """
-    fid      = file_id.lstrip('f') if isinstance(file_id, str) else file_id
     # Long, run-specific boundary — a hardcoded one could in principle
     # collide with the same byte sequence appearing inside a video's binary
     # payload, corrupting the multipart parse silently.
@@ -113,11 +136,11 @@ def upload_inplace(hostname, token, file_id, name, data: bytes):
     body = (
         b'--' + boundary + b'\r\n'
         b'Content-Disposition: form-data; name="file"; filename="'
-        + name.encode() + b'"\r\nContent-Type: video/mp4\r\n\r\n'
+        + filename.encode() + b'"\r\nContent-Type: video/mp4\r\n\r\n'
         + data
         + b'\r\n--' + boundary + b'--\r\n'
     )
-    url = f'https://{hostname}/uploadfile?fileid={fid}&access_token={token}&nopartial=1'
+    url = f'https://{hostname}/uploadfile?folderid={folderid}&access_token={token}&nopartial=1'
     req = urllib.request.Request(
         url, data=body, method='POST',
         headers={'Content-Type': f'multipart/form-data; boundary={boundary.decode()}'},
@@ -130,6 +153,27 @@ def upload_inplace(hostname, token, file_id, name, data: bytes):
     uploaded_size = meta.get('size')
     if uploaded_size is not None and uploaded_size != len(data):
         raise RuntimeError(f'upload size mismatch: sent {len(data)} bytes, pCloud reports {uploaded_size}')
+    new_fileid = meta.get('fileid')
+    if new_fileid is None:
+        raise RuntimeError(f'upload succeeded but response had no fileid: {meta}')
+    return new_fileid
+
+
+def replace_file_content(hostname, token, file_id, data: bytes):
+    """Replaces file_id's content, mirroring pcloud.js's overwriteFile():
+    upload the new bytes under a temp name in the file's own folder first
+    (so the original survives if the upload fails), delete the original,
+    then rename the temp upload into place. Returns the NEW fileid — pCloud
+    always assigns a fresh one on upload; passing the old fileid to
+    uploadfile does NOT overwrite it in place (confirmed: doing so silently
+    creates an unrelated file in account root instead).
+    """
+    name, folderid = stat_file(hostname, token, file_id)
+    tmp_name = f'{name}.mappho-tmp'
+    new_fileid = upload_to_folder(hostname, token, folderid, tmp_name, data)
+    _pcloud_api(hostname, token, 'deletefile', {'fileid': file_id.lstrip('f') if isinstance(file_id, str) else file_id})
+    _pcloud_api(hostname, token, 'renamefile', {'fileid': new_fileid, 'toname': name})
+    return new_fileid
 
 
 # ── ffprobe / ffmpeg ──────────────────────────────────────────────────────────
@@ -205,7 +249,7 @@ def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
         if len(data) < 1024:
             return {'kind': 'error', 'rel': rel, 'msg': f'ffmpeg produced a suspiciously small output ({len(data)} bytes)'}
         try:
-            upload_inplace(hostname, token, f['ID'], name, data)
+            replace_file_content(hostname, token, f['ID'], data)
         except Exception as e:
             return {'kind': 'error', 'rel': rel, 'msg': f'upload failed: {e}'}
 
