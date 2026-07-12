@@ -95,9 +95,21 @@ def download_full(remote, path, rel_path, dest: Path) -> bool:
 
 
 def upload_inplace(hostname, token, file_id, name, data: bytes):
-    """Overwrite an existing pCloud file in-place (same fileid, no delete)."""
+    """Overwrite an existing pCloud file in-place (same fileid, no delete).
+
+    Verifies the upload against pCloud's own reported size for the new file
+    rather than trusting result==0 alone — a file was found, after a run
+    that reported zero errors, to still be byte-for-byte the pre-conversion
+    original despite being recorded as successfully converted. Cheap check
+    (uses data already in the API response, no extra round-trip) but closes
+    a real gap between "the API call didn't raise" and "the content is
+    actually what we sent."
+    """
     fid      = file_id.lstrip('f') if isinstance(file_id, str) else file_id
-    boundary = b'BndVidConv9Ma4YwXk'
+    # Long, run-specific boundary — a hardcoded one could in principle
+    # collide with the same byte sequence appearing inside a video's binary
+    # payload, corrupting the multipart parse silently.
+    boundary = ('MapphoVidConv-' + os.urandom(16).hex()).encode()
     body = (
         b'--' + boundary + b'\r\n'
         b'Content-Disposition: form-data; name="file"; filename="'
@@ -114,6 +126,10 @@ def upload_inplace(hostname, token, file_id, name, data: bytes):
         result = json.loads(resp.read())
     if result.get('result') != 0:
         raise RuntimeError(f'pCloud error {result.get("result")}: {result.get("error", result)}')
+    meta = (result.get('metadata') or [{}])[0]
+    uploaded_size = meta.get('size')
+    if uploaded_size is not None and uploaded_size != len(data):
+        raise RuntimeError(f'upload size mismatch: sent {len(data)} bytes, pCloud reports {uploaded_size}')
 
 
 # ── ffprobe / ffmpeg ──────────────────────────────────────────────────────────
@@ -186,6 +202,8 @@ def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
             return {'kind': 'error', 'rel': rel, 'msg': f'ffmpeg failed: {result.stderr.decode()[-300:]}'}
 
         data = local_out.read_bytes()
+        if len(data) < 1024:
+            return {'kind': 'error', 'rel': rel, 'msg': f'ffmpeg produced a suspiciously small output ({len(data)} bytes)'}
         try:
             upload_inplace(hostname, token, f['ID'], name, data)
         except Exception as e:
