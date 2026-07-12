@@ -1,118 +1,294 @@
 #!/usr/bin/env python3
 """
-Re-encode MP4/MOV files whose video stream isn't H.264 to H.264, in place.
+convert_video_codecs.py — Find MP4/MOV files whose video stream isn't H.264
+and re-encode just those, in place (same fileid, same path).
 
 Some old phone/camera recordings are already .mp4 containers but use an
 older video codec (commonly MPEG-4 Part 2 / "mp4v", the DivX/Xvid-era
-codec) that modern Android devices generally can't decode — the audio
-track (usually AAC) plays fine since that codec is universally supported,
-but no picture ever renders. convert_avi.py doesn't catch these because it
-only looks at the .avi extension, not the codec inside an already-.mp4 file.
+codec) that modern Android devices generally can't decode at all — the
+audio track (usually AAC) plays fine since that codec is universally
+supported, but no picture ever renders. convert_avi.py doesn't catch these
+because it only looks at the .avi extension, not the codec inside an
+already-.mp4 file.
 
-Probes each file with ffprobe and only re-encodes the video stream if it
-isn't already h264; the audio stream is copied as-is if it's already AAC
-(no re-encode, no quality loss) and only transcoded otherwise. Also adds
--movflags +faststart so the moov atom moves to the front of the file,
-letting Mappho's own metadata scan (which only reads the first 128KB) find
-embedded date/GPS on files where it currently can't.
+Uploads are done via pCloud's uploadfile?fileid=<id>, which overwrites the
+existing file's content in place and keeps its fileid — the same trick
+convert_b64_jpegs.py uses. That matters: Mappho keys temporary-meta.json
+(video GPS/date) and ignored.json by fileid, so preserving it means those
+stay valid with no extra work. The file's pCloud content hash does change
+though (different bytes), which makes Mappho's hash-index.json stale for
+converted files — this script does not try to patch that shared JSON
+itself (real risk of racing the app's own writes to it). Simplest fix:
+after running this, open Mappho and do Settings → Rebuild from Photos —
+it already re-derives hash-index.json and the local cache from a fresh
+listing of Photos/, picking up the new hashes for free.
+
+Downloads the full file locally before probing/converting — some of these
+recordings have their moov atom at the very end of the file, so a partial
+fetch wouldn't let ffprobe/ffmpeg see the container structure at all.
+
+Progress is saved so you can stop and resume at any time.
+
+Usage:
+    python3 tools/convert_video_codecs.py
+    python3 tools/convert_video_codecs.py --workers 3
+    python3 tools/convert_video_codecs.py --remote pcloud --path Photos
+    python3 tools/convert_video_codecs.py --dry-run
+
+Requirements: rclone (configured), ffmpeg/ffprobe on PATH.
 """
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+import threading
+import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path, PurePosixPath
+
+STATE_FILE = 'video_codec_convert_state.json'
+EXTS       = {'.mp4', '.mov'}
 
 
-def probe_streams(path: Path):
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", str(path)],
+# ── rclone / pCloud helpers ───────────────────────────────────────────────────
+
+def list_files(remote, path):
+    print(f'Listing {remote}:{path} …')
+    r = subprocess.run(
+        ['rclone', 'lsjson', f'{remote}:{path}', '--recursive', '--files-only'],
         capture_output=True, text=True,
     )
-    if result.returncode != 0:
+    if r.returncode != 0:
+        sys.exit(f'rclone lsjson failed:\n{r.stderr.strip()}')
+    entries = json.loads(r.stdout)
+    return [e for e in entries if PurePosixPath(e['Path']).suffix.lower() in EXTS]
+
+
+def get_pcloud_creds(remote):
+    r = subprocess.run(['rclone', 'config', 'show', remote], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, None
+    hostname = token = None
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition('=')
+        k, v = k.strip(), v.strip()
+        if k == 'hostname':
+            hostname = v
+        elif k == 'token':
+            try:
+                token = json.loads(v).get('access_token')
+            except Exception:
+                pass
+    return hostname or 'api.pcloud.com', token
+
+
+def download_full(remote, path, rel_path, dest: Path) -> bool:
+    r = subprocess.run(
+        ['rclone', 'copyto', f'{remote}:{path}/{rel_path}', str(dest)],
+        capture_output=True,
+    )
+    return r.returncode == 0 and dest.exists()
+
+
+def upload_inplace(hostname, token, file_id, name, data: bytes):
+    """Overwrite an existing pCloud file in-place (same fileid, no delete)."""
+    fid      = file_id.lstrip('f') if isinstance(file_id, str) else file_id
+    boundary = b'BndVidConv9Ma4YwXk'
+    body = (
+        b'--' + boundary + b'\r\n'
+        b'Content-Disposition: form-data; name="file"; filename="'
+        + name.encode() + b'"\r\nContent-Type: video/mp4\r\n\r\n'
+        + data
+        + b'\r\n--' + boundary + b'--\r\n'
+    )
+    url = f'https://{hostname}/uploadfile?fileid={fid}&access_token={token}&nopartial=1'
+    req = urllib.request.Request(
+        url, data=body, method='POST',
+        headers={'Content-Type': f'multipart/form-data; boundary={boundary.decode()}'},
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        result = json.loads(resp.read())
+    if result.get('result') != 0:
+        raise RuntimeError(f'pCloud error {result.get("result")}: {result.get("error", result)}')
+
+
+# ── ffprobe / ffmpeg ──────────────────────────────────────────────────────────
+
+def probe_streams(path: Path):
+    r = subprocess.run(
+        ['ffprobe', '-v', 'error', '-print_format', 'json', '-show_streams', str(path)],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
         return None
     try:
-        data = json.loads(result.stdout)
+        data = json.loads(r.stdout)
     except json.JSONDecodeError:
         return None
-    video = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
-    audio = next((s for s in data.get("streams", []) if s.get("codec_type") == "audio"), None)
+    video = next((s for s in data.get('streams', []) if s.get('codec_type') == 'video'), None)
+    audio = next((s for s in data.get('streams', []) if s.get('codec_type') == 'audio'), None)
     return video, audio
 
 
-def convert(path: Path, dry_run: bool) -> str:
-    """Returns 'converted', 'skipped', or 'error'."""
-    streams = probe_streams(path)
-    if streams is None:
-        print(f"  ERROR probing {path}")
-        return "error"
-    video, _audio = streams
-    if video is None:
-        print(f"  skip — {path} has no video stream")
-        return "skipped"
-    if video.get("codec_name") == "h264":
-        return "skipped"
+# ── per-file worker ───────────────────────────────────────────────────────────
 
-    print(f"  converting {path} (video codec: {video.get('codec_name')})")
-    if dry_run:
-        return "converted"
+def process_one(f, remote, path, hostname, token, dry_run):
+    """Returns a dict with 'kind': 'converted' | 'skipped' | 'error'."""
+    rel  = f['Path']
+    name = PurePosixPath(rel).name
 
-    audio_codec = _audio.get("codec_name") if _audio else None
-    audio_args = ["-c:a", "copy"] if audio_codec == "aac" else ["-c:a", "aac", "-b:a", "128k"]
+    with tempfile.TemporaryDirectory(prefix='mappho-vidconv-') as tmpdir:
+        local_src = Path(tmpdir) / name
+        if not download_full(remote, path, rel, local_src):
+            return {'kind': 'error', 'rel': rel, 'msg': 'download failed'}
 
-    tmp = path.with_suffix(path.suffix + ".converting.mp4")
-    result = subprocess.run(
-        [
-            "ffmpeg", "-i", str(path),
-            "-c:v", "libx264", "-crf", "23", "-preset", "fast",
-            *audio_args,
-            "-movflags", "+faststart",
-            "-y", str(tmp),
-        ],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        print(f"  ERROR: ffmpeg failed:\n{result.stderr.decode()}")
-        tmp.unlink(missing_ok=True)
-        return "error"
+        streams = probe_streams(local_src)
+        if streams is None:
+            return {'kind': 'error', 'rel': rel, 'msg': 'ffprobe failed — possibly corrupt'}
+        video, audio = streams
+        if video is None:
+            return {'kind': 'skipped', 'rel': rel, 'msg': 'no video stream'}
+        if video.get('codec_name') == 'h264':
+            return {'kind': 'skipped', 'rel': rel}
 
-    tmp.replace(path)  # atomic on the same filesystem
-    print(f"  done — {path}")
-    return "converted"
+        if dry_run:
+            return {'kind': 'converted', 'rel': rel, 'msg': f"video codec: {video.get('codec_name')}"}
 
+        audio_codec = audio.get('codec_name') if audio else None
+        audio_args = ['-c:a', 'copy'] if audio_codec == 'aac' else ['-c:a', 'aac', '-b:a', '128k']
+
+        local_out = Path(tmpdir) / f'{name}.converted.mp4'
+        result = subprocess.run(
+            [
+                'ffmpeg', '-i', str(local_src),
+                '-c:v', 'libx264', '-crf', '23', '-preset', 'fast',
+                *audio_args,
+                '-movflags', '+faststart',
+                '-y', str(local_out),
+            ],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return {'kind': 'error', 'rel': rel, 'msg': f'ffmpeg failed: {result.stderr.decode()[-300:]}'}
+
+        data = local_out.read_bytes()
+        try:
+            upload_inplace(hostname, token, f['ID'], name, data)
+        except Exception as e:
+            return {'kind': 'error', 'rel': rel, 'msg': f'upload failed: {e}'}
+
+        orig_mb = local_src.stat().st_size / 1e6
+        new_mb  = len(data) / 1e6
+        return {'kind': 'converted', 'rel': rel,
+                'msg': f"{video.get('codec_name')} → h264, {orig_mb:.1f} MB → {new_mb:.1f} MB"}
+
+
+# ── state ─────────────────────────────────────────────────────────────────────
+
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return set()
+    with open(STATE_FILE) as f:
+        return set(json.load(f).get('done', []))
+
+
+def save_state(done):
+    with open(STATE_FILE, 'w') as f:
+        json.dump({'done': list(done)}, f, indent=2)
+
+
+# ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("root", help="Root folder to search (e.g. /Volumes/pCloud/Photos)")
-    parser.add_argument("--dry-run", action="store_true", help="List affected files without converting")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--remote', default='pcloud', help='rclone remote name (default: pcloud)')
+    ap.add_argument('--path', default='Photos', help='sub-path to scan (default: Photos)')
+    ap.add_argument('--workers', type=int, default=2,
+                     help='parallel ffmpeg conversions (default: 2 — each is already CPU-heavy)')
+    ap.add_argument('--dry-run', action='store_true', help='list affected files without converting')
+    args = ap.parse_args()
 
-    root = Path(args.root)
-    if not root.is_dir():
-        print(f"Error: {root} is not a directory", file=sys.stderr)
-        sys.exit(1)
+    hostname, token = get_pcloud_creds(args.remote)
+    if not token:
+        sys.exit(f"Could not read pCloud token for remote '{args.remote}'.")
 
-    videos = sorted(
-        p for ext in ("*.mp4", "*.MP4", "*.mov", "*.MOV") for p in root.rglob(ext)
-    )
-    if not videos:
-        print("No MP4/MOV files found.")
-        return
+    files = list_files(args.remote, args.path)
+    total = len(files)
+    print(f'{total} MP4/MOV files found.')
 
-    print(f"Checking {len(videos)} file(s){' (dry run)' if args.dry_run else ''}:\n")
-    converted = skipped = errors = 0
-    for v in videos:
-        outcome = convert(v, args.dry_run)
-        if outcome == "converted":
-            converted += 1
-        elif outcome == "skipped":
-            skipped += 1
-        else:
-            errors += 1
+    done = load_state() if not args.dry_run else set()
+    pending = [f for f in files if f['Path'] not in done]
+    print(f'{len(done)} already converted, {len(pending)} to check'
+          f"{' (dry run)' if args.dry_run else f', {args.workers} workers'}.\n")
 
-    print(f"\nDone — {converted} converted, {skipped} already H.264, {errors} failed.")
+    converted = skipped = errors = completed = 0
+    state_lock = threading.Lock()
+    print_lock = threading.Lock()
+    start_time = time.monotonic()
+
+    def log(msg):
+        with print_lock:
+            print(msg, flush=True)
+
+    def fmt_eta(done_count, total_count):
+        elapsed = time.monotonic() - start_time
+        if done_count == 0 or elapsed < 1:
+            return 'ETA ?'
+        remaining = (total_count - done_count) / (done_count / elapsed)
+        if remaining >= 3600:
+            return f'ETA {int(remaining // 3600)}h {int((remaining % 3600) // 60)}m'
+        if remaining >= 60:
+            return f'ETA {int(remaining // 60)}m {int(remaining % 60)}s'
+        return f'ETA {int(remaining)}s'
+
+    try:
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {
+                executor.submit(process_one, f, args.remote, args.path, hostname, token, args.dry_run): f
+                for f in pending
+            }
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    r = future.result()
+                except Exception as e:
+                    errors += 1
+                    log(f'[{completed}/{len(pending)}] unexpected error: {e}')
+                    continue
+
+                kind = r['kind']
+                if kind == 'skipped':
+                    skipped += 1
+                elif kind == 'converted':
+                    converted += 1
+                    log(f"[{completed}/{len(pending)}] {r['rel']}  {r.get('msg', '')}  ✓  "
+                        f'{fmt_eta(completed, len(pending))}')
+                    if not args.dry_run:
+                        with state_lock:
+                            done.add(r['rel'])
+                            save_state(done)
+                elif kind == 'error':
+                    errors += 1
+                    log(f"[{completed}/{len(pending)}] {r['rel']}  FAILED: {r['msg']}  "
+                        f'{fmt_eta(completed, len(pending))}')
+
+    except KeyboardInterrupt:
+        print('\nInterrupted — progress saved.')
+
+    if not args.dry_run and errors == 0 and os.path.exists(STATE_FILE):
+        os.remove(STATE_FILE)
+
+    print(f'\nDone — {converted} converted, {skipped} already H.264, {errors} errors.')
+    if errors:
+        print('Re-run to retry failed files.')
+    if converted and not args.dry_run:
+        print('\nOpen Mappho and run Settings → Rebuild from Photos to refresh hash-index.json '
+              'and the local cache with the converted files\' new content hashes.')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
