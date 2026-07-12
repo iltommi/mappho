@@ -903,6 +903,7 @@ export function getCurrentSlideshowIndex() { return current; }
 let resumeSnapshot = null;
 function snapshotForResume() {
   resumeSnapshot = { fetcher: lazyFetch, total: lazyTotal, seedItems: photos.slice(), index: current };
+  log('Slideshow resume', `snapshot taken: index=${resumeSnapshot.index} total=${resumeSnapshot.total} seedItems=${resumeSnapshot.seedItems.length} hasFetcher=${!!resumeSnapshot.fetcher}`);
 }
 
 // Resumes the slideshow after geotag/fix-date/fix-time, for callers that
@@ -916,7 +917,7 @@ function snapshotForResume() {
 export function resumeAfterHandoff({ success, fileid, name, ts, lat, lng } = {}) {
   const snap = resumeSnapshot;
   resumeSnapshot = null;
-  if (!snap) return;
+  if (!snap) { log('Slideshow resume', 'no snapshot pending — nothing to resume'); return; }
   const items = snap.seedItems.slice();
   if (success) {
     items[snap.index] = {
@@ -930,7 +931,10 @@ export function resumeAfterHandoff({ success, fileid, name, ts, lat, lng } = {})
   }
   const total = snap.total ?? items.length;
   const nextIndex = success ? Math.min(snap.index + 1, total - 1) : snap.index;
-  openLazySlideshow(snap.fetcher, total, { startIndex: nextIndex, seedItems: items });
+  log('Slideshow resume', `success=${success} snapIndex=${snap.index} nextIndex=${nextIndex} total=${total} items=${items.length}`);
+  openLazySlideshow(snap.fetcher, total, { startIndex: nextIndex, seedItems: items })
+    .then(() => log('Slideshow resume', `openLazySlideshow resolved, open=${el.classList.contains('open')} current=${current} photosLen=${photos.length}`))
+    .catch(e => log('Slideshow resume', `openLazySlideshow threw: ${e.message}`));
 }
 
 export function refreshSlideshowImage(fileid, src) {
