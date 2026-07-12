@@ -9,7 +9,7 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, advanceToNext } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setAfterBulkGeotagCallback } from './grid.js';
@@ -336,7 +336,7 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
     _lastFixDateTs = ts;
     await reloadTopbarCounts().catch(e => log('Fix date', `reloadTopbarCounts error: ${e.message}`));
     flushPhotoIndex().catch(e => log('PhotoIndex flush error', e.message));
-    onDone?.();
+    onDone?.(r);
   } catch (e) {
     log('Fix date error', e.message);
     if (mode === 'time') startFixTime(photo, onDone);
@@ -390,7 +390,7 @@ fixDateCancelBtn.addEventListener('click', () => {
   fixDatePhoto  = null;
   fixDatePhotos = null;
   fixDateOnDone = null;
-  if (wasBulk) cb?.({ success: false, count: 0, failed: 0 });
+  cb?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
 });
 
 
@@ -894,15 +894,12 @@ async function openPeopleGrid(people) {
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return; }
   items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
-  // In-place edit handlers (like the map marker slideshow) — no list reopen.
   setGeotagHandler(photo => startGeotagging(photo, r => {
-    if (r.success) {
-      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
-      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-    }
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
   }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
-  setFixTimeHandler(photo => startFixTime(photo, () => {}));
+  setFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
   setIgnoreHandler(null);
   openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
     { title: `👤 ${label}`, sameDayFetch: sameDayFromList(items) });
@@ -1605,13 +1602,11 @@ async function main() {
   });
 
   setGeotagHandler(photo => startGeotagging(photo, r => {
-    if (r.success) {
-      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
-      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-      advanceToNext();
-    }
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
   }));
-  setFixDateHandler(photo => startFixDate(photo, () => {}));
+  setFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
   setGeotagStatusFn(setStatus);
   setEditHandler((photo, thumbSrc) => {
@@ -1642,16 +1637,13 @@ async function main() {
     });
   });
 
-  // Handlers for map marker slideshow — update in place, then move on.
+  // Handlers for map marker slideshow.
   setMarkerGeotagHandler(photo => startGeotagging(photo, r => {
-    if (r.success) {
-      sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
-      updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-      advanceToNext();
-    }
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
   }));
-  setMarkerFixDateHandler(photo => startFixDate(photo, () => {}));
-  setMarkerFixTimeHandler(photo => startFixTime(photo, () => {}));
+  setMarkerFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  setMarkerFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
 
   const token = getToken();
   setupAuthBtn(!!token);

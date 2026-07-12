@@ -316,6 +316,7 @@ export function closeSlideshow() { close(); }
 geotagBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !geotagHandler) return;
+  snapshotForResume();
   close({ handoff: true });
   geotagHandler(photo);
 });
@@ -323,6 +324,7 @@ geotagBtn.addEventListener('click', () => {
 fixDateBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !fixDateHandler) return;
+  snapshotForResume();
   close();
   fixDateHandler(photo);
 });
@@ -330,6 +332,7 @@ fixDateBtn.addEventListener('click', () => {
 fixTimeBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !fixTimeHandler) return;
+  snapshotForResume();
   close();
   fixTimeHandler(photo);
 });
@@ -893,13 +896,41 @@ export function updateCurrentSlideshowItem({ fileid, name, ts, lat, lng }) {
 
 export function getCurrentSlideshowIndex() { return current; }
 
-// Advances to the next slide with the normal swipe animation — used after an
-// in-place edit (e.g. geotag) that a caller wants to follow with "move on to
-// the next photo" instead of staying put. No-op with fewer than two photos
-// (nothing to advance to) or while the slideshow is closed.
-export function advanceToNext() {
-  if (!el.classList.contains('open') || photos.length < 2) return;
-  navigate(1);
+// geotagBtn/fixDateBtn/fixTimeBtn hand off to a nested full-screen flow
+// (pin-drop map, date/time picker) via close(), which wipes `photos` —
+// there'd be nothing left to resume into once that flow finishes. Snapshot
+// what's needed to reopen at the right spot before that happens.
+let resumeSnapshot = null;
+function snapshotForResume() {
+  resumeSnapshot = { fetcher: lazyFetch, total: lazyTotal, seedItems: photos.slice(), index: current };
+}
+
+// Resumes the slideshow after geotag/fix-date/fix-time, for callers that
+// don't manage their own reopen (contrast the orphan-cleanup grids in
+// main.js, which already reopen a filtered list themselves and never call
+// this). success:false (cancelled or failed) reopens at the same photo
+// unchanged; success patches the edited fields in place and advances to the
+// next photo, so a tagging/dating sweep naturally moves forward. No-op if
+// nothing was snapshotted (e.g. this is called from a flow that doesn't
+// route through geotagBtn/fixDateBtn/fixTimeBtn).
+export function resumeAfterHandoff({ success, fileid, name, ts, lat, lng } = {}) {
+  const snap = resumeSnapshot;
+  resumeSnapshot = null;
+  if (!snap) return;
+  const items = snap.seedItems.slice();
+  if (success) {
+    items[snap.index] = {
+      ...items[snap.index],
+      ...(fileid !== undefined ? { fileid } : {}),
+      ...(name !== undefined ? { name } : {}),
+      ...(ts !== undefined ? { ts } : {}),
+      ...(lat !== undefined ? { lat } : {}),
+      ...(lng !== undefined ? { lng } : {}),
+    };
+  }
+  const total = snap.total ?? items.length;
+  const nextIndex = success ? Math.min(snap.index + 1, total - 1) : snap.index;
+  openLazySlideshow(snap.fetcher, total, { startIndex: nextIndex, seedItems: items });
 }
 
 export function refreshSlideshowImage(fileid, src) {
@@ -948,7 +979,18 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
     if (firstPage.length < PAGE_SIZE) lazyDone = true;
     photos = firstPage;
   }
+  // startIndex can land beyond what's loaded so far — e.g. resuming right
+  // after the last already-loaded item post-edit. Keep fetching forward
+  // until it's in range or the list is genuinely exhausted.
+  while (fetchPage && !lazyDone && startIndex >= photos.length) {
+    const page = await fetchPage(lazyOffset, PAGE_SIZE);
+    lazyOffset += page.length;
+    if (page.length < PAGE_SIZE) lazyDone = true;
+    if (!page.length) break;
+    photos.push(...page);
+  }
   if (!photos.length) return;
+  startIndex = Math.min(startIndex, photos.length - 1);
   geotagBtn.style.display  = geotagHandler ? '' : 'none';
   fixDateBtn.style.display = fixDateHandler ? '' : 'none';
   fixTimeBtn.style.display = fixTimeHandler ? '' : 'none';
