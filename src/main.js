@@ -9,7 +9,7 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, advanceToNext } from './slideshow.js';
 import { openPhotoEdit } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setAfterBulkGeotagCallback } from './grid.js';
@@ -1608,6 +1608,7 @@ async function main() {
     if (r.success) {
       sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
       updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
+      advanceToNext();
     }
   }));
   setFixDateHandler(photo => startFixDate(photo, () => {}));
@@ -1641,11 +1642,12 @@ async function main() {
     });
   });
 
-  // Handlers for map marker slideshow — update in place, no redirect.
+  // Handlers for map marker slideshow — update in place, then move on.
   setMarkerGeotagHandler(photo => startGeotagging(photo, r => {
     if (r.success) {
       sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`);
       updateCurrentSlideshowItem({ fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
+      advanceToNext();
     }
   }));
   setMarkerFixDateHandler(photo => startFixDate(photo, () => {}));

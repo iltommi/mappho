@@ -893,6 +893,15 @@ export function updateCurrentSlideshowItem({ fileid, name, ts, lat, lng }) {
 
 export function getCurrentSlideshowIndex() { return current; }
 
+// Advances to the next slide with the normal swipe animation — used after an
+// in-place edit (e.g. geotag) that a caller wants to follow with "move on to
+// the next photo" instead of staying put. No-op with fewer than two photos
+// (nothing to advance to) or while the slideshow is closed.
+export function advanceToNext() {
+  if (!el.classList.contains('open') || photos.length < 2) return;
+  navigate(1);
+}
+
 export function refreshSlideshowImage(fileid, src) {
   if (!el.classList.contains('open')) return;
   const photo = photos[current];
