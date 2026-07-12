@@ -162,6 +162,7 @@ def process_one(f, remote, path, hostname, token, dry_run):
         audio_args = ['-c:a', 'copy'] if audio_codec == 'aac' else ['-c:a', 'aac', '-b:a', '128k']
 
         local_out = Path(tmpdir) / f'{name}.converted.mp4'
+        t0 = time.monotonic()
         result = subprocess.run(
             [
                 'ffmpeg', '-i', str(local_src),
@@ -172,6 +173,7 @@ def process_one(f, remote, path, hostname, token, dry_run):
             ],
             capture_output=True,
         )
+        convert_seconds = time.monotonic() - t0
         if result.returncode != 0:
             return {'kind': 'error', 'rel': rel, 'msg': f'ffmpeg failed: {result.stderr.decode()[-300:]}'}
 
@@ -183,22 +185,34 @@ def process_one(f, remote, path, hostname, token, dry_run):
 
         orig_mb = local_src.stat().st_size / 1e6
         new_mb  = len(data) / 1e6
-        return {'kind': 'converted', 'rel': rel,
+        return {'kind': 'converted', 'rel': rel, 'convert_seconds': convert_seconds,
                 'msg': f"{video.get('codec_name')} → h264, {orig_mb:.1f} MB → {new_mb:.1f} MB"}
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
+# Maps path -> 'converted' | 'skipped'. Both outcomes mean "nothing left to
+# do for this file" and are skipped on resume — only 'converted' matters for
+# resuming correctness, but recording 'skipped' too avoids re-downloading and
+# re-probing the (typically large) majority of files that don't need
+# conversion every time the script is interrupted and re-run. Errors are
+# deliberately not recorded, so they're retried on the next run.
 
 def load_state():
     if not os.path.exists(STATE_FILE):
-        return set()
+        return {}
     with open(STATE_FILE) as f:
-        return set(json.load(f).get('done', []))
+        data = json.load(f)
+    if 'checked' in data:
+        return data['checked']
+    # Migrate the older format (a converted-only path list) so an
+    # in-progress run's already-converted files aren't redundantly
+    # re-downloaded and re-probed under the new format.
+    return {path: 'converted' for path in data.get('done', [])}
 
 
-def save_state(done):
+def save_state(checked):
     with open(STATE_FILE, 'w') as f:
-        json.dump({'done': list(done)}, f, indent=2)
+        json.dump({'checked': checked}, f, indent=2)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -220,12 +234,16 @@ def main():
     total = len(files)
     print(f'{total} MP4/MOV files found.')
 
-    done = load_state() if not args.dry_run else set()
-    pending = [f for f in files if f['Path'] not in done]
-    print(f'{len(done)} already converted, {len(pending)} to check'
+    checked = {} if args.dry_run else load_state()
+    pending = [f for f in files if f['Path'] not in checked]
+    prior_converted = sum(1 for v in checked.values() if v == 'converted')
+    prior_skipped   = len(checked) - prior_converted
+    print(f'{len(checked)} already checked ({prior_converted} converted, {prior_skipped} already H.264), '
+          f'{len(pending)} left to check'
           f"{' (dry run)' if args.dry_run else f', {args.workers} workers'}.\n")
 
     converted = skipped = errors = completed = 0
+    convert_seconds_total = 0.0  # wall-clock time actually spent inside ffmpeg, for the ETA below
     state_lock = threading.Lock()
     print_lock = threading.Lock()
     start_time = time.monotonic()
@@ -234,11 +252,29 @@ def main():
         with print_lock:
             print(msg, flush=True)
 
-    def fmt_eta(done_count, total_count):
+    # Skip-only checks (most files) take seconds; an actual conversion takes
+    # minutes. A flat "elapsed / completed" rate blends the two and wildly
+    # overestimates remaining time once mostly-skips are left — instead,
+    # extrapolate how many of the REMAINING files will likely need
+    # conversion (from the hit rate seen so far) and cost each class of
+    # file its own observed average duration.
+    def fmt_eta(completed_count, total_count):
         elapsed = time.monotonic() - start_time
-        if done_count == 0 or elapsed < 1:
+        if completed_count == 0 or elapsed < 1:
             return 'ETA ?'
-        remaining = (total_count - done_count) / (done_count / elapsed)
+        remaining_count = total_count - completed_count
+        hit_rate = converted / completed_count
+        expected_remaining_conversions = remaining_count * hit_rate
+
+        avg_convert = (convert_seconds_total / converted) if converted else 90.0  # guess until we have data
+        check_only_elapsed = max(0.0, elapsed - convert_seconds_total)
+        checks_so_far = completed_count - converted
+        avg_check = (check_only_elapsed / checks_so_far) if checks_so_far else 3.0
+
+        remaining = (
+            (expected_remaining_conversions * avg_convert) / max(1, args.workers)
+            + ((remaining_count - expected_remaining_conversions) * avg_check) / max(1, args.workers)
+        )
         if remaining >= 3600:
             return f'ETA {int(remaining // 3600)}h {int((remaining % 3600) // 60)}m'
         if remaining >= 60:
@@ -263,14 +299,19 @@ def main():
                 kind = r['kind']
                 if kind == 'skipped':
                     skipped += 1
+                    if not args.dry_run:
+                        with state_lock:
+                            checked[r['rel']] = 'skipped'
+                            save_state(checked)
                 elif kind == 'converted':
                     converted += 1
+                    convert_seconds_total += r.get('convert_seconds', 0.0)
                     log(f"[{completed}/{len(pending)}] {r['rel']}  {r.get('msg', '')}  ✓  "
                         f'{fmt_eta(completed, len(pending))}')
                     if not args.dry_run:
                         with state_lock:
-                            done.add(r['rel'])
-                            save_state(done)
+                            checked[r['rel']] = 'converted'
+                            save_state(checked)
                 elif kind == 'error':
                     errors += 1
                     log(f"[{completed}/{len(pending)}] {r['rel']}  FAILED: {r['msg']}  "
@@ -282,10 +323,12 @@ def main():
     if not args.dry_run and errors == 0 and os.path.exists(STATE_FILE):
         os.remove(STATE_FILE)
 
-    print(f'\nDone — {converted} converted, {skipped} already H.264, {errors} errors.')
+    total_converted = prior_converted + converted
+    print(f'\nDone this run — {converted} converted, {skipped} already H.264, {errors} errors.')
+    print(f'Total converted so far (including prior runs): {total_converted}.')
     if errors:
         print('Re-run to retry failed files.')
-    if converted and not args.dry_run:
+    if total_converted and not args.dry_run:
         print('\nOpen Mappho and run Settings → Rebuild from Photos to refresh hash-index.json '
               'and the local cache with the converted files\' new content hashes.')
 
