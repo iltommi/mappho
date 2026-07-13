@@ -1057,7 +1057,23 @@ body.filter-open #map { top: 40px; }
   display: none;
 }
 #lightbox.loading #lightbox-loading { display: block; }
-#lightbox.loading #lightbox-img { display: none; }
+#lightbox.loading #lightbox-img-wrap { display: none; }
+
+/* Panzoom computes its pinch-zoom anchor relative to #lightbox-img's parent
+   bounding box, assuming the pannable element sits flush at that parent's
+   top-left corner. #lightbox is a fullscreen flex container that centers a
+   normally-smaller, letterboxed image inside it — without this wrapper,
+   Panzoom's parent would be the whole viewport, not the image's actual
+   rendered box, throwing off the zoom anchor by the centering gap (pinching
+   would zoom around the wrong point and appear to also pan). This wrapper
+   shrinks to exactly the image's rendered size, so parent-relative math
+   lines up with what's actually on screen; line-height:0 avoids the usual
+   few-pixel gap under an inline-block image.
+*/
+#lightbox-img-wrap {
+  display: inline-block;
+  line-height: 0;
+}
 
 #lightbox-img {
   max-width: 100vw;
