@@ -119,8 +119,33 @@ export async function startBulkGeotagging(photos, callback) {
   pendingLatLng = null;
   onDone        = callback;
 
-  hintEl.textContent  = `Tap map to place pin for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
-  saveBtn.disabled    = true;
+  const countLabel = `${photos.length} photo${photos.length === 1 ? '' : 's'}`;
+
+  // Suggest a starting pin the same way the single-photo flow does — find
+  // the geotagged photo closest in time to the selection's median date, so
+  // the map isn't left blank for a batch that's obviously from one outing.
+  const validTs = photos
+    .map(p => (p.ts && p.ts > 0 && p.ts < UNDATED_TS) ? p.ts : parseDateFromFilename(p.name))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  const ts = validTs.length ? validTs[Math.floor(validTs.length / 2)] : null;
+
+  let initialPin = null;
+  let hint = `Tap map to place pin for ${countLabel}`;
+
+  if (ts) {
+    const closest = await findClosestGeotagged(ts);
+    if (closest) {
+      initialPin = { lat: closest.lat, lng: closest.lng };
+      pendingLatLng = initialPin;
+      const delta  = fmtDelta(closest.delta);
+      const before = ts < closest.ts ? 'before' : 'after';
+      hint = `Nearest: ${closest.name} · ${delta} ${before} — pin for ${countLabel}`;
+    }
+  }
+
+  hintEl.textContent  = hint;
+  saveBtn.disabled    = pendingLatLng === null;
   saveBtn.textContent = '💾 Save';
   bar.style.display   = 'flex';
   document.body.classList.add('action-bar-open');
@@ -136,7 +161,7 @@ export async function startBulkGeotagging(photos, callback) {
   skipExistingBox.checked = true;
 
   enterPinDropMode({
-    initialPin: null,
+    initialPin,
     onPlace: ({ lat, lng }) => {
       pendingLatLng    = { lat, lng };
       saveBtn.disabled = false;
