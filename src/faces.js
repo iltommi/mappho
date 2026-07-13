@@ -12,6 +12,7 @@
 import { statByPath, downloadJsonFile, uploadJsonToFolder, getFileStat } from './pcloud.js';
 import { bulkPutFaces, clearFaces, getFacesEntry, putFacesEntry, deleteFacesEntry, countFaces, getAllFaces } from './db.js';
 import { scheduleUpload } from './syncmanager.js';
+import { normPcloudHash } from './hashutil.js';
 import { log } from './log.js';
 
 const REMOTE_PATH     = '/Photos/faces.json';
@@ -25,16 +26,6 @@ let _loaded  = false;
 let _loading = null;
 let _stats   = null; // cached getPeopleStats() result; null after any mutation
 
-// pCloud hashes are uint64, but the app receives them from JSON as JS numbers,
-// which round above 2^53. Normalising through Number() puts externally written
-// exact values into the same rounded space as the hashes the app stores on its
-// own records, so joins always line up.
-function normFacesHash(h) {
-  if (h == null) return null;
-  const n = Number(h);
-  return Number.isFinite(n) ? String(n) : String(h);
-}
-
 function readMeta() {
   try { return JSON.parse(localStorage.getItem(META_KEY)); } catch { return null; }
 }
@@ -43,7 +34,7 @@ async function replaceFromRemote(stat) {
   const data = await downloadJsonFile(stat.fileid);
   if (!Array.isArray(data?.entries)) throw new Error('malformed faces.json');
   await clearFaces();
-  await bulkPutFaces(data.entries.filter(e => e.hash != null).map(e => ({ ...e, hash: normFacesHash(e.hash) })));
+  await bulkPutFaces(data.entries.filter(e => e.hash != null).map(e => ({ ...e, hash: normPcloudHash(e.hash) })));
   // Keep every top-level field except entries (version, generated_at, people,
   // skipped_no_dimensions, …) so write-backs don't drop tool metadata.
   const { entries: _entries, ...meta } = data;
@@ -159,11 +150,11 @@ async function uploadFaces() {
 // files without a faces entry (videos, HEICs, photos with no recognised faces).
 export async function renameFacesEntry(oldHash, { newHash = null, name = null, path = null } = {}) {
   await load();
-  const key = normFacesHash(oldHash);
+  const key = normPcloudHash(oldHash);
   if (!key) return;
   const entry = await getFacesEntry(key);
   if (!entry) { log('Faces', `no entry for hash ${key} — nothing to update`); return; }
-  const newKey  = normFacesHash(newHash) ?? key;
+  const newKey  = normPcloudHash(newHash) ?? key;
   const newName = name ?? entry.name;
   const folderPart = entry.path?.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/') + 1) : '';
   const newPath = path ?? (name ? folderPart + newName : entry.path);
@@ -177,7 +168,7 @@ export async function renameFacesEntry(oldHash, { newHash = null, name = null, p
 // Removes the faces entry for a photo deleted through the app.
 export async function removeFacesEntry(hash) {
   await load();
-  const key = normFacesHash(hash);
+  const key = normPcloudHash(hash);
   if (!key) return;
   const entry = await getFacesEntry(key);
   if (!entry) { log('Faces', `no entry for hash ${key} — nothing to remove`); return; }
@@ -213,7 +204,7 @@ export function getFaceRegions(entry) {
 // Lookup APIs for future UI (person filter, name captions, face overlays).
 export async function getFacesForHash(hash) {
   await load();
-  const key = normFacesHash(hash);
+  const key = normPcloudHash(hash);
   const entry = key ? ((await getFacesEntry(key)) ?? null) : null;
   log('Faces', entry
     ? `lookup ${key}: ${entry.name} — ${getFaceRegions(entry).length} face(s)`

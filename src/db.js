@@ -1,11 +1,12 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'mappho';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const MAPPHO_INDEX_STORE = 'mappho_index';
 const FACES_STORE = 'faces';
+const LOCATIONS_STORE = 'locations';
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
@@ -62,6 +63,9 @@ async function db() {
       }
       if (oldVersion < 8) {
         db.createObjectStore(FACES_STORE, { keyPath: 'hash' });
+      }
+      if (oldVersion < 9) {
+        db.createObjectStore(LOCATIONS_STORE, { keyPath: 'hash' });
       }
     },
   });
@@ -353,6 +357,45 @@ export async function bulkPutFaces(entries) {
   if (!entries.length) return;
   const d = await db();
   const tx = d.transaction(FACES_STORE, 'readwrite');
+  for (const e of entries) tx.store.put(e);
+  await tx.done;
+}
+
+// Locations index: hash → { hash, name, path, uuid, tags: [{category,score}] }.
+// Local mirror of Photos/locations.json (scene/place classification, generated
+// by an external tool); the app re-keys/renames/removes entries when it
+// edits, moves or deletes photos so the two stay joined by content hash.
+
+export async function getLocationsEntry(hash) {
+  if (!hash) return null;
+  return (await db()).get(LOCATIONS_STORE, hash);
+}
+
+export async function putLocationsEntry(entry) {
+  return (await db()).put(LOCATIONS_STORE, entry);
+}
+
+export async function deleteLocationsEntry(hash) {
+  if (!hash) return;
+  return (await db()).delete(LOCATIONS_STORE, hash);
+}
+
+export async function countLocations() {
+  return (await db()).count(LOCATIONS_STORE);
+}
+
+export async function getAllLocations() {
+  return (await db()).getAll(LOCATIONS_STORE);
+}
+
+export async function clearLocations() {
+  return (await db()).clear(LOCATIONS_STORE);
+}
+
+export async function bulkPutLocations(entries) {
+  if (!entries.length) return;
+  const d = await db();
+  const tx = d.transaction(LOCATIONS_STORE, 'readwrite');
   for (const e of entries) tx.store.put(e);
   await tx.done;
 }

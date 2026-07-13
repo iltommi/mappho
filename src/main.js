@@ -17,6 +17,7 @@ import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonth
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
+import { refreshLocations, getLocationStats, getEntriesForLocations } from './locations.js';
 import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
@@ -738,7 +739,8 @@ const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 const infoPopupClose = document.getElementById('info-popup-close');
 
-let _peopleCount = null; // people recognised in faces.json; null = unknown/none
+let _peopleCount   = null; // people recognised in faces.json; null = unknown/none
+let _locationCount = null; // categories recognised in locations.json; null = unknown/none
 
 function renderInfoRows() {
   const X = (e) => `<span class="icon-x">${e}</span>`;
@@ -782,34 +784,53 @@ function renderInfoRows() {
 
 // ── People popup ──────────────────────────────────────────────────────────────
 
-const peoplePopup       = document.getElementById('people-popup');
-const peopleRowsEl      = document.getElementById('people-rows');
-const peopleSearchInput = document.getElementById('people-search-input');
-const peopleSelectBar   = document.getElementById('people-select-bar');
-const peopleSelectCount = document.getElementById('people-select-count');
-const peopleSelectOkBtn = document.getElementById('people-select-ok');
+const peoplePopup        = document.getElementById('people-popup');
+const peopleRowsEl       = document.getElementById('people-rows');
+const peopleSearchInput  = document.getElementById('people-search-input');
+const peopleSelectBar    = document.getElementById('people-select-bar');
+const peopleSelectCount  = document.getElementById('people-select-count');
+const peopleSelectOkBtn  = document.getElementById('people-select-ok');
+const peopleTabPeople    = document.getElementById('people-tab-people');
+const peopleTabLocations = document.getElementById('people-tab-locations');
 document.getElementById('people-popup-close').addEventListener('click', () => { peoplePopup.style.display = 'none'; });
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) peoplePopup.style.display = 'none'; });
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-let _peopleList     = []; // full list from the last openPeoplePopup() — filtered locally as the user types
-let _peopleSelected = new Map(); // id -> {id, name} — persists across search filtering
+let _peopleList        = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+let _locationsList     = [];
+let _peopleSelected    = new Map(); // id -> {id, name, count} — persists across tab switches and search filtering
+let _locationsSelected = new Map(); // category -> {id, name, count}
+let _peopleTab         = 'people'; // 'people' | 'locations' — which list is currently shown
 
 function updatePeopleSelectBar() {
-  const n = _peopleSelected.size;
+  const n = _peopleSelected.size + _locationsSelected.size;
   peopleSelectCount.textContent = n ? `${n} selected` : '';
   peopleSelectBar.style.display = n ? 'flex' : 'none';
 }
 
+function setPeopleTab(tab) {
+  _peopleTab = tab;
+  peopleTabPeople.classList.toggle('active', tab === 'people');
+  peopleTabLocations.classList.toggle('active', tab === 'locations');
+  peopleSearchInput.placeholder = tab === 'people' ? 'Search people…' : 'Search places…';
+  renderPeopleRows(peopleSearchInput.value);
+}
+peopleTabPeople.addEventListener('click', () => setPeopleTab('people'));
+peopleTabLocations.addEventListener('click', () => setPeopleTab('locations'));
+
 function renderPeopleRows(filterText) {
+  const isPeople = _peopleTab === 'people';
+  const list     = isPeople ? _peopleList : _locationsList;
+  const selected = isPeople ? _peopleSelected : _locationsSelected;
+  const icon     = isPeople ? '👤' : '📍';
   const q = filterText.trim().toLowerCase();
-  const filtered = q ? _peopleList.filter(p => p.name.toLowerCase().includes(q)) : _peopleList;
+  const filtered = q ? list.filter(p => p.name.toLowerCase().includes(q)) : list;
   peopleRowsEl.innerHTML = '';
   if (!filtered.length) {
     const empty = document.createElement('p');
     empty.className = 'people-empty';
-    empty.textContent = 'No matches.';
+    empty.textContent = list.length ? 'No matches.' : (isPeople ? 'No people recognised.' : 'No places recognised.');
     peopleRowsEl.appendChild(empty);
     return;
   }
@@ -823,10 +844,10 @@ function renderPeopleRows(filterText) {
     const check = document.createElement('input');
     check.type = 'checkbox';
     check.className = 'people-row-check';
-    check.checked = _peopleSelected.has(p.id);
+    check.checked = selected.has(p.id);
     const name = document.createElement('span');
     name.className = 'people-row-name';
-    name.textContent = `👤 ${p.name}`;
+    name.textContent = `${icon} ${p.name}`;
     label.append(check, name);
 
     const value = document.createElement('span');
@@ -836,15 +857,16 @@ function renderPeopleRows(filterText) {
     row.append(label, value);
 
     check.addEventListener('click', e => {
-      e.stopPropagation(); // don't also trigger the row's "open this person's grid" tap
-      if (check.checked) _peopleSelected.set(p.id, p);
-      else _peopleSelected.delete(p.id);
+      e.stopPropagation(); // don't also trigger the row's "open this item's grid" tap
+      if (check.checked) selected.set(p.id, p);
+      else selected.delete(p.id);
       updatePeopleSelectBar();
     });
 
     row.addEventListener('click', () => {
       peoplePopup.style.display = 'none';
-      openPeopleGrid([p]).catch(e => { log('People grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      const query = isPeople ? { people: [p] } : { locations: [p] };
+      openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
     });
     frag.appendChild(row);
   }
@@ -854,43 +876,67 @@ function renderPeopleRows(filterText) {
 peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
 
 peopleSelectOkBtn.addEventListener('click', () => {
-  if (!_peopleSelected.size) return;
-  const people = [..._peopleSelected.values()];
+  if (!_peopleSelected.size && !_locationsSelected.size) return;
+  const query = { people: [..._peopleSelected.values()], locations: [..._locationsSelected.values()] };
   peoplePopup.style.display = 'none';
-  openPeopleGrid(people).catch(e => { log('People grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+  openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
 async function openPeoplePopup() {
-  const { list } = await getPeopleStats();
-  if (!list.length) { showBriefStatus('No people recognised — faces.json not available.'); return; }
+  const [{ list: people }, { list: locations }] = await Promise.all([getPeopleStats(), getLocationStats()]);
+  if (!people.length && !locations.length) { showBriefStatus('No people or places recognised — faces.json/locations.json not available.'); return; }
   infoPopup.style.display = 'none';
-  _peopleList = list;
-  _peopleSelected = new Map();
+  _peopleList        = people;
+  _locationsList      = locations;
+  _peopleSelected     = new Map();
+  _locationsSelected  = new Map();
   peopleSearchInput.value = '';
   updatePeopleSelectBar();
-  renderPeopleRows('');
+  setPeopleTab(people.length ? 'people' : 'locations');
   peoplePopup.style.display = 'flex';
 }
 
-// Grid of all photos where EVERY given person appears together (AND — a
-// single-person array is the plain "this person's photos" case). Faces
-// entries are joined to cached photo records by content hash — the grid
-// needs fileids for thumbnails.
-async function openPeopleGrid(people) {
-  const entries = await getEntriesForPeople(people.map(p => p.id));
-  const label = people.map(p => p.name).join(' + ');
-  if (!entries.length) { showBriefStatus(`No photos found for ${label}.`); return; }
+function intersectHashSets(a, b) {
+  if (!a) return b;
+  const out = new Set();
+  for (const h of a) if (b.has(h)) out.add(h);
+  return out;
+}
+
+// Grid of all photos matching every selected person AND every selected
+// location together (a single-item selection is the plain "this person's" /
+// "this place's photos" case; combining both narrows to their intersection,
+// e.g. one person + "mountains"). Faces/locations entries are joined to
+// cached photo records by content hash — the grid needs fileids for
+// thumbnails, so matches with no cached record are silently dropped.
+async function openTaggedGrid({ people = [], locations = [] }) {
+  let hashSet = null; // null = no constraint applied yet
+  const labelParts = [];
+
+  if (people.length) {
+    const entries = await getEntriesForPeople(people.map(p => p.id));
+    hashSet = intersectHashSets(hashSet, new Set(entries.map(e => e.hash)));
+    labelParts.push(`👤 ${people.map(p => p.name).join(' + ')}`);
+  }
+  if (locations.length) {
+    const entries = await getEntriesForLocations(locations.map(l => l.id));
+    hashSet = intersectHashSets(hashSet, new Set(entries.map(e => e.hash)));
+    labelParts.push(`📍 ${locations.map(l => l.name).join(' + ')}`);
+  }
+  const label = labelParts.join(' · ');
+  if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return; }
+
   const byHash = new Map();
   for (const r of await getAllCached()) {
     if (r.hash != null && !r.ignored) byHash.set(String(r.hash), r);
   }
   const items = [];
   let missing = 0;
-  for (const e of entries) {
-    const rec = byHash.get(e.hash);
+  for (const hash of hashSet) {
+    const rec = byHash.get(hash);
     if (rec) items.push(rec); else missing++;
   }
-  if (missing) log('People grid', `${label}: ${missing} of ${entries.length} entries have no cached record`);
+  if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return; }
   items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
@@ -902,7 +948,7 @@ async function openPeopleGrid(people) {
   setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
   setIgnoreHandler(null);
   openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
-    { title: `👤 ${label}`, sameDayFetch: sameDayFromList(items) });
+    { title: label, sameDayFetch: sameDayFromList(items) });
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden
@@ -939,12 +985,13 @@ function openInfoPopup() {
   renderInfoRows();
   infoPopup.style.display = 'flex';
   refreshPeopleCount();
+  refreshLocationCount();
 }
 
-// Grayed out until the faces mirror has actually resolved a nonzero count —
-// covers both "still reading the db" (initial null) and "no people found".
+// Grayed out until either mirror has actually resolved a nonzero count —
+// covers both "still reading the db" (initial null) and "nothing found".
 function updatePeopleFabState() {
-  peopleFab.disabled = !_peopleCount;
+  peopleFab.disabled = !_peopleCount && !_locationCount;
 }
 
 // Re-derives the cached people count, updates the Persons FAB, and re-renders
@@ -958,6 +1005,16 @@ function refreshPeopleCount() {
     updatePeopleFabState();
     if (changed && infoPopup.style.display !== 'none') renderInfoRows();
   }).catch(e => log('People stats error', e.message));
+}
+
+// Same as refreshPeopleCount but for locations.json's categories — the FAB
+// stays enabled if either mirror has data, since either tab is reachable
+// from it.
+function refreshLocationCount() {
+  getLocationStats().then(({ categoryCount }) => {
+    _locationCount = categoryCount || null;
+    updatePeopleFabState();
+  }).catch(e => log('Location stats error', e.message));
 }
 
 async function openDatedOrphanGrid() {
@@ -1146,6 +1203,9 @@ async function startScan() {
   refreshFaces()
     .then(refreshPeopleCount) // enables/grays the Persons FAB once resolved, without waiting for Settings to be opened
     .catch(e => log('Faces refresh error', e.message));
+  refreshLocations()
+    .then(refreshLocationCount)
+    .catch(e => log('Locations refresh error', e.message));
   refreshFlags().catch(e => log('Flags refresh error', e.message));
 
   _stopStartupAnimation();
@@ -1674,6 +1734,9 @@ function setupFacesResumeSync() {
     refreshFaces()
       .then(refreshPeopleCount)
       .catch(e => log('Faces refresh error', e.message));
+    refreshLocations()
+      .then(refreshLocationCount)
+      .catch(e => log('Locations refresh error', e.message));
     refreshFlags().catch(e => log('Flags refresh error', e.message));
   });
 }

@@ -13,6 +13,7 @@
 // deleted fileid.
 import { statByPath, downloadJsonFile, uploadJsonToFolder, getFileStat } from './pcloud.js';
 import { scheduleUpload } from './syncmanager.js';
+import { normPcloudHash } from './hashutil.js';
 import { log } from './log.js';
 import { getMapphoRoot } from './organize.js';
 
@@ -27,12 +28,6 @@ let _loaded  = false;
 let _loading = null;
 let _entries = new Map(); // hash -> { name, path, flaggedAt }
 
-function normHash(h) {
-  if (h == null) return null;
-  const n = Number(h);
-  return Number.isFinite(n) ? String(n) : String(h);
-}
-
 function readLocal() {
   try {
     const raw = localStorage.getItem(CONTENT_KEY);
@@ -46,7 +41,7 @@ function readLocal() {
 function applyEntries(list) {
   _entries = new Map();
   for (const e of list) {
-    const hash = normHash(e.hash);
+    const hash = normPcloudHash(e.hash);
     if (hash) _entries.set(hash, { name: e.name ?? null, path: e.path ?? null, flaggedAt: e.flaggedAt ?? null });
   }
 }
@@ -150,14 +145,14 @@ async function doUpload() {
 
 export async function isFlagged(hash) {
   await load();
-  const key = normHash(hash);
+  const key = normPcloudHash(hash);
   return key ? _entries.has(key) : false;
 }
 
 // Toggles the flag for a photo. Returns the new flagged state.
 export async function toggleFlag({ hash, name, path }) {
   await load();
-  const key = normHash(hash);
+  const key = normPcloudHash(hash);
   if (!key) return false;
   const nowFlagged = !_entries.has(key);
   if (nowFlagged) _entries.set(key, { name: name ?? null, path: path ?? null, flaggedAt: new Date().toISOString() });
@@ -171,11 +166,11 @@ export async function toggleFlag({ hash, name, path }) {
 // called from organize.js alongside renameFacesEntry.
 export async function renameFlagEntry(oldHash, { newHash = null, name = null, path = null } = {}) {
   await load();
-  const key = normHash(oldHash);
+  const key = normPcloudHash(oldHash);
   if (!key) return;
   const entry = _entries.get(key);
   if (!entry) return;
-  const newKey = normHash(newHash) ?? key;
+  const newKey = normPcloudHash(newHash) ?? key;
   const updated = { name: name ?? entry.name, path: path ?? entry.path, flaggedAt: entry.flaggedAt };
   if (newKey !== key) _entries.delete(key);
   _entries.set(newKey, updated);
@@ -186,7 +181,7 @@ export async function renameFlagEntry(oldHash, { newHash = null, name = null, pa
 // removeFacesEntry.
 export async function removeFlagEntry(hash) {
   await load();
-  const key = normHash(hash);
+  const key = normPcloudHash(hash);
   if (!key || !_entries.has(key)) return;
   _entries.delete(key);
   markDirty();

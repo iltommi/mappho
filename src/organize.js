@@ -2,6 +2,7 @@ import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFil
 import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
 import { renameFacesEntry, removeFacesEntry } from './faces.js';
 import { renameFlagEntry, removeFlagEntry } from './flags.js';
+import { renameLocationsEntry, removeLocationsEntry } from './locations.js';
 import { scheduleUpload } from './syncmanager.js';
 import { updateMarkerName } from './map.js';
 import { log } from './log.js';
@@ -291,6 +292,7 @@ export async function removeOrganizedEntry(fileid) {
   await deleteMapphoIndexEntry(foundHash);
   await removeFacesEntry(foundHash).catch(e => log('Faces remove error', e.message));
   await removeFlagEntry(foundHash).catch(e => log('Flags remove error', e.message));
+  await removeLocationsEntry(foundHash).catch(e => log('Locations remove error', e.message));
   flushOrganizeIndex();
 }
 
@@ -344,6 +346,8 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
         .catch(e => log('Faces sync error', e.message));
       await renameFlagEntry(oldHash, { newHash, name: keptName })
         .catch(e => log('Flags sync error', e.message));
+      await renameLocationsEntry(oldHash, { newHash, name: keptName })
+        .catch(e => log('Locations sync error', e.message));
       return keptName;
     } else {
       // Different folder — move to the correct month and give it a date-based name.
@@ -374,6 +378,8 @@ export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newNam
         .catch(e => log('Faces sync error', e.message));
       await renameFlagEntry(oldHash, { newHash, name: targetName, path: facesPath })
         .catch(e => log('Flags sync error', e.message));
+      await renameLocationsEntry(oldHash, { newHash, name: targetName, path: facesPath })
+        .catch(e => log('Locations sync error', e.message));
       return targetName;
     }
   } catch (e) {
