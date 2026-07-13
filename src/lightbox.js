@@ -1,8 +1,9 @@
 import Panzoom from '@panzoom/panzoom';
 import { fetchThumbSrc } from './pcloud.js';
 
-const el  = document.getElementById('lightbox');
-const img = document.getElementById('lightbox-img');
+const el   = document.getElementById('lightbox');
+const wrap = document.getElementById('lightbox-img-wrap');
+const img  = document.getElementById('lightbox-img');
 
 let pz = null;
 let wheelHandler = null;
@@ -19,6 +20,13 @@ function destroyPanzoom() {
 function initPanzoom() {
   destroyPanzoom();
   pz = Panzoom(img, { maxScale: 8, minScale: 1, cursor: 'grab' });
+  // Panzoom sets overflow:hidden on the panned element's parent — here
+  // that's our snug wrapper (see openLightbox's markup comment), sized to
+  // the image's *unscaled* box. Left as-is, that clips a zoomed-in image
+  // to its own pre-zoom footprint, so it can never grow to cover the
+  // letterboxed bars around it. #lightbox already provides the real clip
+  // boundary (the screen edges), so keep the wrapper unclipped.
+  wrap.style.overflow = 'visible';
   wheelHandler = pz.zoomWithWheel;
   el.addEventListener('wheel', wheelHandler, { passive: false });
 }
