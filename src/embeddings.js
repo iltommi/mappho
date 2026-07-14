@@ -9,7 +9,7 @@
 // tens of MB, so it's fetched lazily the first time semantic search is
 // actually used (preloadEmbeddings()), and re-checked for staleness the
 // next time search opens rather than on every app resume.
-import { statByPath, downloadJsonFile, downloadFullFile } from './pcloud.js';
+import { statByPath, downloadJsonFile, downloadFullFile, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { getEmbeddingsBlob, putEmbeddingsBlob, clearEmbeddingsBlob } from './db.js';
 import { normPcloudHash } from './hashutil.js';
 import { log } from './log.js';
@@ -24,11 +24,11 @@ let _loading = null;
 
 async function fetchAndStore() {
   const [manifestStat, binaryStat] = await Promise.all([statByPath(MANIFEST_PATH), statByPath(BINARY_PATH)]);
-  const manifest = await downloadJsonFile(manifestStat.fileid);
+  const manifest = await downloadJsonFile(manifestStat.fileid, LARGE_FILE_TIMEOUT);
   if (!Array.isArray(manifest?.hashes) || !manifest.dim || !manifest.count) {
     throw new Error('malformed embeddings-manifest.json');
   }
-  const buf = await downloadFullFile(binaryStat.fileid);
+  const buf = await downloadFullFile(binaryStat.fileid, LARGE_FILE_TIMEOUT);
   const expectedBytes = manifest.count * manifest.dim * (manifest.dtype === 'float32' ? 4 : 1);
   if (buf.byteLength !== expectedBytes) {
     throw new Error(`embeddings.bin size mismatch: expected ${expectedBytes} bytes for ${manifest.count}×${manifest.dim} ${manifest.dtype}, got ${buf.byteLength}`);

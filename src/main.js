@@ -961,7 +961,11 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
     labelParts.push(`📍 ${locations.map(l => l.name).join(' + ')}`);
   }
   if (searchText.trim()) {
-    showBriefStatus('🔍 Searching…', 15000);
+    // The first search after install/erase-cache downloads the text-encoder
+    // model and embeddings corpus (tens of MB) before it can rank anything,
+    // so give the status message plenty of room instead of it vanishing
+    // mid-download and leaving the user staring at nothing.
+    showBriefStatus('🔍 Searching… (first search downloads the search model — this can take a while)', 600000);
     const { rankByQuery } = await loadSearchModules();
     const ranked = await rankByQuery(searchText);
     if (!ranked.length) { showBriefStatus('Semantic search isn’t available yet — no embeddings synced from pCloud.'); return; }

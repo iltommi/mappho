@@ -3,7 +3,13 @@ import { getToken, getApiHost } from './auth.js';
 import { log } from './log.js';
 
 const API_TIMEOUT = 20000;  // ms — pCloud JSON API calls
-const CDN_TIMEOUT = 30000;  // ms — binary CDN downloads
+const CDN_TIMEOUT = 30000;  // ms — binary CDN downloads (photos/videos)
+
+// For large synced assets (ML text-tower model, embeddings corpus — tens of
+// MB) — 30s isn't enough to reliably finish a 64MB transfer on anything
+// less than a fast connection. Exported so embeddings.js/textembed.js can
+// pass it to downloadFullFile/downloadJsonFile explicitly.
+export const LARGE_FILE_TIMEOUT = 600000; // ms (10 min)
 
 function withTimeout(promise, ms) {
   return Promise.race([
@@ -141,11 +147,15 @@ export async function fetchFileRange(fileid, from, to) {
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
 }
 
-export async function downloadFullFile(fileid) {
+// timeoutMs defaults to CDN_TIMEOUT (tuned for a normal photo/video), but
+// large synced assets (the ML text-tower model, the embeddings corpus —
+// tens of MB) need much longer: 30s isn't enough to reliably finish a
+// 64MB transfer on anything less than a fast connection.
+export async function downloadFullFile(fileid, timeoutMs = CDN_TIMEOUT) {
   const cdnUrl = await getCdnUrl(fileid);
   const dlResp = await withTimeout(
-    CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
-    CDN_TIMEOUT,
+    CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer', connectTimeout: timeoutMs, readTimeout: timeoutMs }),
+    timeoutMs,
   );
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
@@ -301,14 +311,14 @@ export async function uploadJsonToFolder(folderid, filename, jsonStr, existingFi
   return resp.data.fileids?.[0] ?? null;
 }
 
-export async function downloadJsonFile(fileid) {
+export async function downloadJsonFile(fileid, timeoutMs = CDN_TIMEOUT) {
   const link = await api('getfilelink', { fileid });
   const host = link.hosts?.[0];
   if (!host) throw new Error('pCloud getfilelink: no CDN host');
   const resp = await CapacitorHttp.request({
     method: 'GET',
     url: `https://${host}${link.path}`,
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+    connectTimeout: timeoutMs, readTimeout: timeoutMs,
   });
   return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
 }

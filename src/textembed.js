@@ -17,7 +17,7 @@
 // why this specific mechanism (rather than e.g. env.remoteHost) was chosen:
 // it doesn't require replicating their exact URL-construction logic.
 import { env, AutoTokenizer, CLIPTextModelWithProjection } from '@huggingface/transformers';
-import { statByPath, downloadFullFile } from './pcloud.js';
+import { statByPath, downloadFullFile, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { getAllTextModelFiles, putTextModelFile } from './db.js';
 import { log } from './log.js';
 
@@ -63,7 +63,7 @@ async function syncModelFiles() {
   const files = new Map();
   for (const name of MODEL_FILES) {
     const stat = await statByPath(`${REMOTE_DIR}/${name}`);
-    const buf = await downloadFullFile(stat.fileid);
+    const buf = await downloadFullFile(stat.fileid, LARGE_FILE_TIMEOUT);
     await putTextModelFile(name, buf);
     files.set(name, buf);
     log('TextEmbed', `synced ${name} (${(buf.byteLength / 1e6).toFixed(1)} MB)`);
