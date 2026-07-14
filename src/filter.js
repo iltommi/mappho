@@ -2,14 +2,25 @@ import { filterMarkers, getDateRange } from './map.js';
 import { getOrphanDateRange, countOrphansInRange, countGeotaggedInRange } from './db.js';
 import { getDateLocale } from './auth.js';
 
-const panel       = document.getElementById('filter-panel');
-const fromDisplay = document.getElementById('filter-from-val');
-const toDisplay   = document.getElementById('filter-to-val');
-const resetBtn    = document.getElementById('filter-reset-btn');
+const panel        = document.getElementById('filter-panel');
+const spanRow       = document.getElementById('filter-span-row');
+const navRow        = document.getElementById('filter-nav-row');
+const rangeDisplay  = document.getElementById('filter-range-val');
+const prevBtn       = document.getElementById('filter-prev-btn');
+const nextBtn       = document.getElementById('filter-next-btn');
+
+const ONE_DAY_MS = 24 * 3600 * 1000;
 
 let minTs = 0, maxTs = 0;
 let fromTs = 0, toTs = 0;
-let _savedFromTs = null, _savedToTs = null;
+// span in days, or null for "All time". anchorTs is the centre of the window
+// when a span is active. Both persist across a plain toggleFilter() close so
+// reopening the panel resumes where you left off; closeFilter() (erase cache)
+// wipes them for good.
+let span      = null;
+let anchorTs  = null;
+let _savedSpan     = null;
+let _savedAnchorTs = null;
 
 function fmt(ts) {
   return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
@@ -22,8 +33,6 @@ export function toDateStr(ts) {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-
-let _pickersMade = false;
 
 let rangeInfoHandler = null;
 export function setRangeInfoHandler(fn) { rangeInfoHandler = fn; }
@@ -43,59 +52,63 @@ function scheduleRangeInfo() {
 }
 
 function apply() {
-  _savedFromTs = fromTs;
-  _savedToTs   = toTs;
-  fromDisplay.textContent = fmt(fromTs);
-  toDisplay.textContent   = fmt(toTs);
-  resetBtn.style.display  = (fromTs === minTs && toTs === maxTs) ? 'none' : '';
+  if (span == null) {
+    fromTs = minTs;
+    toTs   = maxTs;
+    navRow.style.display = 'none';
+  } else {
+    const half = (span * ONE_DAY_MS) / 2;
+    fromTs = anchorTs - half;
+    toTs   = anchorTs + half;
+    rangeDisplay.textContent = `${fmt(fromTs)} – ${fmt(toTs)}`;
+    prevBtn.disabled = fromTs <= minTs;
+    nextBtn.disabled = toTs >= maxTs;
+    navRow.style.display = 'flex';
+  }
+  spanRow.querySelectorAll('.filter-span-chip').forEach(chip => {
+    chip.classList.toggle('active', (chip.dataset.span || null) === (span == null ? null : String(span)));
+  });
+  _savedSpan     = span;
+  _savedAnchorTs = anchorTs;
   filterMarkers(fromTs, toTs);
   scheduleRangeInfo();
 }
 
-resetBtn.addEventListener('click', () => {
-  fromTs = minTs;
-  toTs   = maxTs;
+spanRow.addEventListener('click', e => {
+  const chip = e.target.closest('.filter-span-chip');
+  if (!chip) return;
+  const value = chip.dataset.span;
+  if (!value) {
+    span = null;
+  } else {
+    span = Number(value);
+    if (anchorTs == null) anchorTs = maxTs; // first time a span is picked: start from the most recent photo
+  }
   apply();
 });
 
-// Single tap: open date picker. Double tap within 350ms: reset to default.
-function makeDateDisplay(displayEl, getDefault) {
-  const picker = document.createElement('input');
-  picker.type = 'date';
-  picker.className = 'filter-dt-input';
-  panel.appendChild(picker);
-
-  picker.addEventListener('change', () => {
-    const ts = new Date(picker.value + 'T12:00:00').getTime();
-    if (!isNaN(ts)) {
-      if (displayEl === fromDisplay) {
-        fromTs = ts;
-        if (fromTs > toTs) toTs = fromTs;
-      } else {
-        toTs = ts;
-        if (toTs < fromTs) fromTs = toTs;
-      }
-      apply();
-    }
-  });
-
-  let lastTap = 0;
-  displayEl.addEventListener('click', () => {
-    const now = Date.now();
-    if (now - lastTap < 350) {
-      lastTap = 0;
-      if (displayEl === fromDisplay) fromTs = getDefault();
-      else                           toTs   = getDefault();
-      if (fromTs > toTs) toTs = fromTs;
-      if (toTs < fromTs) fromTs = toTs;
-      apply();
-      return;
-    }
-    lastTap = now;
-    picker.value = toDateStr(displayEl === fromDisplay ? fromTs : toTs);
-    if (picker.showPicker) picker.showPicker(); else picker.click();
-  });
+function step(dir) {
+  if (span == null) return;
+  anchorTs += dir * span * ONE_DAY_MS;
+  apply();
 }
+prevBtn.addEventListener('click', () => step(-1));
+nextBtn.addEventListener('click', () => step(1));
+
+// Tapping the range text opens a native date picker to jump the window's
+// centre directly instead of stepping through it one span at a time.
+const jumpPicker = document.createElement('input');
+jumpPicker.type = 'date';
+jumpPicker.className = 'filter-dt-input';
+panel.appendChild(jumpPicker);
+jumpPicker.addEventListener('change', () => {
+  const ts = new Date(jumpPicker.value + 'T12:00:00').getTime();
+  if (!isNaN(ts)) { anchorTs = ts; apply(); }
+});
+rangeDisplay.addEventListener('click', () => {
+  jumpPicker.value = toDateStr(anchorTs ?? maxTs);
+  if (jumpPicker.showPicker) jumpPicker.showPicker(); else jumpPicker.click();
+});
 
 async function init() {
   const noDatesEl   = panel.querySelector('.filter-no-dates');
@@ -107,31 +120,25 @@ async function init() {
   if (!range) {
     noDatesEl.textContent = 'No photo dates in cache — rescan to pick up dates.';
     noDatesEl.style.display = '';
+    spanRow.style.display = 'none';
+    navRow.style.display  = 'none';
     return;
   }
   if (range.min === range.max) {
     noDatesEl.textContent = `All photos are from ${fmt(range.min)} — filter not available.`;
     noDatesEl.style.display = '';
+    spanRow.style.display = 'none';
+    navRow.style.display  = 'none';
     return;
   }
   noDatesEl.style.display = 'none';
+  spanRow.style.display   = 'flex';
   const saneMax = Date.now() + 2 * 365 * 24 * 3600 * 1000;
   minTs = Math.max(range.min, 0);
   maxTs = Math.min(range.max, saneMax);
 
-  if (_savedFromTs !== null && _savedToTs !== null) {
-    fromTs = Math.max(minTs, Math.min(maxTs, _savedFromTs));
-    toTs   = Math.max(minTs, Math.min(maxTs, _savedToTs));
-  } else {
-    fromTs = minTs;
-    toTs   = maxTs;
-  }
-
-  if (!_pickersMade) {
-    _pickersMade = true;
-    makeDateDisplay(fromDisplay, () => minTs);
-    makeDateDisplay(toDisplay,   () => maxTs);
-  }
+  span     = _savedSpan;
+  anchorTs = _savedAnchorTs != null ? Math.max(minTs, Math.min(maxTs, _savedAnchorTs)) : null;
 
   apply();
 }
@@ -148,7 +155,8 @@ export function closeFilter() {
   panel.classList.remove('open');
   document.body.classList.remove('filter-open');
   minTs = 0; maxTs = 0;
-  _savedFromTs = null; _savedToTs = null;
+  span = null; anchorTs = null;
+  _savedSpan = null; _savedAnchorTs = null;
 }
 
 export function getActiveFilterRange() {

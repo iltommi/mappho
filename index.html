@@ -52,16 +52,19 @@
   </div>
   <div id="filter-panel">
     <p class="filter-no-dates" style="display:none">No photo dates in cache — rescan to pick up dates.</p>
-    <div class="filter-row">
-      <span class="filter-label">From</span>
-      <span id="filter-from-val" class="filter-val"></span>
+    <div id="filter-span-row">
+      <button class="filter-span-chip active" data-span="">All time</button>
+      <button class="filter-span-chip" data-span="3">3d</button>
+      <button class="filter-span-chip" data-span="7">1wk</button>
+      <button class="filter-span-chip" data-span="30">1mo</button>
+      <button class="filter-span-chip" data-span="90">3mo</button>
+      <button class="filter-span-chip" data-span="365">1yr</button>
     </div>
-    <div class="filter-row">
-      <span class="filter-label">To</span>
-      <span id="filter-to-val" class="filter-val"></span>
-      <button id="filter-reset-btn" style="display:none">↺ Full range</button>
+    <div id="filter-nav-row" style="display:none">
+      <button id="filter-prev-btn">‹</button>
+      <span id="filter-range-val" class="filter-val"></span>
+      <button id="filter-next-btn">›</button>
     </div>
-    <p class="filter-hint">Tap a date to change it · double-tap to reset</p>
   </div>
   <div id="map"></div>
   <button id="media-type-btn" style="display:none" title="Filter by media type"></button>

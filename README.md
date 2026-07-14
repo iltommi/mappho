@@ -9,7 +9,7 @@ An Android app (Capacitor 8) that plots your pCloud photo and video library on a
 - **Efficient scanning** — fetches only the first 128 KB of each JPEG to read EXIF; concurrent requests with automatic retry; interrupted scans resume from cache
 - **Interactive map** — markers clustered at low zoom, heatmap toggle, filter by media type (photo/video); tap a cluster to browse its photos in a grid, long-press for the same
 - **Thumbnail popups** — tap a marker to preview; tap the thumbnail to open a fullscreen pinch-to-zoom lightbox (up to 8×, correctly anchored and able to zoom past any letterboxing)
-- **Date filter** — two-slider panel to narrow markers to a chosen time range
+- **Date filter** — narrow markers to a window around a chosen date (3 days to 1 year), stepped with ‹ › or jumped to any date directly
 - **Grid view** — virtualized thumbnail grid with fast-scroll scrubber; multi-select for bulk geotag / fix date / share / delete, plus a "Same day" helper that selects everything from the same day(s) as the current selection
 - **Slideshow** — swipeable fullscreen photo/video browsing, lazily paginated over the whole library or any filtered subset (map cluster, People search, missing-location list, ...)
 - **Geotagging** — drop a draggable pin on the map, single-photo or bulk; suggests a starting pin at the location of the nearest-in-time already-geotagged photo; search by place name (Nominatim); after saving, the slideshow resumes at the next photo so a tagging pass can move straight through a batch
