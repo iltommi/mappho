@@ -925,10 +925,27 @@ async function openPeoplePopup() {
   // downloads now rather than waiting for the user to actually submit a
   // scene search — and only re-check the embeddings corpus for staleness
   // here (on open), not on every app resume, since it's tens of MB.
-  loadSearchModules().then(({ preloadTextEncoder, ensureFresh }) => {
-    preloadTextEncoder();
-    ensureFresh().catch(() => {});
+  loadSearchModules().then(async ({ preloadTextEncoder, ensureFresh, setEmbeddingsProgressHandler, setTextEmbedProgressHandler }) => {
+    setEmbeddingsProgressHandler(p => reportDownloadProgress('embeddings', p.bytes, p.total));
+    setTextEmbedProgressHandler(p => reportDownloadProgress('model', p.bytes, p.total));
+    await Promise.allSettled([preloadTextEncoder(), ensureFresh()]);
+    _downloadProgress = {};
+    setProgress(0);
   }).catch(e => log('Search modules', `failed to load: ${e.message}`));
+}
+
+// Combines progress from the two possibly-concurrent downloads (embeddings
+// corpus + text-tower model files) into the app's existing top/bottom
+// progress bar — reused rather than building a separate one, same as scan
+// progress. Falls back to an indeterminate-looking creep if a source
+// hasn't reported a content-length yet.
+let _downloadProgress = {}; // key -> { bytes, total }
+function reportDownloadProgress(key, bytes, total) {
+  _downloadProgress[key] = { bytes, total };
+  const parts = Object.values(_downloadProgress);
+  const totalBytes = parts.reduce((s, p) => s + (p.total || 0), 0);
+  const doneBytes  = parts.reduce((s, p) => s + p.bytes, 0);
+  if (totalBytes > 0) setProgress((doneBytes / totalBytes) * 100);
 }
 
 function intersectHashSets(a, b) {

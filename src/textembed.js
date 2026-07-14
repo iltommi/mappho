@@ -17,7 +17,7 @@
 // why this specific mechanism (rather than e.g. env.remoteHost) was chosen:
 // it doesn't require replicating their exact URL-construction logic.
 import { env, AutoTokenizer, CLIPTextModelWithProjection } from '@huggingface/transformers';
-import { statByPath, downloadFullFile, LARGE_FILE_TIMEOUT } from './pcloud.js';
+import { statByPath, downloadFullFileNative } from './pcloud.js';
 import { getAllTextModelFiles, putTextModelFile } from './db.js';
 import { log } from './log.js';
 
@@ -36,6 +36,11 @@ const MODEL_FILES = [
 let _tokenizer = null;
 let _model     = null;
 let _loading   = null;
+
+// Reports { file, fileIndex, fileCount, bytes, total } while model files
+// download — total may be null if the server didn't send a content-length.
+let _progressHandler = null;
+export function setTextEmbedProgressHandler(fn) { _progressHandler = fn; }
 
 // Serves pre-downloaded model files to transformers.js by matching the
 // request URL's filename suffix — avoids needing to replicate its internal
@@ -61,9 +66,12 @@ async function syncModelFiles() {
   }
   log('TextEmbed', 'downloading CLIP text-tower model files from pCloud');
   const files = new Map();
-  for (const name of MODEL_FILES) {
+  for (let i = 0; i < MODEL_FILES.length; i++) {
+    const name = MODEL_FILES[i];
     const stat = await statByPath(`${REMOTE_DIR}/${name}`);
-    const buf = await downloadFullFile(stat.fileid, LARGE_FILE_TIMEOUT);
+    const buf = await downloadFullFileNative(stat.fileid, {
+      onProgress: (bytes, total) => _progressHandler?.({ file: name, fileIndex: i, fileCount: MODEL_FILES.length, bytes, total }),
+    });
     await putTextModelFile(name, buf);
     files.set(name, buf);
     log('TextEmbed', `synced ${name} (${(buf.byteLength / 1e6).toFixed(1)} MB)`);
@@ -100,11 +108,14 @@ function load() {
   return _loading;
 }
 
-// Kicks off the (large, one-time — tens of MB) model download without
-// blocking on it. Call this as soon as search UI becomes reachable (e.g. the
-// popup opens) so the first real query isn't stuck behind a cold load.
+// Kicks off the (large, one-time — tens of MB) model download. Call this as
+// soon as search UI becomes reachable (e.g. the popup opens) so the first
+// real query isn't stuck behind a cold load. Returns the loading promise —
+// callers that just want to fire-and-forget can ignore it (matches every
+// existing call site), but it lets main.js know when to reset the download
+// progress bar.
 export function preloadTextEncoder() {
-  load().catch(e => log('TextEmbed', `preload failed: ${e.message}`));
+  return load().catch(e => { log('TextEmbed', `preload failed: ${e.message}`); throw e; });
 }
 
 // Encodes free text into an L2-normalized 512-float query vector — same

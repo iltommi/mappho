@@ -1,4 +1,6 @@
-import { CapacitorHttp } from '@capacitor/core';
+import { CapacitorHttp, Capacitor } from '@capacitor/core';
+import { FileTransfer } from '@capacitor/file-transfer';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { getToken, getApiHost } from './auth.js';
 import { log } from './log.js';
 
@@ -6,9 +8,9 @@ const API_TIMEOUT = 20000;  // ms — pCloud JSON API calls
 const CDN_TIMEOUT = 30000;  // ms — binary CDN downloads (photos/videos)
 
 // For large synced assets (ML text-tower model, embeddings corpus — tens of
-// MB) — 30s isn't enough to reliably finish a 64MB transfer on anything
-// less than a fast connection. Exported so embeddings.js/textembed.js can
-// pass it to downloadFullFile/downloadJsonFile explicitly.
+// MB). Only matters for downloadFullFileNative below now — see its comment
+// for why CapacitorHttp itself (30s CDN_TIMEOUT) can't just be given more
+// time here instead.
 export const LARGE_FILE_TIMEOUT = 600000; // ms (10 min)
 
 function withTimeout(promise, ms) {
@@ -147,10 +149,10 @@ export async function fetchFileRange(fileid, from, to) {
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
 }
 
-// timeoutMs defaults to CDN_TIMEOUT (tuned for a normal photo/video), but
-// large synced assets (the ML text-tower model, the embeddings corpus —
-// tens of MB) need much longer: 30s isn't enough to reliably finish a
-// 64MB transfer on anything less than a fast connection.
+// For photos/videos (a few MB at most) — routes bytes through the JS<->native
+// bridge as base64, which is fine at this size. For tens-of-MB downloads
+// (the ML model, embeddings corpus) use downloadFullFileNative instead; see
+// its comment for why this path doesn't just scale up with a longer timeout.
 export async function downloadFullFile(fileid, timeoutMs = CDN_TIMEOUT) {
   const cdnUrl = await getCdnUrl(fileid);
   const dlResp = await withTimeout(
@@ -160,6 +162,52 @@ export async function downloadFullFile(fileid, timeoutMs = CDN_TIMEOUT) {
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
+}
+
+// Downloads a large file via the native FileTransfer plugin instead of
+// CapacitorHttp. CapacitorHttp routes response bytes through the JS<->native
+// bridge as base64 — fine for a few MB, but for tens of MB that's real
+// CPU/memory-bound serialization overhead that a fast connection doesn't
+// help with (confirmed: timed out at 600s over WiFi). FileTransfer instead
+// writes straight to native storage with no bridge involvement for the
+// bytes, and reports real progress. Reading the result back also avoids the
+// bridge: Capacitor.convertFileSrc() + fetch() goes through the WebView's
+// own resource handler rather than a plugin RPC call. Falls back to
+// Filesystem.readFile (which does cross the bridge, base64-encoded) only if
+// that fails, so a change in Capacitor's local-file-serving behavior
+// degrades gracefully instead of breaking the sync outright.
+export async function downloadFullFileNative(fileid, { onProgress } = {}) {
+  const cdnUrl = await getCdnUrl(fileid);
+  const path = `mappho-dl-${fileid}-${Date.now()}`;
+
+  let listener = null;
+  if (onProgress) {
+    listener = await FileTransfer.addListener('progress', p => {
+      if (p.url === cdnUrl) onProgress(p.bytes, p.contentLength);
+    });
+  }
+  try {
+    const result = await FileTransfer.downloadFile({
+      url: cdnUrl, path, directory: Directory.Cache, progress: !!onProgress,
+      connectTimeout: LARGE_FILE_TIMEOUT, readTimeout: LARGE_FILE_TIMEOUT,
+    });
+    if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
+
+    try {
+      const src = Capacitor.convertFileSrc(result.path);
+      const resp = await fetch(src);
+      if (!resp.ok) throw new Error(`local file fetch failed: ${resp.status}`);
+      return await resp.arrayBuffer();
+    } catch (e) {
+      log('pcloud', `convertFileSrc/fetch read-back failed (${e.message}), falling back to Filesystem.readFile`);
+      const { data } = await Filesystem.readFile({ path: result.path });
+      return typeof data === 'string' ? base64ToArrayBuffer(data) : data;
+    } finally {
+      Filesystem.deleteFile({ path: result.path }).catch(() => {});
+    }
+  } finally {
+    if (listener) listener.remove();
+  }
 }
 
 export async function fetchVideoSrc(fileid) {
