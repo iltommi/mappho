@@ -178,7 +178,15 @@ export async function downloadFullFile(fileid, timeoutMs = CDN_TIMEOUT) {
 // degrades gracefully instead of breaking the sync outright.
 export async function downloadFullFileNative(fileid, { onProgress } = {}) {
   const cdnUrl = await getCdnUrl(fileid);
-  const path = `mappho-dl-${fileid}-${Date.now()}`;
+  // FileTransfer's `path` must be a complete resolved path — unlike
+  // Filesystem's own methods, it has no separate `directory` option (a
+  // bare relative name here fails native-side path validation, not
+  // silently, and not obviously: the plugin rejects it as "input
+  // parameters aren't valid" with no mention of the path itself). Resolve
+  // one via Filesystem.getUri first, matching the plugin's own docs
+  // ("You may use a plugin like @capacitor/filesystem to get a complete
+  // file path").
+  const { uri: path } = await Filesystem.getUri({ path: `mappho-dl-${fileid}-${Date.now()}`, directory: Directory.Cache });
 
   let listener = null;
   if (onProgress) {
@@ -188,7 +196,7 @@ export async function downloadFullFileNative(fileid, { onProgress } = {}) {
   }
   try {
     const result = await FileTransfer.downloadFile({
-      url: cdnUrl, path, directory: Directory.Cache, progress: !!onProgress,
+      url: cdnUrl, path, progress: !!onProgress,
       connectTimeout: LARGE_FILE_TIMEOUT, readTimeout: LARGE_FILE_TIMEOUT,
     });
     if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
