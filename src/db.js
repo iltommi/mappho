@@ -1,7 +1,7 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'mappho';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const MAPPHO_INDEX_STORE = 'mappho_index';
@@ -9,6 +9,7 @@ const FACES_STORE = 'faces';
 const LOCATIONS_STORE = 'locations';
 const EMBEDDINGS_STORE = 'embeddings_blob';
 const EMBEDDINGS_KEY = 'current'; // single record — the whole quantized matrix as one blob, not one row per photo
+const TEXT_MODEL_STORE = 'text_model_files'; // key = relative filename (e.g. 'onnx/text_model_quantized.onnx'), value = ArrayBuffer
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
@@ -71,6 +72,9 @@ async function db() {
       }
       if (oldVersion < 10) {
         db.createObjectStore(EMBEDDINGS_STORE);
+      }
+      if (oldVersion < 11) {
+        db.createObjectStore(TEXT_MODEL_STORE);
       }
     },
   });
@@ -420,6 +424,25 @@ export async function putEmbeddingsBlob(blob) {
 
 export async function clearEmbeddingsBlob() {
   return (await db()).delete(EMBEDDINGS_STORE, EMBEDDINGS_KEY);
+}
+
+// The synced CLIP text-tower model files (config/tokenizer/onnx) — a
+// handful of records, one per filename, unlike the single-blob embeddings
+// matrix above. See textembed.js for the sync/loading logic.
+
+export async function getAllTextModelFiles() {
+  const d = await db();
+  const keys = await d.getAllKeys(TEXT_MODEL_STORE);
+  const values = await d.getAll(TEXT_MODEL_STORE);
+  return new Map(keys.map((k, i) => [k, values[i]]));
+}
+
+export async function putTextModelFile(name, buf) {
+  return (await db()).put(TEXT_MODEL_STORE, buf, name);
+}
+
+export async function clearTextModelFiles() {
+  return (await db()).clear(TEXT_MODEL_STORE);
 }
 
 // Returns { min, max } ms timestamps across all dated orphans, or null if none.
