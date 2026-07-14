@@ -784,9 +784,23 @@ function renderInfoRows() {
 
 // ── People popup ──────────────────────────────────────────────────────────────
 
+// textembed.js/embeddings.js/search.js pull in transformers.js (ONNX
+// runtime + WASM) — tens of MB that only matter once the user actually
+// opens search. Dynamic import() keeps that out of the main bundle/app
+// startup path entirely; Vite splits it into its own chunk fetched here.
+let _searchModulesPromise = null;
+function loadSearchModules() {
+  if (!_searchModulesPromise) {
+    _searchModulesPromise = Promise.all([import('./textembed.js'), import('./embeddings.js'), import('./search.js')])
+      .then(([textembed, embeddings, search]) => ({ ...textembed, ...embeddings, ...search }));
+  }
+  return _searchModulesPromise;
+}
+
 const peoplePopup        = document.getElementById('people-popup');
 const peopleRowsEl       = document.getElementById('people-rows');
 const peopleSearchInput  = document.getElementById('people-search-input');
+const peopleSceneInput   = document.getElementById('people-scene-input');
 const peopleSelectBar    = document.getElementById('people-select-bar');
 const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
@@ -805,8 +819,12 @@ let _peopleTab         = 'people'; // 'people' | 'locations' — which list is c
 
 function updatePeopleSelectBar() {
   const n = _peopleSelected.size + _locationsSelected.size;
-  peopleSelectCount.textContent = n ? `${n} selected` : '';
-  peopleSelectBar.style.display = n ? 'flex' : 'none';
+  const hasSearch = peopleSceneInput.value.trim().length > 0;
+  const parts = [];
+  if (n) parts.push(`${n} selected`);
+  if (hasSearch) parts.push('scene search');
+  peopleSelectCount.textContent = parts.join(' + ');
+  peopleSelectBar.style.display = (n || hasSearch) ? 'flex' : 'none';
 }
 
 function setPeopleTab(tab) {
@@ -865,7 +883,7 @@ function renderPeopleRows(filterText) {
 
     row.addEventListener('click', () => {
       peoplePopup.style.display = 'none';
-      const query = isPeople ? { people: [p] } : { locations: [p] };
+      const query = { searchText: peopleSceneInput.value, ...(isPeople ? { people: [p] } : { locations: [p] }) };
       openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
     });
     frag.appendChild(row);
@@ -875,25 +893,42 @@ function renderPeopleRows(filterText) {
 
 peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
 
-peopleSelectOkBtn.addEventListener('click', () => {
-  if (!_peopleSelected.size && !_locationsSelected.size) return;
-  const query = { people: [..._peopleSelected.values()], locations: [..._locationsSelected.values()] };
+function runTaggedSearch() {
+  if (!_peopleSelected.size && !_locationsSelected.size && !peopleSceneInput.value.trim()) return;
+  const query = {
+    people: [..._peopleSelected.values()],
+    locations: [..._locationsSelected.values()],
+    searchText: peopleSceneInput.value,
+  };
   peoplePopup.style.display = 'none';
   openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
+}
+peopleSceneInput.addEventListener('input', updatePeopleSelectBar);
+peopleSceneInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runTaggedSearch(); } });
+peopleSelectOkBtn.addEventListener('click', runTaggedSearch);
 
 async function openPeoplePopup() {
   const [{ list: people }, { list: locations }] = await Promise.all([getPeopleStats(), getLocationStats()]);
-  if (!people.length && !locations.length) { showBriefStatus('No people or places recognised — faces.json/locations.json not available.'); return; }
+  // Note: no early return when both are empty — the scene-search box is a
+  // standalone capability that doesn't depend on either mirror having data.
   infoPopup.style.display = 'none';
   _peopleList        = people;
   _locationsList      = locations;
   _peopleSelected     = new Map();
   _locationsSelected  = new Map();
   peopleSearchInput.value = '';
+  peopleSceneInput.value  = '';
   updatePeopleSelectBar();
   setPeopleTab(people.length ? 'people' : 'locations');
   peoplePopup.style.display = 'flex';
+  // Kick off the (large, one-time) text-encoder model and embeddings corpus
+  // downloads now rather than waiting for the user to actually submit a
+  // scene search — and only re-check the embeddings corpus for staleness
+  // here (on open), not on every app resume, since it's tens of MB.
+  loadSearchModules().then(({ preloadTextEncoder, ensureFresh }) => {
+    preloadTextEncoder();
+    ensureFresh().catch(() => {});
+  }).catch(e => log('Search modules', `failed to load: ${e.message}`));
 }
 
 function intersectHashSets(a, b) {
@@ -904,13 +939,15 @@ function intersectHashSets(a, b) {
 }
 
 // Grid of all photos matching every selected person AND every selected
-// location together (a single-item selection is the plain "this person's" /
-// "this place's photos" case; combining both narrows to their intersection,
-// e.g. one person + "mountains"). Faces/locations entries are joined to
-// cached photo records by content hash — the grid needs fileids for
-// thumbnails, so matches with no cached record are silently dropped.
-async function openTaggedGrid({ people = [], locations = [] }) {
+// location AND the free-text scene query together (a single-item selection
+// is the plain "this person's"/"this place's photos" case; combining
+// narrows to the intersection, e.g. one person + "mountains" + "snow").
+// Faces/locations/embeddings entries are all joined to cached photo records
+// by content hash — the grid needs fileids for thumbnails, so matches with
+// no cached record are silently dropped.
+async function openTaggedGrid({ people = [], locations = [], searchText = '' } = {}) {
   let hashSet = null; // null = no constraint applied yet
+  let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
 
   if (people.length) {
@@ -922,6 +959,15 @@ async function openTaggedGrid({ people = [], locations = [] }) {
     const entries = await getEntriesForLocations(locations.map(l => l.id));
     hashSet = intersectHashSets(hashSet, new Set(entries.map(e => e.hash)));
     labelParts.push(`📍 ${locations.map(l => l.name).join(' + ')}`);
+  }
+  if (searchText.trim()) {
+    showBriefStatus('🔍 Searching…', 15000);
+    const { rankByQuery } = await loadSearchModules();
+    const ranked = await rankByQuery(searchText);
+    if (!ranked.length) { showBriefStatus('Semantic search isn’t available yet — no embeddings synced from pCloud.'); return; }
+    scoreByHash = new Map(ranked.map(r => [r.hash, r.score]));
+    hashSet = intersectHashSets(hashSet, new Set(scoreByHash.keys()));
+    labelParts.push(`🔍 “${searchText.trim()}”`);
   }
   const label = labelParts.join(' · ');
   if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return; }
@@ -938,7 +984,10 @@ async function openTaggedGrid({ people = [], locations = [] }) {
   }
   if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return; }
-  items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+  // Free-text search results are shown best-match-first; a plain people/
+  // places selection stays chronological, matching every other grid in the app.
+  if (scoreByHash) items.sort((a, b) => (scoreByHash.get(String(b.hash)) ?? -1) - (scoreByHash.get(String(a.hash)) ?? -1));
+  else items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
   setGeotagHandler(photo => startGeotagging(photo, r => {
     if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
@@ -988,10 +1037,12 @@ function openInfoPopup() {
   refreshLocationCount();
 }
 
-// Grayed out until either mirror has actually resolved a nonzero count —
-// covers both "still reading the db" (initial null) and "nothing found".
+// Always enabled — even with zero recognised people/places, the popup's
+// scene-search box is a standalone capability that doesn't depend on either
+// mirror having data. This just re-renders Settings if it's open and the
+// count changed.
 function updatePeopleFabState() {
-  peopleFab.disabled = !_peopleCount && !_locationCount;
+  peopleFab.disabled = false;
 }
 
 // Re-derives the cached people count, updates the Persons FAB, and re-renders
@@ -1099,7 +1150,6 @@ function showApp() {
   menuFab.style.display = '';
   document.getElementById('fix-position-only-btn').style.display = '';
   peopleFab.style.display = '';
-  peopleFab.disabled = true; // grayed out until the faces mirror resolves a count
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;

@@ -1,12 +1,14 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'mappho';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const STORE = 'photos';
 const ORPHAN_STORE = 'orphans';
 const MAPPHO_INDEX_STORE = 'mappho_index';
 const FACES_STORE = 'faces';
 const LOCATIONS_STORE = 'locations';
+const EMBEDDINGS_STORE = 'embeddings_blob';
+const EMBEDDINGS_KEY = 'current'; // single record — the whole quantized matrix as one blob, not one row per photo
 
 // Sentinel used in place of ts=0 for orphans with no known date, so they sort
 // to the end of the by_ts index instead of poisoning the front of date-sorted
@@ -66,6 +68,9 @@ async function db() {
       }
       if (oldVersion < 9) {
         db.createObjectStore(LOCATIONS_STORE, { keyPath: 'hash' });
+      }
+      if (oldVersion < 10) {
+        db.createObjectStore(EMBEDDINGS_STORE);
       }
     },
   });
@@ -398,6 +403,23 @@ export async function bulkPutLocations(entries) {
   const tx = d.transaction(LOCATIONS_STORE, 'readwrite');
   for (const e of entries) tx.store.put(e);
   await tx.done;
+}
+
+// The synced CLIP photo-embeddings matrix, stored as a single blob rather
+// than one record per photo — a search scans every row on every query, so
+// one contiguous typed array beats tens of thousands of individual IDB
+// reads. See embeddings.js for the sync/parse logic.
+
+export async function getEmbeddingsBlob() {
+  return (await db()).get(EMBEDDINGS_STORE, EMBEDDINGS_KEY);
+}
+
+export async function putEmbeddingsBlob(blob) {
+  return (await db()).put(EMBEDDINGS_STORE, blob, EMBEDDINGS_KEY);
+}
+
+export async function clearEmbeddingsBlob() {
+  return (await db()).delete(EMBEDDINGS_STORE, EMBEDDINGS_KEY);
 }
 
 // Returns { min, max } ms timestamps across all dated orphans, or null if none.

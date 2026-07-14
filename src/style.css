@@ -1668,6 +1668,23 @@ body.filter-open #map { top: 76px; }
   outline: none;
 }
 #people-search-input:focus { border-color: #3b82f6; }
+
+#people-scene-row {
+  padding: 10px 16px 0;
+}
+#people-scene-input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: .85rem;
+  font-weight: 400;
+  padding: 8px 10px;
+  outline: none;
+  box-sizing: border-box;
+}
+#people-scene-input:focus { border-color: #3b82f6; }
 .info-row {
   display: flex;
   align-items: center;
