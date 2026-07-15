@@ -1,6 +1,7 @@
 import { filterMarkers, getDateRange } from './map.js';
 import { getOrphanDateRange, countOrphansInRange, countGeotaggedInRange } from './db.js';
 import { getDateLocale } from './auth.js';
+import { viewOpened, viewClosed } from './nav.js';
 
 const panel        = document.getElementById('filter-panel');
 const spanRow       = document.getElementById('filter-span-row');
@@ -146,8 +147,13 @@ async function init() {
 export function toggleFilter() {
   const open = panel.classList.toggle('open');
   document.body.classList.toggle('filter-open', open);
-  if (open) init();
-  else filterMarkers(-Infinity, Infinity);
+  if (open) {
+    viewOpened('filter', { close: toggleFilter });
+    init();
+  } else {
+    filterMarkers(-Infinity, Infinity);
+    viewClosed('filter');
+  }
 }
 
 export function closeFilter() {
@@ -157,6 +163,7 @@ export function closeFilter() {
   minTs = 0; maxTs = 0;
   span = null; anchorTs = null;
   _savedSpan = null; _savedAnchorTs = null;
+  viewClosed('filter');
 }
 
 export function getActiveFilterRange() {

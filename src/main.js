@@ -1,5 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
+import { viewOpened, viewClosed, navBack, restoreTop } from './nav.js';
 
 const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
@@ -105,7 +107,7 @@ async function openNodatetimeGrid() {
     showBriefStatus(allOrphans > 0
       ? `No photos without both date and location (${allOrphans} have no location but do have a date).`
       : 'No photos without location in cache.');
-    return;
+    return false;
   }
   const fetcher = (offset, limit) => getOrphansPage(offset, limit, UNDATED_TS, UNDATED_TS);
   async function reopenSlideshow() {
@@ -121,7 +123,8 @@ async function openNodatetimeGrid() {
   setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
   setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total, { reopen: openNodatetimeGrid });
+  await openGrid(fetcher, total, { reopen: openNodatetimeGrid });
+  return true;
 }
 
 // ── Fix date panel ────────────────────────────────────────────────────────────
@@ -138,6 +141,30 @@ let fixDatePhoto   = null;
 let fixDatePhotos  = null; // bulk mode
 let fixDateOnDone  = null;
 let _lastFixDateTs = null; // ts of the last successfully saved fix-date
+
+function showFixDateBar() {
+  fixDateBar.style.display = 'flex';
+  document.body.classList.add('action-bar-open');
+  viewOpened('fixdate', { close: cancelFixDate }); // back = Cancel
+}
+
+function hideFixDateBar() {
+  fixDateBar.style.display = 'none';
+  document.body.classList.remove('action-bar-open');
+  // The completion callback decides what shows next (reopen the slideshow,
+  // restore the grid) — don't also re-show a hidden parent popup here.
+  viewClosed('fixdate', { restoreParent: false });
+}
+
+function cancelFixDate() {
+  hideFixDateBar();
+  const wasBulk = !!fixDatePhotos;
+  const cb = fixDateOnDone;
+  fixDatePhoto  = null;
+  fixDatePhotos = null;
+  fixDateOnDone = null;
+  cb?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
+}
 
 async function applyFixDateToPhoto(photo, ts) {
   const { fileid, name } = photo;
@@ -251,8 +278,7 @@ function startFixDate(photo, onDone) {
   fixDateTimeInput.style.display = 'none';
   fixDateHint.textContent    = 'Change date for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
-  fixDateBar.style.display = 'flex';
-  document.body.classList.add('action-bar-open');
+  showFixDateBar();
 }
 
 function startFixTime(photo, onDone) {
@@ -267,8 +293,7 @@ function startFixTime(photo, onDone) {
   fixDateTimeInput.style.display = '';
   fixDateHint.textContent    = 'Change time for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
-  fixDateBar.style.display = 'flex';
-  document.body.classList.add('action-bar-open');
+  showFixDateBar();
 }
 
 function startBulkFixDate(photos, onDone) {
@@ -283,8 +308,7 @@ function startBulkFixDate(photos, onDone) {
   fixDateTimeInput.style.display = '';
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
-  fixDateBar.style.display = 'flex';
-  document.body.classList.add('action-bar-open');
+  showFixDateBar();
 }
 
 fixDateSaveBtn.addEventListener('click', () => {
@@ -293,8 +317,7 @@ fixDateSaveBtn.addEventListener('click', () => {
     const list = fixDatePhotos;
     const cb   = fixDateOnDone;
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
-    fixDateBar.style.display = 'none';
-    document.body.classList.remove('action-bar-open');
+    hideFixDateBar();
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
     _runBulkFixDate(list, ts, cb);
     return;
@@ -320,8 +343,7 @@ fixDateSaveBtn.addEventListener('click', () => {
     ts = new Date(`${fixDateInput.value}T${existingTime}`).getTime();
   }
 
-  fixDateBar.style.display = 'none';
-  document.body.classList.remove('action-bar-open');
+  hideFixDateBar();
   fixDatePhoto = null; fixDateOnDone = null;
   _runFixDate(photo, ts, cb, mode);
 });
@@ -383,26 +405,17 @@ async function _runBulkFixDate(list, ts, cb) {
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
 }
 
-fixDateCancelBtn.addEventListener('click', () => {
-  fixDateBar.style.display = 'none';
-  document.body.classList.remove('action-bar-open');
-  const wasBulk = !!fixDatePhotos;
-  const cb = fixDateOnDone;
-  fixDatePhoto  = null;
-  fixDatePhotos = null;
-  fixDateOnDone = null;
-  cb?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
-});
+fixDateCancelBtn.addEventListener('click', cancelFixDate);
 
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
+  closeOverflowMenu();
   toggleFilter();
 });
 
 
 document.getElementById('check-update-btn').addEventListener('click', async () => {
-  infoPopup.style.display = 'none';
+  closeInfoPopup();
   showBriefStatus('Checking for updates…', 15000);
   try {
     const resp = await CapacitorHttp.request({
@@ -438,13 +451,30 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   }
 });
 
+function closeOverflowMenu() {
+  overflowMenu.classList.remove('open');
+  viewClosed('menu');
+}
+
 menuFab.addEventListener('click', (e) => {
   e.stopPropagation();
-  overflowMenu.classList.toggle('open');
+  if (overflowMenu.classList.contains('open')) closeOverflowMenu();
+  else {
+    overflowMenu.classList.add('open');
+    viewOpened('menu', { close: closeOverflowMenu });
+  }
 });
 
 document.addEventListener('click', (e) => {
-  if (!overflowMenu.contains(e.target) && e.target !== menuFab) overflowMenu.classList.remove('open');
+  if (!overflowMenu.contains(e.target) && e.target !== menuFab) closeOverflowMenu();
+});
+
+// Android hardware/gesture back: unwind the open view stack one level at a
+// time; only when nothing is left to close does it background the app (the
+// stock Android behavior this replaces — registering any backButton
+// listener disables Capacitor's default exit).
+App.addListener('backButton', () => {
+  if (!navBack()) App.minimizeApp().catch(() => {});
 });
 
 let pendingTfaToken = null;
@@ -587,6 +617,14 @@ async function openFolderPicker() {
   }
   fpStack = [{ id: 0, name: '/' }];
   folderPicker.style.display = 'flex';
+  // Back mirrors the ← header button while inside a subfolder — it steps up
+  // one level — and only closes the picker (= Done) from the root.
+  viewOpened('folders', {
+    close: () => {
+      if (fpStack.length > 1) { fpStack.pop(); fpRender(); }
+      else closeFolderPicker();
+    },
+  });
   fpRender();
 
   // Validate saved folders in the background — remove any that no longer exist on pCloud.
@@ -604,6 +642,7 @@ async function openFolderPicker() {
 
 function closeFolderPicker() {
   folderPicker.style.display = 'none';
+  viewClosed('folders');
   const folders = [...fpSelected.values()];
   if (!folders.length) {
     showBriefStatus('No folders selected — keeping the previous selection.');
@@ -644,7 +683,7 @@ eraseCacheBtn.addEventListener('click', async () => {
   clearTimeout(eraseCacheConfirmTimer);
   eraseCacheConfirmPending = false;
   eraseCacheBtn.textContent = '🗑 Erase cache';
-  infoPopup.style.display = 'none';
+  closeInfoPopup();
   await Promise.all([clearAll(), clearOrphans()]);
   clearMarkers();
   heatmapBtn.classList.remove('active');
@@ -664,7 +703,7 @@ eraseCacheBtn.addEventListener('click', async () => {
 
 
 document.getElementById('rebuild-btn').addEventListener('click', async () => {
-  infoPopup.style.display = 'none';
+  closeInfoPopup();
   log('Rebuild', 'rebuilding cache from Photos/ folder');
   const btn = document.getElementById('rebuild-btn');
   btn.disabled = true;
@@ -766,17 +805,22 @@ function renderInfoRows() {
   ).join('');
   infoRowsEl.querySelectorAll('.info-row-btn').forEach(el => {
     el.addEventListener('click', () => {
+      // Hide Settings but leave it on the nav stack — closing the child view
+      // restores it. If the child never opens (empty list, error), restoreTop()
+      // re-shows Settings, which is still the top entry.
       infoPopup.style.display = 'none';
+      const reshowIfNotOpened = opened => { if (!opened) restoreTop(); };
+      const reshowOnError = (label) => (e) => { log(label, e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); };
       if (el.dataset.action === 'dated') {
-        openDatedOrphanGrid().catch(e => { log('Dated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+        openDatedOrphanGrid().then(reshowIfNotOpened).catch(reshowOnError('Dated grid error'));
       } else if (el.dataset.action === 'unknown') {
-        openNodatetimeGrid().catch(e => { log('Unknown grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+        openNodatetimeGrid().then(reshowIfNotOpened).catch(reshowOnError('Unknown grid error'));
       } else if (el.dataset.action === 'located-undated') {
-        openLocatedUndatedGrid().catch(e => { log('Located undated grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+        openLocatedUndatedGrid().then(reshowIfNotOpened).catch(reshowOnError('Located undated grid error'));
       } else if (el.dataset.action === 'ignored') {
-        openIgnoredGrid().catch(e => { log('Ignored grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+        openIgnoredGrid().then(reshowIfNotOpened).catch(reshowOnError('Ignored grid error'));
       } else if (el.dataset.action === 'people') {
-        openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
+        openPeoplePopup().catch(reshowOnError('People popup error'));
       }
     });
   });
@@ -806,8 +850,12 @@ const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
 const peopleTabPeople    = document.getElementById('people-tab-people');
 const peopleTabLocations = document.getElementById('people-tab-locations');
-document.getElementById('people-popup-close').addEventListener('click', () => { peoplePopup.style.display = 'none'; });
-peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) peoplePopup.style.display = 'none'; });
+function closePeoplePopup() {
+  peoplePopup.style.display = 'none';
+  viewClosed('search');
+}
+document.getElementById('people-popup-close').addEventListener('click', closePeoplePopup);
+peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) closePeoplePopup(); });
 
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -882,9 +930,14 @@ function renderPeopleRows(filterText) {
     });
 
     row.addEventListener('click', () => {
+      // Hide the popup but leave it on the nav stack — closing the results
+      // grid restores it with the query and selections intact. If the grid
+      // never opens (no matches, error), re-show it right away.
       peoplePopup.style.display = 'none';
       const query = { searchText: peopleSceneInput.value, ...(isPeople ? { people: [p] } : { locations: [p] }) };
-      openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+      openTaggedGrid(query)
+        .then(opened => { if (!opened) restoreTop(); })
+        .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
     });
     frag.appendChild(row);
   }
@@ -900,8 +953,11 @@ function runTaggedSearch() {
     locations: [..._locationsSelected.values()],
     searchText: peopleSceneInput.value,
   };
+  // Same hide-don't-close dance as the per-row tap above.
   peoplePopup.style.display = 'none';
-  openTaggedGrid(query).catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); });
+  openTaggedGrid(query)
+    .then(opened => { if (!opened) restoreTop(); })
+    .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
 }
 peopleSceneInput.addEventListener('input', updatePeopleSelectBar);
 peopleSceneInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runTaggedSearch(); } });
@@ -921,6 +977,9 @@ async function openPeoplePopup() {
   updatePeopleSelectBar();
   setPeopleTab(people.length ? 'people' : 'locations');
   peoplePopup.style.display = 'flex';
+  // Restore just re-shows the popup as it was — the query text and selected
+  // people/places survive, so a returning user can refine and re-run.
+  viewOpened('search', { close: closePeoplePopup, restore: () => { peoplePopup.style.display = 'flex'; } });
   // Kick off the (large, one-time) text-encoder model and embeddings corpus
   // downloads now rather than waiting for the user to actually submit a
   // scene search — and only re-check the embeddings corpus for staleness
@@ -985,13 +1044,13 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
     showBriefStatus('🔍 Searching… (first search downloads the search model — this can take a while)', 600000);
     const { rankByQuery } = await loadSearchModules();
     const ranked = await rankByQuery(searchText);
-    if (!ranked.length) { showBriefStatus('Semantic search isn’t available yet — no embeddings synced from pCloud.'); return; }
+    if (!ranked.length) { showBriefStatus('Semantic search isn’t available yet — no embeddings synced from pCloud.'); return false; }
     scoreByHash = new Map(ranked.map(r => [r.hash, r.score]));
     hashSet = intersectHashSets(hashSet, new Set(scoreByHash.keys()));
     labelParts.push(`🔍 “${searchText.trim()}”`);
   }
   const label = labelParts.join(' · ');
-  if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return; }
+  if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 
   const byHash = new Map();
   for (const r of await getAllCached()) {
@@ -1004,7 +1063,7 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
     if (rec) items.push(rec); else missing++;
   }
   if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
-  if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return; }
+  if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return false; }
   // Free-text search results are shown best-match-first; a plain people/
   // places selection stays chronological, matching every other grid in the app.
   if (scoreByHash) items.sort((a, b) => (scoreByHash.get(String(b.hash)) ?? -1) - (scoreByHash.get(String(a.hash)) ?? -1));
@@ -1017,8 +1076,13 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
   setFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
   setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
   setIgnoreHandler(null);
-  openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
+  // Replace the long-lived "Searching…" toast — it outlives the search by
+  // design (slow first-time model download) and the status bar sits above
+  // every view, so it would otherwise linger over the results grid.
+  if (searchText.trim()) showBriefStatus(`🔍 ${items.length} result${items.length === 1 ? '' : 's'}`);
+  await openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
     { title: label, sameDayFetch: sameDayFromList(items) });
+  return true;
 }
 
 // Grid of ignored photos. View/restore only: the tag/date actions are hidden
@@ -1027,7 +1091,7 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
 // the persisted ignored.json.
 async function openIgnoredGrid() {
   const total = await countIgnored();
-  if (!total) { showBriefStatus('No ignored photos.'); return; }
+  if (!total) { showBriefStatus('No ignored photos.'); return false; }
   const fetcher = (offset, limit) => getIgnoredPage(offset, limit);
   setGeotagHandler(null);
   setFixDateHandler(null);
@@ -1039,7 +1103,7 @@ async function openIgnoredGrid() {
     await reloadTopbarCounts();
     showBriefStatus('♻️ Photo restored');
   }, { icon: '♻️', title: 'Restore' });
-  openGrid(fetcher, total, {
+  await openGrid(fetcher, total, {
     reopen: openIgnoredGrid,
     sameDayFetch: async anchors => {
       const ranges = distinctDayRanges(anchors);
@@ -1048,14 +1112,23 @@ async function openIgnoredGrid() {
       return all.filter(p => p.ts != null && p.ts < UNDATED_TS && ranges.some(r => p.ts >= r.from && p.ts <= r.to));
     },
   });
+  return true;
 }
 
 function openInfoPopup() {
-  overflowMenu.classList.remove('open');
+  closeOverflowMenu();
   renderInfoRows();
   infoPopup.style.display = 'flex';
+  // Restore re-runs openInfoPopup so the counts re-render fresh — they may
+  // have changed while a child view (grid, log, folder picker) was open.
+  viewOpened('settings', { close: closeInfoPopup, restore: openInfoPopup });
   refreshPeopleCount();
   refreshLocationCount();
+}
+
+function closeInfoPopup() {
+  infoPopup.style.display = 'none';
+  viewClosed('settings');
 }
 
 // Always enabled — even with zero recognised people/places, the popup's
@@ -1094,7 +1167,7 @@ async function openDatedOrphanGrid() {
   const from = range?.from ?? 1;
   const to = range?.to ?? UNDATED_TS - 1;
   const total = await countOrphansInRange(from, to);
-  if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return; }
+  if (!total) { showBriefStatus(range ? 'No dated photos without location in this date range.' : 'No dated photos without location.'); return false; }
   const fetcher = (offset, limit) => getOrphansPage(offset, limit, from, to);
   async function reopenSlideshow() {
     const savedIdx = getCurrentSlideshowIndex();
@@ -1109,7 +1182,7 @@ async function openDatedOrphanGrid() {
   setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
   setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total, {
+  await openGrid(fetcher, total, {
     reopen: openDatedOrphanGrid,
     // Every photo in this grid already has a date but no location — "same
     // day" treats every currently-selected tile as an anchor, resolves the
@@ -1125,14 +1198,15 @@ async function openDatedOrphanGrid() {
       return [...byId.values()];
     },
   });
+  return true;
 }
 
-infoPopupClose.addEventListener('click', () => { infoPopup.style.display = 'none'; });
-infoPopup.addEventListener('click', e => { if (e.target === infoPopup) infoPopup.style.display = 'none'; });
+infoPopupClose.addEventListener('click', closeInfoPopup);
+infoPopup.addEventListener('click', e => { if (e.target === infoPopup) closeInfoPopup(); });
 document.getElementById('info-btn').addEventListener('click', openInfoPopup);
 
 document.getElementById('fix-date-only-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
+  closeOverflowMenu();
   openLocatedUndatedGrid().catch(e => { log('Fix date error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
@@ -1141,13 +1215,13 @@ document.getElementById('fix-position-only-btn').addEventListener('click', () =>
 });
 
 document.getElementById('fix-date-and-pos-btn').addEventListener('click', () => {
-  overflowMenu.classList.remove('open');
+  closeOverflowMenu();
   openNodatetimeGrid().catch(e => { log('Fix date & position error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
 async function openLocatedUndatedGrid() {
   const total = await countLocatedUndated();
-  if (!total) { showBriefStatus('No located photos without a date.'); return; }
+  if (!total) { showBriefStatus('No located photos without a date.'); return false; }
   const fetcher = (offset, limit) => getLocatedUndatedPage(offset, limit);
   async function reopenSlideshow() {
     const savedIdx = getCurrentSlideshowIndex();
@@ -1162,7 +1236,8 @@ async function openLocatedUndatedGrid() {
   setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
   setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
-  openGrid(fetcher, total, { reopen: openLocatedUndatedGrid });
+  await openGrid(fetcher, total, { reopen: openLocatedUndatedGrid });
+  return true;
 }
 document.getElementById('log-open-btn').addEventListener('click', () => { infoPopup.style.display = 'none'; toggleLog(); });
 
@@ -1174,7 +1249,7 @@ function showApp() {
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
-  authBtn.onclick = () => { infoPopup.style.display = 'none'; logout(); location.reload(); };
+  authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }
 
 loginForm.addEventListener('submit', async (e) => {
@@ -1674,10 +1749,12 @@ function showRetryDialog(files) {
       </div>
     </div>`;
   document.body.appendChild(dialog);
+  const closeDialog = () => { dialog.remove(); viewClosed('retry'); };
+  viewOpened('retry', { close: closeDialog }); // back = Later
 
-  document.getElementById('retry-no').addEventListener('click', () => dialog.remove());
+  document.getElementById('retry-no').addEventListener('click', closeDialog);
   document.getElementById('retry-discard').addEventListener('click', () => {
-    dialog.remove();
+    closeDialog();
     retryQueue = [];
     updateRetryBtn();
   });
@@ -1689,7 +1766,7 @@ function showRetryDialog(files) {
     setTimeout(() => { btn.textContent = 'Copy list'; }, 2000);
   });
   document.getElementById('retry-yes').addEventListener('click', async () => {
-    dialog.remove();
+    closeDialog();
     if (scanOperationInProgress) { showBriefStatus('A scan is already in progress.'); return; }
     scanOperationInProgress = true;
     const ctx = retryContext;

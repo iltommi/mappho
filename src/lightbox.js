@@ -1,5 +1,6 @@
 import Panzoom from '@panzoom/panzoom';
 import { fetchThumbSrc } from './pcloud.js';
+import { viewOpened, viewClosed } from './nav.js';
 
 const el   = document.getElementById('lightbox');
 const wrap = document.getElementById('lightbox-img-wrap');
@@ -38,6 +39,7 @@ function close() {
   currentFileid = null;
   _tapN = 0; _tapT = 0;
   destroyPanzoom();
+  viewClosed('lightbox');
 }
 
 // Tap-to-close: single finger, short duration, minimal movement, not zoomed in.
@@ -68,6 +70,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classLi
 export function openLightbox(fileid, name) {
   currentFileid = fileid;
   el.classList.add('open', 'loading');
+  viewOpened('lightbox', { close });
   img.alt = name;
   img.onload = null;
   img.src = '';

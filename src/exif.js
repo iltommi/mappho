@@ -1,6 +1,7 @@
 import exifr from 'exifr';
 import piexif from 'piexifjs';
 import { fetchFileHead, fetchFileRange, getFileFullPath } from './pcloud.js';
+import { viewOpened, viewClosed } from './nav.js';
 
 // Returns { lat, lng, ts } — any field may be absent if not in EXIF.
 // Pass fileid + name for HEIC files so multi-pass fetching can be used when needed.
@@ -369,9 +370,14 @@ const exifTitleEl = document.getElementById('exif-title');
 const exifCloseBtn= document.getElementById('exif-close');
 const exifListEl  = document.getElementById('exif-list');
 
-exifCloseBtn.addEventListener('click', () => exifPanel.classList.remove('open'));
+function closeExifPanel() {
+  exifPanel.classList.remove('open');
+  viewClosed('exif');
+}
+
+exifCloseBtn.addEventListener('click', closeExifPanel);
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && exifPanel.classList.contains('open')) exifPanel.classList.remove('open');
+  if (e.key === 'Escape' && exifPanel.classList.contains('open')) closeExifPanel();
 });
 
 function fmtVal(v) {
@@ -391,6 +397,7 @@ export async function showExif(fileid, name) {
   exifTitleEl.textContent = name ?? 'EXIF';
   exifListEl.innerHTML = '';
   exifPanel.classList.add('open', 'loading');
+  viewOpened('exif', { close: closeExifPanel });
 
   try {
     const [pathResult, exifData] = await Promise.allSettled([

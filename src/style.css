@@ -260,7 +260,9 @@ html, body {
   bottom: 4px;
   left: 0; right: 0;
   height: 22px;
-  z-index: 1001;
+  /* Above every view layer (popups 5000, exif 5500): status toasts must stay
+     readable when a failed action re-shows the popup that triggered it. */
+  z-index: 5600;
   background: rgba(22, 33, 62, .88);
   font-size: .72rem;
   color: #94a3b8;

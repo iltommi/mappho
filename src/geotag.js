@@ -6,6 +6,7 @@ import { syncMapphoOnEdit, ensureInPhotos } from './organize.js';
 import { isVideo } from './mp4.js';
 import { setVideoMetaEntry } from './videometa.js';
 import { flushPhotoIndex } from './photoindex.js';
+import { viewOpened, viewClosed } from './nav.js';
 import { searchLocation } from './geocode.js';
 import { log } from './log.js';
 import { askRetry, waitForVisible } from './confirm.js';
@@ -100,6 +101,7 @@ export async function startGeotagging(photo, callback) {
   saveBtn.textContent = '💾 Save';
   bar.style.display   = 'flex';
   document.body.classList.add('action-bar-open');
+  viewOpened('pindrop', { close: cancelPinDrop }); // back = Cancel
 
   enterPinDropMode({
     initialPin,
@@ -159,6 +161,7 @@ export async function startBulkGeotagging(photos, callback) {
   const hasExisting = photos.some(p => p.lat != null);
   skipExistingLabel.style.display = hasExisting ? 'flex' : 'none';
   skipExistingBox.checked = true;
+  viewOpened('pindrop', { close: cancelPinDrop }); // back = Cancel
 
   enterPinDropMode({
     initialPin,
@@ -285,11 +288,13 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
-cancelBtn.addEventListener('click', () => {
+function cancelPinDrop() {
   const wasBulk = mode === 'bulk';
+  const cb = onDone;
   finish();
-  onDone?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
-});
+  cb?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
+}
+cancelBtn.addEventListener('click', cancelPinDrop);
 
 function finish() {
   exitPinDropMode();
@@ -302,6 +307,9 @@ function finish() {
   pendingPhoto  = null;
   pendingPhotos = null;
   pendingLatLng = null;
+  // The completion callback decides what shows next (reopen the grid,
+  // resume the slideshow) — don't also re-show a hidden parent popup here.
+  viewClosed('pindrop', { restoreParent: false });
 }
 
 async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {

@@ -2,6 +2,7 @@ import { downloadFullFile, overwriteFile, getFileStat } from './pcloud.js';
 import { injectExif } from './exif.js';
 import { syncMapphoOnEdit } from './organize.js';
 import { isVideo } from './mp4.js';
+import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
 
 const overlay     = document.getElementById('photoedit-overlay');
@@ -140,6 +141,7 @@ saveBtn.addEventListener('click', async () => {
 
 function _close() {
   overlay.style.display = 'none';
+  viewClosed('photoedit');
   saveBtn.disabled = false;
   saveBtn.textContent = '💾 Save';
   cancelBtn.disabled = false;
@@ -157,4 +159,6 @@ export function openPhotoEdit(photo, thumbSrc, onSaved) {
   _thumbImg.onload = _redraw;
   _thumbImg.src = thumbSrc;
   overlay.style.display = 'flex';
+  // Back acts like Cancel, but not while a save is in flight.
+  viewOpened('photoedit', { close: () => { if (!cancelBtn.disabled) _close(); } });
 }

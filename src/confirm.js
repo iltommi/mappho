@@ -1,3 +1,5 @@
+import { viewOpened, viewClosed } from './nav.js';
+
 export function waitForVisible() {
   if (document.visibilityState !== 'hidden') return Promise.resolve();
   return new Promise(resolve => {
@@ -34,7 +36,10 @@ export function askRetry(count, noun) {
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
-    yes.addEventListener('click', () => { overlay.remove(); resolve(true); });
-    no.addEventListener('click', () => { overlay.remove(); resolve(false); });
+    // No parent restore: the flow awaiting this answer decides what shows next.
+    const done = ok => { overlay.remove(); viewClosed('dialog', { restoreParent: false }); resolve(ok); };
+    viewOpened('dialog', { close: () => done(false) }); // back = Skip
+    yes.addEventListener('click', () => done(true));
+    no.addEventListener('click', () => done(false));
   });
 }

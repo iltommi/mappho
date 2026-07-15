@@ -1,5 +1,6 @@
 import { fetchVideoSrc } from './pcloud.js';
 import { openWithIntent } from './intentlauncher.js';
+import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
 
 const player  = document.getElementById('video-player');
@@ -37,6 +38,12 @@ function close() {
   vpVideo.pause();
   vpVideo.src = '';
   player.classList.remove('open');
+  viewClosed('video');
+}
+
+function show() {
+  player.classList.add('open');
+  viewOpened('video', { close });
 }
 
 vpClose.addEventListener('click', close);
@@ -52,7 +59,7 @@ export async function openVideoPlayer(fileid, name = '') {
       await openWithIntent(url, 'video/x-msvideo');
     } catch (e) {
       showError(`Error: ${e.message}`);
-      player.classList.add('open');
+      show();
     }
     return;
   }
@@ -60,7 +67,7 @@ export async function openVideoPlayer(fileid, name = '') {
   vpVideo.src = '';
   vpLoad.textContent = 'Loading…';
   vpLoad.style.display = '';
-  player.classList.add('open');
+  show();
   try {
     vpVideo.src = await fetchVideoSrc(fileid);
     vpVideo.play().then(() => {

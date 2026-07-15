@@ -11,6 +11,7 @@ import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
 import { openVideoPlayer } from './videoplayer.js';
+import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -309,6 +310,9 @@ function close({ handoff = false } = {}) {
   const cb = closeHandler;
   closeHandler = null;
   cb?.({ handoff });
+  // On handoff the screen goes to the pin-drop/fix-date flow, not back to
+  // whatever opened the slideshow — don't re-show a hidden parent popup.
+  viewClosed('slideshow', { restoreParent: !handoff });
 }
 
 export function closeSlideshow() { close(); }
@@ -380,7 +384,7 @@ flagBtn.addEventListener('click', async () => {
   flagBtn.classList.toggle('active', flagged);
 });
 
-closeBtn.addEventListener('click', close);
+closeBtn.addEventListener('click', () => close());
 
 // ── Share ─────────────────────────────────────────────────────────────────────
 
@@ -390,6 +394,10 @@ export function confirmVideoShare(sizeMB) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+    // No parent restore: the share flow that awaits this answer continues
+    // over the still-visible grid/slideshow either way.
+    const done = ok => { overlay.remove(); viewClosed('dialog', { restoreParent: false }); resolve(ok); };
+    viewOpened('dialog', { close: () => done(false) }); // back = Cancel
     const box = document.createElement('div');
     box.style.cssText = 'background:#1e293b;border-radius:14px;padding:24px;max-width:300px;width:100%;color:#f1f5f9;display:flex;flex-direction:column;gap:14px';
     const msg = document.createElement('p');
@@ -403,8 +411,8 @@ export function confirmVideoShare(sizeMB) {
     const no = document.createElement('button');
     no.textContent = 'Cancel';
     no.style.cssText = 'flex:1;padding:12px;border-radius:8px;background:#334155;color:#f1f5f9;border:none;font-size:1rem;cursor:pointer';
-    yes.addEventListener('click', () => { overlay.remove(); resolve(true); });
-    no.addEventListener('click', () => { overlay.remove(); resolve(false); });
+    yes.addEventListener('click', () => done(true));
+    no.addEventListener('click', () => done(false));
     btnRow.append(yes, no);
     box.append(msg, btnRow);
     overlay.appendChild(box);
@@ -959,6 +967,7 @@ export function openSlideshow(photoList, startIndex = 0) {
   editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
   el.classList.add('open');
+  viewOpened('slideshow', { close: () => close() });
   go(startIndex);
 }
 
@@ -999,5 +1008,6 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
   fixDateBtn.style.display = fixDateHandler ? '' : 'none';
   fixTimeBtn.style.display = fixTimeHandler ? '' : 'none';
   el.classList.add('open');
+  viewOpened('slideshow', { close: () => close() });
   go(startIndex);
 }

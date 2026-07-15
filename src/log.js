@@ -1,9 +1,14 @@
+import { viewOpened, viewClosed } from './nav.js';
+
 const panel = document.getElementById('log-panel');
 const list = document.getElementById('log-list');
 
-document.getElementById('log-close').addEventListener('click', () => {
+function closeLog() {
   panel.classList.remove('open');
-});
+  viewClosed('log');
+}
+
+document.getElementById('log-close').addEventListener('click', closeLog);
 
 document.getElementById('log-clear').addEventListener('click', () => {
   list.innerHTML = '';
@@ -54,7 +59,11 @@ document.getElementById('log-save').addEventListener('click', async () => {
 });
 
 export function toggleLog() {
-  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) closeLog();
+  else {
+    panel.classList.add('open');
+    viewOpened('log', { close: closeLog });
+  }
 }
 
 export function log(label, data) {

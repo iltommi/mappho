@@ -7,6 +7,7 @@ import { removeMarker } from './map.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
+import { viewOpened, viewClosed, restoreTop } from './nav.js';
 import { log } from './log.js';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -103,6 +104,15 @@ scrollEl.addEventListener('scroll', updateScrubber, { passive: true });
 let bulkFixDateHandler = null;
 export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
 
+// After a bulk action: bring the grid back via `reopen` when one is wired,
+// otherwise hand the screen back to whatever opened the grid (restoreTop).
+// A reopen that resolves to exactly false found nothing left to show (the
+// list emptied out), so the parent gets restored in that case too.
+function reopenOrRestore(reopen) {
+  if (!reopen) { restoreTop(); return; }
+  Promise.resolve(reopen()).then(opened => { if (opened === false) restoreTop(); });
+}
+
 // Bulk geotag is triggered straight from grid.js (startBulkGeotagging is
 // imported directly from geotag.js, not proxied through main.js like fix-date
 // is), so unlike bulk fix-date there's no natural place for it to refresh the
@@ -134,7 +144,11 @@ let thumbObserver = null;
 let selectMode = false;
 const selected = new Set(); // indices into `items`
 
-function close() {
+// `restoreParent: false` is for closes that hand the screen to something
+// other than the view that opened this grid — a map handoff (bulk geotag)
+// or a scheduled reopen of the grid itself — where re-showing a hidden
+// parent popup would be wrong or would just flash before being covered.
+function close({ restoreParent = true } = {}) {
   el.classList.remove('open');
   track.innerHTML = '';
   items        = [];
@@ -147,8 +161,9 @@ function close() {
   exitSelectMode();
   clearTimeout(scrubHideTimer);
   scrubberEl.classList.remove('scrub-visible', 'scrub-dragging');
+  viewClosed('grid', { restoreParent });
 }
-closeBtn.addEventListener('click', close);
+closeBtn.addEventListener('click', () => close());
 
 function tileAt(index) {
   return track.children[index] ?? null;
@@ -192,10 +207,10 @@ bulkGeotagBtn.addEventListener('click', () => {
   if (!selected.size) return;
   const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
   const reopen = reopenFn;
-  close();
+  close({ restoreParent: false });
   startBulkGeotagging(photos, ({ success, count, failed }) => {
     if (success) { log('Bulk geotag', `tagged ${count}${failed ? `, ${failed} failed` : ''}`); afterBulkGeotagCb?.(); }
-    reopen?.();
+    reopenOrRestore(reopen);
   });
 });
 
@@ -254,10 +269,10 @@ bulkFixDateBtn.addEventListener('click', () => {
   if (!selected.size || !bulkFixDateHandler) return;
   const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
   const reopen = reopenFn;
-  close();
+  close({ restoreParent: false });
   bulkFixDateHandler(photos, ({ success, count, failed }) => {
     if (success) log('Bulk fix date', `dated ${count}${failed ? `, ${failed} failed` : ''}`);
-    reopen?.();
+    reopenOrRestore(reopen);
   });
 });
 
@@ -368,9 +383,11 @@ bulkDeleteBtn.addEventListener('click', async () => {
   }
 
   resetBulkDeleteBtn();
-  close();
+  // When a reopen is scheduled the grid comes right back — restoring a
+  // hidden parent popup in between would only flash it.
+  close({ restoreParent: false });
   log('Bulk delete', `deleted ${ok}${failed ? `, ${failed} failed` : ''}`);
-  reopen?.();
+  reopenOrRestore(reopen);
 });
 
 const THUMB_RETRY_DELAYS = [500, 1500, 4000]; // ms — fetchThumbSrc returns null (not a throw) on transient failures
@@ -479,7 +496,7 @@ function makeTile(item) {
     // On a plain dismissal the slideshow just hides, revealing the grid as-is.
     // On a handoff to geotag/fix-date the map needs to be fully visible, so
     // tear the grid down for real in that case.
-    setCloseHandler(({ handoff }) => { if (handoff) close(); });
+    setCloseHandler(({ handoff }) => { if (handoff) close({ restoreParent: false }); });
     openLazySlideshow(fetcher, t, { startIndex: idx, seedItems: seed });
   });
   thumbObserver.observe(tile);
@@ -533,6 +550,10 @@ export async function openGrid(fetchPage, totalCount, { reopen = null, title = '
 
   scrollEl.scrollTop = 0;
   el.classList.add('open');
+  // Back closes select mode first (matching the header ✕ being hidden while
+  // selecting), then the grid itself. No restore: the grid stays visible
+  // underneath the slideshow, so there's nothing to re-show.
+  viewOpened('grid', { close: () => { if (selectMode) exitSelectMode(); else close(); } });
   positionScrubber();
   await loadNextPage();
 }
