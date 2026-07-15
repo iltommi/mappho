@@ -203,9 +203,19 @@ function exitSelectMode() { setSelectMode(false); }
 selectBtn.addEventListener('click', () => setSelectMode(!selectMode));
 bulkCancelBtn.addEventListener('click', () => exitSelectMode());
 
+// Editing a photo replaces its fileid on pCloud (no true in-place overwrite —
+// see pcloud.js/overwriteFile), so if the same photo were ever selected twice
+// its first edit would invalidate the second entry mid-batch, producing a
+// pCloud 2009 "file not found" that looks like a random failure. Cheap
+// insurance regardless of how a duplicate could get into `items`.
+function dedupeByFileid(photos) {
+  const seen = new Set();
+  return photos.filter(p => (seen.has(p.fileid) ? false : (seen.add(p.fileid), true)));
+}
+
 bulkGeotagBtn.addEventListener('click', () => {
   if (!selected.size) return;
-  const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const photos = dedupeByFileid([...selected].sort((a, b) => a - b).map(idx => items[idx]));
   const reopen = reopenFn;
   close({ restoreParent: false });
   startBulkGeotagging(photos, ({ success, count, failed }) => {
@@ -267,7 +277,7 @@ sameDayBtn.addEventListener('click', async () => {
 
 bulkFixDateBtn.addEventListener('click', () => {
   if (!selected.size || !bulkFixDateHandler) return;
-  const photos = [...selected].sort((a, b) => a - b).map(idx => items[idx]);
+  const photos = dedupeByFileid([...selected].sort((a, b) => a - b).map(idx => items[idx]));
   const reopen = reopenFn;
   close({ restoreParent: false });
   bulkFixDateHandler(photos, ({ success, count, failed }) => {

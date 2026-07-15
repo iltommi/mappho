@@ -172,6 +172,38 @@ export async function startBulkGeotagging(photos, callback) {
   });
 }
 
+// Thrown when a photo's fileid no longer resolves on pCloud (2009) — distinct
+// from a generic failure so callers know the local record has already been
+// purged (see purgeAndThrowStale) and there's nothing left to retry.
+class StaleFileError extends Error {
+  constructor() {
+    super('File no longer exists on pCloud');
+    this.staleFile = true;
+  }
+}
+
+// A cached fileid that 404s is permanently gone — pCloud never reuses ids —
+// so unlike a transient network failure, retrying the same photo can never
+// help. Remove it from the local cache/map now rather than leaving a dead
+// entry that will just fail the exact same way forever.
+async function purgeAndThrowStale(fileid) {
+  removeMarker(fileid);
+  await Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
+  log('Geotag', `Purged stale record — fileid ${fileid} no longer exists on pCloud`);
+  throw new StaleFileError();
+}
+
+// Runs `fn` (a call that touches `fileid` on pCloud) and turns a 2009 "file
+// not found" into the stale-purge path above; any other error propagates as-is.
+async function withStaleCheck(fileid, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e.pcloudResult === 2009) return purgeAndThrowStale(fileid);
+    throw e;
+  }
+}
+
 // Writes `lat, lng` into one photo (EXIF on pCloud for JPEG/HEIC, cache-only
 // for MP4), syncs its Photos copy if any, and updates the local cache/map.
 async function applyGeotagToPhoto(photo, lat, lng) {
@@ -192,10 +224,10 @@ async function applyGeotagToPhoto(photo, lat, lng) {
 
   if (isHeic) {
     log('Geotag', `HEIC → JPEG: fetching original EXIF…`);
-    const preserveFrom = await fetchHeicExifForPreserve(fileid);
+    const preserveFrom = await withStaleCheck(fileid, () => fetchHeicExifForPreserve(fileid));
 
     log('Geotag', `Downloading ${name}…`);
-    const heicBuf = await downloadFullFile(fileid);
+    const heicBuf = await withStaleCheck(fileid, () => downloadFullFile(fileid));
 
     log('Geotag', 'Converting to JPEG…');
     const jpegBuf = await heicToJpeg(heicBuf);
@@ -227,7 +259,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
 
   log('Geotag', `Downloading ${name}…`);
-  const buffer = await downloadFullFile(fileid);
+  const buffer = await withStaleCheck(fileid, () => downloadFullFile(fileid));
 
   log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
   const modified = injectGPS(buffer, lat, lng);
@@ -282,6 +314,9 @@ saveBtn.addEventListener('click', async () => {
     onDone?.({ success: true, ...r });
   } catch (e) {
     log('Geotag error', e.message);
+    // A stale photo's record is already purged (see applyGeotagToPhoto) —
+    // nothing to retry, so close instead of re-enabling Save on a dead photo.
+    if (e.staleFile) { finish(); onDone?.({ success: false, stale: true }); return; }
     hintEl.textContent  = `Error: ${e.message}`;
     saveBtn.disabled    = false;
     saveBtn.textContent = '💾 Save';
@@ -313,7 +348,7 @@ function finish() {
 }
 
 async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
-  let ok = 0;
+  let ok = 0, staleCount = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
     await waitForVisible();
@@ -323,22 +358,26 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
       await applyGeotagToPhoto(list[i], lat, lng);
       ok++;
     } catch (e) {
-      failedItems.push(list[i]);
-      log('Bulk geotag error', `${list[i].name}: ${e.message}`);
+      // A stale photo's record is already purged (see applyGeotagToPhoto) —
+      // it's permanently gone, not a transient failure, so don't offer to
+      // retry it: retrying the same dead fileid can only ever fail again.
+      if (e.staleFile) { staleCount++; log('Bulk geotag', `${list[i].name}: no longer exists on pCloud — removed`); }
+      else { failedItems.push(list[i]); log('Bulk geotag error', `${list[i].name}: ${e.message}`); }
     }
   }
   flushPhotoIndex();
 
-  const skipNote = skipped > 0 ? ` (${skipped} already located, skipped)` : '';
+  const skipNote  = skipped > 0 ? ` (${skipped} already located, skipped)` : '';
+  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
   if (failedItems.length > 0) {
-    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed${skipNote}`, 0);
+    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
   } else {
-    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}${skipNote}`, 4000);
+    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`, staleCount > 0 ? 6000 : 4000);
   }
 
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
   }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, skipped });
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
 }

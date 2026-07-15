@@ -34,7 +34,11 @@ async function api(endpoint, params = {}) {
     API_TIMEOUT,
   );
   const data = resp.data;
-  if (data.result !== 0) throw new Error(`pCloud ${data.result}: ${data.error}`);
+  if (data.result !== 0) {
+    const err = new Error(`pCloud ${data.result}: ${data.error}`);
+    err.pcloudResult = data.result; // lets callers detect e.g. 2009 "file not found" specifically
+    throw err;
+  }
   return data;
 }
 
@@ -103,7 +107,11 @@ async function getCdnUrl(fileid) {
     API_TIMEOUT,
   );
   const linkData = linkResp.data;
-  if (linkData.result !== 0) throw new Error(`pCloud ${linkData.result}: ${linkData.error}`);
+  if (linkData.result !== 0) {
+    const err = new Error(`pCloud ${linkData.result}: ${linkData.error}`);
+    err.pcloudResult = linkData.result; // lets callers detect e.g. 2009 "file not found" specifically
+    throw err;
+  }
   const host = linkData.hosts?.[0];
   if (!host) throw new Error('pCloud getfilelink returned no CDN host');
   return `https://${host}${linkData.path}`;

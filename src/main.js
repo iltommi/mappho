@@ -73,6 +73,20 @@ async function reloadTopbarCounts() {
     .catch(e => log('reloadTopbarCounts', `countLocatedUndated error: ${e.message}`));
 }
 
+// Shared by every setGeotagHandler/setFixDateHandler/setFixTimeHandler onDone
+// callback: `r.stale` means the photo's fileid no longer existed on pCloud
+// and its local record was already purged (see geotag.js/applyFixDateToPhoto's
+// StaleFileError) — surface that distinctly instead of leaving it looking
+// like the tap silently did nothing, then always `advance()` (reopen the
+// slideshow / resume the handoff) regardless of the outcome.
+function handleEditResult(r, advance) {
+  if (r.stale) {
+    reloadTopbarCounts();
+    showBriefStatus('⚠️ That photo no longer exists on pCloud — removed from your library.');
+  }
+  advance();
+}
+
 function showBriefStatus(msg, timeoutMs = 4000) {
   setStatus(msg, timeoutMs);
 }
@@ -115,12 +129,12 @@ async function openNodatetimeGrid() {
     if (!t) { showBriefStatus('All photos have date or location!'); return; }
     openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   await openGrid(fetcher, total, { reopen: openNodatetimeGrid });
   return true;
@@ -165,6 +179,32 @@ function cancelFixDate() {
   cb?.(wasBulk ? { success: false, count: 0, failed: 0 } : { success: false });
 }
 
+// Thrown when a photo's fileid no longer resolves on pCloud (2009) — see
+// geotag.js's identical StaleFileError/withStaleCheck for the rationale
+// (pCloud never reuses ids, so a 404 here is permanent, not transient).
+class StaleFileError extends Error {
+  constructor() {
+    super('File no longer exists on pCloud');
+    this.staleFile = true;
+  }
+}
+
+async function purgeAndThrowStale(fileid) {
+  removeMarker(fileid);
+  await Promise.all([deleteRecord(fileid), deleteOrphan(fileid)]).catch(() => {});
+  log('Fix date', `Purged stale record — fileid ${fileid} no longer exists on pCloud`);
+  throw new StaleFileError();
+}
+
+async function withStaleCheck(fileid, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e.pcloudResult === 2009) return purgeAndThrowStale(fileid);
+    throw e;
+  }
+}
+
 async function applyFixDateToPhoto(photo, ts) {
   const { fileid, name } = photo;
   const isHeic = /\.heic$/i.test(name);
@@ -184,11 +224,11 @@ async function applyFixDateToPhoto(photo, ts) {
     syncedName = await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
     log('Fix date', 'extract HEIC meta');
-    const preserveFrom = await fetchHeicExifForPreserve(fileid);
+    const preserveFrom = await withStaleCheck(fileid, () => fetchHeicExifForPreserve(fileid));
     log('Fix date', 'stat (heic)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
     log('Fix date', 'download HEIC');
-    const heicBuf = await downloadFullFile(fileid);
+    const heicBuf = await withStaleCheck(fileid, () => downloadFullFile(fileid));
     log('Fix date', `convert to JPEG (${heicBuf.byteLength}B)`);
     const jpegBuf = await heicToJpeg(heicBuf);
     const jpegWithExif = injectExif(jpegBuf, { ts, resetOrientation: true, preserveFrom });
@@ -219,7 +259,7 @@ async function applyFixDateToPhoto(photo, ts) {
       // The original survives until the modified copy is verified and the index
       // is updated, so any failure up to that point leaves the data recoverable.
       log('Fix date', `cross-month copy to folder ${targetFolderId}`);
-      const copyFileid = await copyFile(fileid, targetFolderId);
+      const copyFileid = await withStaleCheck(fileid, () => copyFile(fileid, targetFolderId));
       log('Fix date', `copy ${copyFileid} — verifying`);
       await getFileStat(copyFileid);
       log('Fix date', 'download copy');
@@ -238,7 +278,7 @@ async function applyFixDateToPhoto(photo, ts) {
     } else {
       // Same month: content change in place.
       log('Fix date', 'download');
-      const buffer = await downloadFullFile(fileid);
+      const buffer = await withStaleCheck(fileid, () => downloadFullFile(fileid));
       log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
       const modified = injectExif(buffer, { ts });
       log('Fix date', 'overwrite');
@@ -361,6 +401,9 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
     onDone?.(r);
   } catch (e) {
     log('Fix date error', e.message);
+    // A stale photo's record is already purged (see applyFixDateToPhoto) —
+    // reopening the bar for the same dead photo would just fail again.
+    if (e.staleFile) { onDone?.({ success: false, stale: true }); return; }
     if (mode === 'time') startFixTime(photo, onDone);
     else startFixDate(photo, onDone);
     showBriefStatus(`❌ Fix date failed — try again`);
@@ -368,7 +411,7 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
 }
 
 async function _runBulkFixDate(list, ts, cb) {
-  let ok = 0;
+  let ok = 0, staleCount = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
     await waitForVisible();
@@ -381,17 +424,21 @@ async function _runBulkFixDate(list, ts, cb) {
       }
       ok++;
     } catch (e) {
-      failedItems.push(list[i]);
-      log('Bulk fix date error', `${list[i].name}: ${e.message}`);
+      // A stale photo's record is already purged (see applyFixDateToPhoto) —
+      // it's permanently gone, not a transient failure, so don't offer to
+      // retry it: retrying the same dead fileid can only ever fail again.
+      if (e.staleFile) { staleCount++; log('Bulk fix date', `${list[i].name}: no longer exists on pCloud — removed`); }
+      else { failedItems.push(list[i]); log('Bulk fix date error', `${list[i].name}: ${e.message}`); }
     }
   }
   if (ok > 0) _lastFixDateTs = ts;
 
   // Show result immediately so the user knows the loop is done.
+  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
   if (failedItems.length > 0) {
-    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed`, 0);
+    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed${staleNote}`, 0);
   } else {
-    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}`);
+    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}`);
   }
 
   try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
@@ -401,7 +448,7 @@ async function _runBulkFixDate(list, ts, cb) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
   }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length });
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
 }
 
 fixDateCancelBtn.addEventListener('click', cancelFixDate);
@@ -1058,12 +1105,12 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
   if (scoreByHash) items.sort((a, b) => (scoreByHash.get(String(b.hash)) ?? -1) - (scoreByHash.get(String(a.hash)) ?? -1));
   else items.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
 
-  setGeotagHandler(photo => startGeotagging(photo, r => {
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
     if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-  }));
-  setFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
-  setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setIgnoreHandler(null);
   // Replace the long-lived "Searching…" toast — it outlives the search by
   // design (slow first-time model download) and the status bar sits above
@@ -1163,12 +1210,12 @@ async function openDatedOrphanGrid() {
     if (!t) { showBriefStatus(range ? 'All photos in range have locations!' : 'All photos located!'); return; }
     openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Geotagged! ${sessionGeotagged} photo${sessionGeotagged > 1 ? 's' : ''} tagged this session`); }
     reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   await openGrid(fetcher, total, {
     reopen: openDatedOrphanGrid,
@@ -1205,12 +1252,12 @@ async function openLocatedUndatedGrid() {
     if (!t) { showBriefStatus('All located photos now have dates!'); return; }
     openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   await openGrid(fetcher, total, { reopen: openLocatedUndatedGrid });
   return true;
@@ -1227,12 +1274,12 @@ async function openAllGrid() {
     if (!t) { showBriefStatus('No photos left in cache.'); return; }
     openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   await openGrid(fetcher, total, { reopen: openAllGrid });
   return true;
@@ -1249,12 +1296,12 @@ async function openPositionAndDateGrid() {
     if (!t) { showBriefStatus('No photos left with both date and location.'); return; }
     openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
   }
-  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
-    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
+    if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     reopenSlideshow();
-  }));
-  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
-  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
   setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
   await openGrid(fetcher, total, { reopen: openPositionAndDateGrid });
   return true;
@@ -1839,12 +1886,12 @@ async function main() {
     if (retryQueue.length > 0) showRetryDialog(retryQueue);
   });
 
-  setGeotagHandler(photo => startGeotagging(photo, r => {
+  setGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
     if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-  }));
-  setFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
-  setFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  })));
+  setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
+  setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
   setGeotagStatusFn(setStatus);
   setEditHandler((photo, thumbSrc) => {
@@ -1876,12 +1923,12 @@ async function main() {
   });
 
   // Handlers for map marker slideshow.
-  setMarkerGeotagHandler(photo => startGeotagging(photo, r => {
+  setMarkerGeotagHandler(photo => startGeotagging(photo, r => handleEditResult(r, () => {
     if (r.success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
     resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
-  }));
-  setMarkerFixDateHandler(photo => startFixDate(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
-  setMarkerFixTimeHandler(photo => startFixTime(photo, r => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts })));
+  })));
+  setMarkerFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
+  setMarkerFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
 
   const token = getToken();
   setupAuthBtn(!!token);
