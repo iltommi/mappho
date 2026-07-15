@@ -1521,6 +1521,9 @@ body.filter-open #map { top: 48px; }
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,.6);
 }
+/* No header/close button on Settings — outside-tap closes it instead — so
+   give its first row some breathing room from the rounded top corner. */
+#info-popup-inner { padding-top: 8px; }
 #info-popup-header, #people-popup-header {
   display: flex;
   align-items: center;

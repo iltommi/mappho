@@ -755,7 +755,6 @@ mediaTypeBtn.addEventListener('click', () => {
 
 const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
-const infoPopupClose = document.getElementById('info-popup-close');
 
 let _peopleCount   = null; // people recognised in faces.json; null = unknown/none
 let _locationCount = null; // categories recognised in locations.json; null = unknown/none
@@ -1183,7 +1182,6 @@ async function openDatedOrphanGrid() {
   return true;
 }
 
-infoPopupClose.addEventListener('click', closeInfoPopup);
 infoPopup.addEventListener('click', e => { if (e.target === infoPopup) closeInfoPopup(); });
 
 document.getElementById('fix-position-only-btn').addEventListener('click', () => {
