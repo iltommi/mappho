@@ -380,11 +380,18 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && exifPanel.classList.contains('open')) closeExifPanel();
 });
 
+// Fixed DD/MM/YYYY HH:MM:SS regardless of device locale (which could give
+// M/D/YYYY, AM/PM on an en-US device) — matches the rest of the app.
+function fmtDate(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function fmtVal(v) {
   if (v == null) return '—';
   if (v instanceof ArrayBuffer) return `[binary ${v.byteLength}b]`;
   if (ArrayBuffer.isView(v)) return `[binary ${v.byteLength ?? v.length}b]`;
-  if (v instanceof Date) return v.toLocaleString();
+  if (v instanceof Date) return fmtDate(v);
   if (Array.isArray(v)) {
     const parts = v.slice(0, 12).map(fmtVal);
     return parts.join(', ') + (v.length > 12 ? ` … +${v.length - 12}` : '');

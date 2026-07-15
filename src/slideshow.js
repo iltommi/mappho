@@ -5,7 +5,6 @@ import { isFlagged, toggleFlag } from './flags.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
-import { getDateLocale } from './auth.js';
 import { removeMarker } from './map.js';
 import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
@@ -797,16 +796,21 @@ function loadSidePanes() {
 
 // ── Counter / caption ─────────────────────────────────────────────────────────
 
+// Fixed DD/MM/YYYY HH:MM, 24h — matches filter.js's range display rather
+// than varying with locale (en-US would otherwise give M/D/YYYY, AM/PM).
+function fmtDateTime(ts) {
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function updateCounter() {
   const total = lazyTotal != null
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts, lat } = photos[current];
   const hasDate = ts && ts < UNDATED_TS;
-  // hour12:false forces 24h time regardless of locale (en-US would otherwise give AM/PM).
-  const dateStr = hasDate
-    ? `${new Date(ts).toLocaleDateString(getDateLocale())} ${new Date(ts).toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })}`
-    : '';
+  const dateStr = hasDate ? fmtDateTime(ts) : '';
   filterBtn.style.display = hasDate ? '' : 'none';
   const metaStr = [lat != null ? '📍' : '', _facesRegions.length ? `👥 ${_facesRegions.length}` : '']
     .filter(Boolean).join(' ');
