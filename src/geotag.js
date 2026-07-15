@@ -24,6 +24,22 @@ const skipExistingBox   = document.getElementById('pin-drop-skip-existing');
 let _statusFn = null;
 export function setGeotagStatusFn(fn) { _statusFn = fn; }
 
+// Drives the app's top progress bar (0–100) while re-uploading an edited
+// photo. Optional — falls back to a plain upload with no progress if unset.
+let _progressFn = null;
+export function setGeotagProgressFn(fn) { _progressFn = fn; }
+
+// Wraps an upload call so the progress bar always gets reset once the
+// upload settles (success or failure) instead of being left stuck mid-way.
+async function withUploadProgress(fn) {
+  if (!_progressFn) return fn(undefined);
+  try {
+    return await fn((bytes, total) => _progressFn(total ? (bytes / total) * 100 : 0));
+  } finally {
+    _progressFn(0);
+  }
+}
+
 async function doSearch() {
   const q = searchInput.value.trim();
   if (!q) return;
@@ -239,7 +255,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
 
     log('Geotag', `Uploading ${jpegName}…`);
-    const newFileid = await uploadFile(parentfolderid, jpegName, jpegWithExif);
+    const newFileid = await withUploadProgress(onProgress => uploadFile(parentfolderid, jpegName, jpegWithExif, { onProgress }));
 
     log('Geotag', `Removing original HEIC…`);
     removeMarker(fileid); // before deleteFile — same race-condition fix as JPEG path
@@ -270,7 +286,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   removeMarker(fileid);
 
   log('Geotag', 'Uploading to pCloud…');
-  const newFileid = await overwriteFile(fileid, modified);
+  const newFileid = await withUploadProgress(onProgress => overwriteFile(fileid, modified, { onProgress }));
 
   const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
   await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: realTs });

@@ -310,23 +310,44 @@ export async function getFileFolderName(fileid) {
   return level1.name;
 }
 
-export async function uploadFile(folderid, filename, arrayBuffer) {
-  const b64 = bufToBase64(arrayBuffer);
-  // dataType:'formData' uses Capacitor's native multipart builder which base64-decodes
-  // the value to raw bytes before writing — the plain string path would store the
-  // base64 text literally on pCloud instead of the binary JPEG.
-  const resp = await CapacitorHttp.request({
-    method: 'POST',
-    url: buildUrl('uploadfile', { folderid, nopartial: 1 }).toString(),
-    headers: { 'Content-Type': 'multipart/form-data' },
-    dataType: 'formData',
-    data: [{ type: 'base64File', key: 'file', fileName: filename, contentType: 'image/jpeg', value: b64 }],
-    connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+// Uploads via the native FileTransfer plugin rather than CapacitorHttp's
+// base64 JS bridge. The bridge is fine size-wise for a photo (a few MB — see
+// downloadFullFile's comment above), but only FileTransfer reports transfer
+// progress, and geotag/fix-date want to show that while re-uploading an
+// edited photo. `onProgress(bytesSent, totalBytes)` is optional; omit it for
+// a plain upload with no progress tracking.
+export async function uploadFile(folderid, filename, arrayBuffer, { onProgress } = {}) {
+  // Write to a resolved cache path first — FileTransfer takes a complete
+  // file path, not raw bytes, and (per downloadFullFileNative) derives the
+  // multipart filename from this path's basename, so it must match `filename`.
+  const { uri: path } = await Filesystem.writeFile({
+    path: filename, data: bufToBase64(arrayBuffer), directory: Directory.Cache,
   });
-  if (resp.data?.result !== 0) throw new Error(`pCloud upload error ${resp.data?.result}: ${resp.data?.error}`);
-  const newFileid = resp.data.fileids?.[0] ?? resp.data.metadata?.[0]?.fileid;
-  if (!newFileid) throw new Error('Upload succeeded but pCloud returned no file ID');
-  return newFileid;
+  const url = buildUrl('uploadfile', { folderid, nopartial: 1 }).toString();
+
+  let listener = null;
+  if (onProgress) {
+    listener = await FileTransfer.addListener('progress', p => {
+      if (p.type === 'upload' && p.url === url) onProgress(p.bytes, p.contentLength);
+    });
+  }
+  try {
+    const result = await FileTransfer.uploadFile({
+      url, path, method: 'POST', mimeType: 'image/jpeg', fileKey: 'file',
+      progress: !!onProgress, connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT,
+    });
+    // pCloud returns HTTP 200 with a {result: N} body even for API-level
+    // errors, same as every other endpoint here — only network/HTTP-level
+    // failures reject the FileTransfer promise itself.
+    const data = JSON.parse(result.response ?? '{}');
+    if (data.result !== 0) throw new Error(`pCloud upload error ${data.result}: ${data.error}`);
+    const newFileid = data.fileids?.[0] ?? data.metadata?.[0]?.fileid;
+    if (!newFileid) throw new Error('Upload succeeded but pCloud returned no file ID');
+    return newFileid;
+  } finally {
+    if (listener) listener.remove();
+    Filesystem.deleteFile({ path }).catch(() => {});
+  }
 }
 
 export async function deleteFile(fileid) {
@@ -342,7 +363,7 @@ export async function renameFile(fileid, { toname, tofolderid } = {}) {
   return fileid;
 }
 
-export async function overwriteFile(fileid, arrayBuffer) {
+export async function overwriteFile(fileid, arrayBuffer, { onProgress } = {}) {
   const { name, parentfolderid } = await getFileStat(fileid);
   // Upload under a temp name first so the original survives a failed upload,
   // then delete the original and rename the temp into place. Uploading with
@@ -351,7 +372,7 @@ export async function overwriteFile(fileid, arrayBuffer) {
   // The temp suffix keeps the file out of listImages' extension filter, and
   // is deterministic so a retry overwrites a leftover temp instead of piling up.
   const tmpName = `${name}.mappho-tmp`;
-  const newFileid = await uploadFile(parentfolderid, tmpName, arrayBuffer);
+  const newFileid = await uploadFile(parentfolderid, tmpName, arrayBuffer, { onProgress });
   await deleteFile(fileid);
   await renameFile(newFileid, { toname: name });
   return newFileid;

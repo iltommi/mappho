@@ -14,6 +14,22 @@ const enhanceBtn  = document.getElementById('photoedit-enhance');
 const saveBtn     = document.getElementById('photoedit-save');
 const cancelBtn   = document.getElementById('photoedit-cancel');
 
+// Drives the app's top progress bar (0–100) while re-uploading the edited
+// photo. Optional — falls back to a plain upload with no progress if unset.
+let _progressFn = null;
+export function setPhotoEditProgressFn(fn) { _progressFn = fn; }
+
+// Wraps the upload call so the progress bar always gets reset once the
+// upload settles (success or failure) instead of being left stuck mid-way.
+async function withUploadProgress(fn) {
+  if (!_progressFn) return fn(undefined);
+  try {
+    return await fn((bytes, total) => _progressFn(total ? (bytes / total) * 100 : 0));
+  } finally {
+    _progressFn(0);
+  }
+}
+
 let _photo    = null;
 let _onSaved  = null;
 let _rotation = 0;      // 0 | 90 | 180 | 270
@@ -122,7 +138,7 @@ saveBtn.addEventListener('click', async () => {
     outBuf = injectExif(outBuf, { ts: photo.ts, lat: photo.lat, lng: photo.lng, resetOrientation: true, preserveFrom: buf });
 
     const { hash: oldHash } = await getFileStat(photo.fileid).catch(() => ({}));
-    const newFileid = await overwriteFile(photo.fileid, outBuf);
+    const newFileid = await withUploadProgress(onProgress => overwriteFile(photo.fileid, outBuf, { onProgress }));
     const { hash: newHash } = await getFileStat(newFileid).catch(() => ({}));
     const syncedName = await syncMapphoOnEdit({ oldHash, newFileid, newHash, ts: photo.ts });
 

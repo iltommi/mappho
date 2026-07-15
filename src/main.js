@@ -12,8 +12,8 @@ import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicEx
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
-import { openPhotoEdit } from './photoedit.js';
-import { startGeotagging, setGeotagStatusFn } from './geotag.js';
+import { openPhotoEdit, setPhotoEditProgressFn } from './photoedit.js';
+import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setAfterBulkGeotagCallback } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
@@ -205,6 +205,16 @@ async function withStaleCheck(fileid, fn) {
   }
 }
 
+// Wraps an upload call so the top progress bar always gets reset once the
+// upload settles (success or failure) instead of being left stuck mid-way.
+async function withUploadProgress(fn) {
+  try {
+    return await fn((bytes, total) => setProgress(total ? (bytes / total) * 100 : 0));
+  } finally {
+    setProgress(0);
+  }
+}
+
 async function applyFixDateToPhoto(photo, ts) {
   const { fileid, name } = photo;
   const isHeic = /\.heic$/i.test(name);
@@ -236,7 +246,7 @@ async function applyFixDateToPhoto(photo, ts) {
     log('Fix date', 'stat for parent folder');
     const { parentfolderid } = await getFileStat(fileid);
     log('Fix date', `upload JPEG ${newName}`);
-    newFileid = await uploadFile(parentfolderid, newName, jpegWithExif);
+    newFileid = await withUploadProgress(onProgress => uploadFile(parentfolderid, newName, jpegWithExif, { onProgress }));
     log('Fix date', `delete original HEIC ${fileid}`);
     await deleteFile(fileid);
     log('Fix date', 'stat new file');
@@ -267,7 +277,7 @@ async function applyFixDateToPhoto(photo, ts) {
       log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
       const modified = injectExif(buffer, { ts });
       log('Fix date', 'overwrite copy');
-      newFileid = await overwriteFile(copyFileid, modified);
+      newFileid = await withUploadProgress(onProgress => overwriteFile(copyFileid, modified, { onProgress }));
       log('Fix date', 'stat modified copy');
       ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
       log('Fix date', 'sync organize');
@@ -282,7 +292,7 @@ async function applyFixDateToPhoto(photo, ts) {
       log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
       const modified = injectExif(buffer, { ts });
       log('Fix date', 'overwrite');
-      newFileid = await overwriteFile(fileid, modified);
+      newFileid = await withUploadProgress(onProgress => overwriteFile(fileid, modified, { onProgress }));
       log('Fix date', 'stat new file');
       ({ hash: newHash } = await getFileStat(newFileid).catch(() => ({})));
       log('Fix date', 'sync organize');
@@ -1894,6 +1904,8 @@ async function main() {
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setBulkFixDateHandler((photos, cb) => startBulkFixDate(photos, cb));
   setGeotagStatusFn(setStatus);
+  setGeotagProgressFn(setProgress);
+  setPhotoEditProgressFn(setProgress);
   setEditHandler((photo, thumbSrc) => {
     openPhotoEdit(photo, thumbSrc, async ({ newFileid, newName, newHash, thumbSrc: newThumb }) => {
       // Migrate the cache record to the new fileid — overwriteFile replaced the
