@@ -25,6 +25,7 @@ const bulkGeotagBtn   = document.getElementById('grid-bulk-geotag');
 const sameDayBtn      = document.getElementById('grid-sameday-btn');
 const bulkFixDateBtn  = document.getElementById('grid-bulk-fixdate');
 const bulkShareBtn    = document.getElementById('grid-bulk-share');
+const bulkIgnoreBtn   = document.getElementById('grid-bulk-ignore');
 const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
 const bulkCancelBtn   = document.getElementById('grid-bulk-cancel');
 const scrubberEl = document.getElementById('grid-scrubber');
@@ -104,6 +105,15 @@ scrollEl.addEventListener('scroll', updateScrubber, { passive: true });
 let bulkFixDateHandler = null;
 export function setBulkFixDateHandler(fn) { bulkFixDateHandler = fn; }
 
+// Icon/title customizable the same way slideshow.js's setIgnoreHandler is —
+// openIgnoredGrid reuses this same button/handler slot for bulk "Restore".
+let bulkIgnoreHandler = null;
+export function setBulkIgnoreHandler(fn, { icon = '🚫', title = 'Ignore' } = {}) {
+  bulkIgnoreHandler = fn;
+  bulkIgnoreBtn.textContent = icon;
+  bulkIgnoreBtn.title = title;
+}
+
 // After a bulk action: bring the grid back via `reopen` when one is wired,
 // otherwise hand the screen back to whatever opened the grid (restoreTop).
 // A reopen that resolves to exactly false found nothing left to show (the
@@ -170,10 +180,13 @@ function tileAt(index) {
 }
 
 function updateBulkBar() {
-  bulkCountEl.textContent  = `${selected.size} selected`;
+  // Just the count, not "N selected" — the bar is tight on space once every
+  // action button (including Ignore) is shown.
+  bulkCountEl.textContent  = `${selected.size}`;
   bulkGeotagBtn.disabled   = selected.size === 0;
   bulkFixDateBtn.disabled  = selected.size === 0;
   bulkShareBtn.disabled    = selected.size === 0;
+  bulkIgnoreBtn.disabled   = selected.size === 0;
   bulkDeleteBtn.disabled   = selected.size === 0;
   sameDayBtn.disabled      = selected.size === 0; // needs at least one selected photo to read a date from
 }
@@ -184,6 +197,7 @@ function setSelectMode(on) {
   selectBtn.textContent = on ? '✕ Cancel select' : '☑ Select';
   bulkBar.style.display = on ? 'flex' : 'none';
   sameDayBtn.style.display = (on && sameDayFetch) ? '' : 'none';
+  bulkIgnoreBtn.style.display = (on && bulkIgnoreHandler) ? '' : 'none';
   // The header's ✕ closes the whole grid — confusingly similar to "Cancel
   // select" right next to it once select mode is active, so hide it and let
   // Cancel select be the only way back out of that mode.
@@ -282,6 +296,17 @@ bulkFixDateBtn.addEventListener('click', () => {
   close({ restoreParent: false });
   bulkFixDateHandler(photos, ({ success, count, failed }) => {
     if (success) log('Bulk fix date', `dated ${count}${failed ? `, ${failed} failed` : ''}`);
+    reopenOrRestore(reopen);
+  });
+});
+
+bulkIgnoreBtn.addEventListener('click', () => {
+  if (!selected.size || !bulkIgnoreHandler) return;
+  const photos = dedupeByFileid([...selected].sort((a, b) => a - b).map(idx => items[idx]));
+  const reopen = reopenFn;
+  close({ restoreParent: false });
+  bulkIgnoreHandler(photos, ({ success, count, failed }) => {
+    if (success) log('Bulk ignore', `${count} photo${count === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}`);
     reopenOrRestore(reopen);
   });
 });

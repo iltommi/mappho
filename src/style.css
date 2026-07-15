@@ -763,7 +763,7 @@ body.filter-open #map { top: 48px; }
   display: flex;
   gap: 10px;
 }
-#grid-bulk-geotag, #grid-bulk-fixdate, #grid-bulk-share, #grid-bulk-delete, #grid-bulk-cancel {
+#grid-bulk-geotag, #grid-bulk-fixdate, #grid-bulk-share, #grid-bulk-ignore, #grid-bulk-delete, #grid-bulk-cancel {
   width: 44px;
   height: 44px;
   padding: 0;
@@ -788,7 +788,11 @@ body.filter-open #map { top: 48px; }
   background: #2563eb;
   color: #fff;
 }
-#grid-bulk-geotag:disabled, #grid-bulk-fixdate:disabled, #grid-bulk-share:disabled, #grid-bulk-delete:disabled { opacity: .45; cursor: default; }
+#grid-bulk-ignore {
+  background: #b45309;
+  color: #fff;
+}
+#grid-bulk-geotag:disabled, #grid-bulk-fixdate:disabled, #grid-bulk-share:disabled, #grid-bulk-ignore:disabled, #grid-bulk-delete:disabled { opacity: .45; cursor: default; }
 #grid-bulk-delete {
   background: #dc2626;
   color: #fff;

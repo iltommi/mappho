@@ -14,7 +14,7 @@ import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleH
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn } from './geotag.js';
-import { openGrid, setBulkFixDateHandler, setAfterBulkGeotagCallback } from './grid.js';
+import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
@@ -87,6 +87,43 @@ function handleEditResult(r, advance) {
   advance();
 }
 
+// Shared by every "problem" grid's setIgnoreHandler (single photo, via the
+// slideshow's ignore button) and setBulkIgnoreHandler (multiple, via the
+// grid's bulk toolbar) — same underlying operation either way.
+async function ignoreOnePhoto(photo) {
+  await ignorePhoto(photo.fileid);
+  setIgnoredEntry(photo.fileid);
+  await reloadTopbarCounts();
+}
+
+async function bulkIgnorePhotos(photos, cb) {
+  let ok = 0, failed = 0;
+  for (const photo of photos) {
+    try { await ignoreOnePhoto(photo); ok++; }
+    catch (e) { failed++; log('Bulk ignore error', `${photo.name}: ${e.message}`); }
+  }
+  showBriefStatus(failed > 0 ? `🚫 Ignored ${ok}/${photos.length} — ${failed} failed` : `🚫 Ignored ${ok} photo${ok !== 1 ? 's' : ''}`);
+  cb?.({ success: ok > 0, count: ok, failed });
+}
+
+// Restore counterpart, used by openIgnoredGrid's bulk toolbar.
+async function restoreOnePhoto(photo) {
+  const rec = await unignorePhoto(photo.fileid);
+  removeIgnoredEntry(photo.fileid);
+  if (rec?.lat != null) addMarker(rec);
+  await reloadTopbarCounts();
+}
+
+async function bulkRestorePhotos(photos, cb) {
+  let ok = 0, failed = 0;
+  for (const photo of photos) {
+    try { await restoreOnePhoto(photo); ok++; }
+    catch (e) { failed++; log('Bulk restore error', `${photo.name}: ${e.message}`); }
+  }
+  showBriefStatus(failed > 0 ? `♻️ Restored ${ok}/${photos.length} — ${failed} failed` : `♻️ Restored ${ok} photo${ok !== 1 ? 's' : ''}`);
+  cb?.({ success: ok > 0, count: ok, failed });
+}
+
 function showBriefStatus(msg, timeoutMs = 4000) {
   setStatus(msg, timeoutMs);
 }
@@ -135,7 +172,8 @@ async function openNodatetimeGrid() {
   })));
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(ignoreOnePhoto);
+  setBulkIgnoreHandler(bulkIgnorePhotos);
   await openGrid(fetcher, total, { reopen: openNodatetimeGrid });
   return true;
 }
@@ -1318,6 +1356,7 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setIgnoreHandler(null);
+  setBulkIgnoreHandler(null);
   // Replace the long-lived "Searching…" toast — it outlives the search by
   // design (slow first-time model download) and the status bar sits above
   // every view, so it would otherwise linger over the results grid.
@@ -1338,13 +1377,8 @@ async function openIgnoredGrid() {
   setGeotagHandler(null);
   setFixDateHandler(null);
   setFixTimeHandler(null);
-  setIgnoreHandler(async photo => {
-    const rec = await unignorePhoto(photo.fileid);
-    removeIgnoredEntry(photo.fileid);
-    if (rec?.lat != null) addMarker(rec);
-    await reloadTopbarCounts();
-    showBriefStatus('♻️ Photo restored');
-  }, { icon: '♻️', title: 'Restore' });
+  setIgnoreHandler(async photo => { await restoreOnePhoto(photo); showBriefStatus('♻️ Photo restored'); }, { icon: '♻️', title: 'Restore' });
+  setBulkIgnoreHandler(bulkRestorePhotos, { icon: '♻️', title: 'Restore' });
   await openGrid(fetcher, total, {
     reopen: openIgnoredGrid,
     sameDayFetch: async anchors => {
@@ -1422,7 +1456,8 @@ async function openDatedOrphanGrid() {
   })));
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(ignoreOnePhoto);
+  setBulkIgnoreHandler(bulkIgnorePhotos);
   await openGrid(fetcher, total, {
     reopen: openDatedOrphanGrid,
     // Every photo in this grid already has a date but no location — "same
@@ -1464,7 +1499,8 @@ async function openLocatedUndatedGrid() {
   })));
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(ignoreOnePhoto);
+  setBulkIgnoreHandler(bulkIgnorePhotos);
   await openGrid(fetcher, total, { reopen: openLocatedUndatedGrid });
   return true;
 }
@@ -1486,7 +1522,8 @@ async function openAllGrid() {
   })));
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(ignoreOnePhoto);
+  setBulkIgnoreHandler(bulkIgnorePhotos);
   await openGrid(fetcher, total, { reopen: openAllGrid });
   return true;
 }
@@ -1508,7 +1545,8 @@ async function openPositionAndDateGrid() {
   })));
   setFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, reopenSlideshow)));
   setFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, reopenSlideshow)));
-  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  setIgnoreHandler(ignoreOnePhoto);
+  setBulkIgnoreHandler(bulkIgnorePhotos);
   await openGrid(fetcher, total, { reopen: openPositionAndDateGrid });
   return true;
 }
