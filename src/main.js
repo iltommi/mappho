@@ -189,9 +189,14 @@ function updateShiftPreview() {
   fixDateShiftPreview.style.display = '';
 }
 
+// Bulk mode shows only the controls that matter for whichever choice is
+// selected — the absolute date/time pickers for "fixed", or the day/hour/
+// minute shift controls for "shift" — rather than both at once.
 function applyDateModeVisibility() {
   const shift = isBulkShiftMode();
   fixDateInputsEl.style.display = shift ? 'none' : 'flex';
+  fixDateShiftRow.style.display = shift ? 'flex' : 'none';
+  fixTimeShiftRow.style.display = shift ? 'flex' : 'none';
   updateShiftPreview();
 }
 fixDateModeFixed.addEventListener('change', applyDateModeVisibility);
@@ -456,12 +461,10 @@ function startBulkFixDate(photos, onDone) {
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = '';
-  fixDateShiftRow.style.display  = 'flex';
-  fixTimeShiftRow.style.display  = 'flex';
   fixDateApplyModeRow.style.display = 'flex';
   fixDateModeFixed.checked = true; // default to "set all to this exact value", matches prior behavior
   _pendingShiftDays = 0; _pendingShiftHours = 0; _pendingShiftMinutes = 0;
-  applyDateModeVisibility();
+  applyDateModeVisibility(); // sets fixDateShiftRow/fixTimeShiftRow to match the default (hidden, since "fixed" is selected)
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   showFixDateBar();
