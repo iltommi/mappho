@@ -11,6 +11,7 @@ import { openLightbox } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
 import { openVideoPlayer } from './videoplayer.js';
+import { openFilterAt } from './filter.js';
 import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
 import { Share } from '@capacitor/share';
@@ -41,6 +42,7 @@ const fixTimeBtn  = document.getElementById('ss-fixtime-btn');
 const editBtn     = document.getElementById('ss-edit-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
+const filterBtn   = document.getElementById('ss-filter-btn');
 const flagBtn     = document.getElementById('ss-flag-btn');
 const shareBtn    = document.getElementById('ss-share-btn');
 const deleteBtn   = document.getElementById('ss-delete-btn');
@@ -292,6 +294,7 @@ function close({ handoff = false } = {}) {
   fixTimeBtn.style.display = 'none';
   editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
+  filterBtn.style.display  = 'none';
   facesMode = false;
   facesBtn.classList.remove('active');
   facesBtn.style.display = 'none';
@@ -372,6 +375,16 @@ ignoreBtn.addEventListener('click', async () => {
 exifBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (photo) showExif(photo.fileid, photo.name);
+});
+
+filterBtn.addEventListener('click', () => {
+  const photo = photos[current];
+  if (!photo?.ts) return;
+  const ts = photo.ts;
+  // The filter panel lives on the map, so this needs the map fully visible —
+  // same handoff as geotag, tearing down a parent grid if there is one.
+  close({ handoff: true });
+  openFilterAt(ts);
 });
 
 flagBtn.addEventListener('click', async () => {
@@ -789,10 +802,12 @@ function updateCounter() {
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts, lat } = photos[current];
+  const hasDate = ts && ts < UNDATED_TS;
   // hour12:false forces 24h time regardless of locale (en-US would otherwise give AM/PM).
-  const dateStr = (ts && ts < UNDATED_TS)
+  const dateStr = hasDate
     ? `${new Date(ts).toLocaleDateString(getDateLocale())} ${new Date(ts).toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })}`
     : '';
+  filterBtn.style.display = hasDate ? '' : 'none';
   const metaStr = [lat != null ? '📍' : '', _facesRegions.length ? `👥 ${_facesRegions.length}` : '']
     .filter(Boolean).join(' ');
   const parts = [`${current + 1} / ${total}`, dateStr, metaStr].filter(Boolean);

@@ -152,6 +152,23 @@ export function toggleFilter() {
   }
 }
 
+// Opens the panel anchored on `ts` — the slideshow's "filter map to this
+// date" button jumps straight here. Keeps whatever span the user already had
+// dialed in (just recentres it, like the ‹ › nav does); defaults to a single
+// day the first time, since "All time" would ignore the anchor entirely.
+export async function openFilterAt(ts) {
+  if (!panel.classList.contains('open')) {
+    panel.classList.add('open');
+    document.body.classList.add('filter-open');
+    viewOpened('filter', { close: toggleFilter });
+  }
+  await init();
+  if (spanSelect.style.display === 'none') return; // no dated photos — init() already explained why
+  span = span ?? 1;
+  anchorTs = Math.max(minTs, Math.min(maxTs, ts));
+  apply();
+}
+
 export function closeFilter() {
   if (!panel.classList.contains('open')) return;
   panel.classList.remove('open');

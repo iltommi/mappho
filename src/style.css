@@ -1472,6 +1472,10 @@ body.filter-open #map { top: 76px; }
 
 #ss-flag-btn.active { background: #b91c1c; }
 
+#ss-filter-btn { background: #1e3a5f; }
+#ss-filter-btn:hover { background: #24466f; }
+#ss-filter-btn .date-range-icon { height: 30px; }
+
 #ss-delete-btn  { color: #fca5a5; }
 #ss-delete-btn.confirm { background: #b91c1c; color: #fff; }
 
