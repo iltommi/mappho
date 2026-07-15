@@ -1295,6 +1295,10 @@ function setupAuthBtn(isLoggedIn) {
   if (isLoggedIn) showApp();
 }
 
+// Lets a just-set status message actually paint before a synchronous,
+// CPU-heavy call blocks the main thread (e.g. the marker-cluster pass below).
+const nextFrame = () => new Promise(r => requestAnimationFrame(r));
+
 let startScanInProgress = false;
 async function startScan() {
   if (startScanInProgress) return;
@@ -1328,6 +1332,10 @@ async function startScan() {
   }
   // One batch call: markercluster does a single cluster pass with chunkedLoading
   // instead of N individual addLayer() calls that each trigger a full re-cluster.
+  if (geoToAdd.length) {
+    setStatus(`Placing ${geoToAdd.length} pin${geoToAdd.length === 1 ? '' : 's'} on the map…`, 0);
+    await nextFrame();
+  }
   bulkAddMarkers(geoToAdd);
   topbarGeotagged      = cachedGeo;
   topbarLocatedUndated = cachedLocatedUndated;
@@ -1338,10 +1346,12 @@ async function startScan() {
 
   // Populate orphan store in one transaction so the No-location / No-date buttons work immediately.
   if (toMigrate.length > 0) {
+    setStatus(`Indexing ${toMigrate.length} photo${toMigrate.length === 1 ? '' : 's'} without location…`, 0);
     try { await bulkPutOrphans(toMigrate); }
     catch (e) { log('orphan migration error', e.message); }
   }
 
+  setStatus('Syncing video metadata & ignored list…', 0);
   await applyVideoMeta().catch(e => log('VideoMeta apply error', e.message));
   await applyIgnored().catch(e => log('Ignored apply error', e.message));
   // Faces mirror sync runs in the background — 4.5 MB download on first run.
