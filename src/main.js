@@ -24,7 +24,7 @@ import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, waitForVisible } from './confirm.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, countAllNonIgnored, getAllNonIgnoredPage, getPositionAndDatePage, countGeotaggedInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import { distinctDayRanges, sameDayFromList } from './dayrange.js';
 import './style.css';
 
@@ -73,8 +73,8 @@ async function reloadTopbarCounts() {
     .catch(e => log('reloadTopbarCounts', `countLocatedUndated error: ${e.message}`));
 }
 
-function showBriefStatus(msg, timeoutMs = 4000) {
-  setStatus(msg, timeoutMs);
+function showBriefStatus(msg) {
+  setStatus(msg);
 }
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -92,7 +92,6 @@ stopScanBtn.addEventListener('click', () => {
   stopScanBtn.textContent = '…';
 });
 const menuFab = document.getElementById('menu-fab');
-const overflowMenu = document.getElementById('overflow-menu');
 const peopleFab = document.getElementById('people-fab');
 peopleFab.addEventListener('click', () => {
   openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
@@ -409,7 +408,7 @@ fixDateCancelBtn.addEventListener('click', cancelFixDate);
 
 
 document.getElementById('filter-menu-btn').addEventListener('click', () => {
-  closeOverflowMenu();
+  closeInfoPopup();
   toggleFilter();
 });
 
@@ -451,22 +450,9 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   }
 });
 
-function closeOverflowMenu() {
-  overflowMenu.classList.remove('open');
-  viewClosed('menu');
-}
-
 menuFab.addEventListener('click', (e) => {
   e.stopPropagation();
-  if (overflowMenu.classList.contains('open')) closeOverflowMenu();
-  else {
-    overflowMenu.classList.add('open');
-    viewOpened('menu', { close: closeOverflowMenu });
-  }
-});
-
-document.addEventListener('click', (e) => {
-  if (!overflowMenu.contains(e.target) && e.target !== menuFab) closeOverflowMenu();
+  openInfoPopup();
 });
 
 // Android hardware/gesture back: unwind the open view stack one level at a
@@ -719,18 +705,11 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
   await startScan();
 });
 
-let statusHideTimer = null;
-
-// Shows `msg` in the status bar, then auto-hides it after `timeoutMs` unless
-// another status call (e.g. the next scan-progress tick) replaces it first.
-function setStatus(msg, timeoutMs = 6000) {
-  clearTimeout(statusHideTimer);
+// Shows `msg` in the status bar. The bar stays up permanently — this just
+// replaces its text — until the next status call replaces it in turn.
+function setStatus(msg) {
   scanStatusEl.textContent = msg;
-  scanStatusEl.classList.remove('hidden');
   log('status', msg);
-  if (timeoutMs > 0) {
-    statusHideTimer = setTimeout(() => scanStatusEl.classList.add('hidden'), timeoutMs);
-  }
 }
 
 scanStatusEl.addEventListener('click', () => toggleLog());
@@ -784,8 +763,8 @@ let _locationCount = null; // categories recognised in locations.json; null = un
 function renderInfoRows() {
   const X = (e) => `<span class="icon-x">${e}</span>`;
   const rows = [
-    { icon: '📷',                   label: 'Total',           value: topbarTotal,                            action: null },
-    { icon: '📅📍',                 label: 'Position & Date', value: topbarGeotagged - topbarLocatedUndated, action: null },
+    { icon: '📷',                   label: 'Total',           value: topbarTotal,                            action: 'all' },
+    { icon: '📅📍',                 label: 'Position & Date', value: topbarGeotagged - topbarLocatedUndated, action: 'position-date' },
     { icon: X('📍'),                label: 'Only Date',       value: topbarDated,                            action: 'dated' },
     { icon: X('📅'),                label: 'Only Position',   value: topbarLocatedUndated,                   action: 'located-undated' },
     { icon: X('📅') + X('📍'),     label: 'Nothing',         value: topbarUnknown,                          action: 'unknown' },
@@ -811,7 +790,11 @@ function renderInfoRows() {
       infoPopup.style.display = 'none';
       const reshowIfNotOpened = opened => { if (!opened) restoreTop(); };
       const reshowOnError = (label) => (e) => { log(label, e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); };
-      if (el.dataset.action === 'dated') {
+      if (el.dataset.action === 'all') {
+        openAllGrid().then(reshowIfNotOpened).catch(reshowOnError('All-photos grid error'));
+      } else if (el.dataset.action === 'position-date') {
+        openPositionAndDateGrid().then(reshowIfNotOpened).catch(reshowOnError('Position & date grid error'));
+      } else if (el.dataset.action === 'dated') {
         openDatedOrphanGrid().then(reshowIfNotOpened).catch(reshowOnError('Dated grid error'));
       } else if (el.dataset.action === 'unknown') {
         openNodatetimeGrid().then(reshowIfNotOpened).catch(reshowOnError('Unknown grid error'));
@@ -1116,7 +1099,6 @@ async function openIgnoredGrid() {
 }
 
 function openInfoPopup() {
-  closeOverflowMenu();
   renderInfoRows();
   infoPopup.style.display = 'flex';
   // Restore re-runs openInfoPopup so the counts re-render fresh — they may
@@ -1203,20 +1185,9 @@ async function openDatedOrphanGrid() {
 
 infoPopupClose.addEventListener('click', closeInfoPopup);
 infoPopup.addEventListener('click', e => { if (e.target === infoPopup) closeInfoPopup(); });
-document.getElementById('info-btn').addEventListener('click', openInfoPopup);
-
-document.getElementById('fix-date-only-btn').addEventListener('click', () => {
-  closeOverflowMenu();
-  openLocatedUndatedGrid().catch(e => { log('Fix date error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
 
 document.getElementById('fix-position-only-btn').addEventListener('click', () => {
   openDatedOrphanGrid().catch(e => { log('Fix position error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
-
-document.getElementById('fix-date-and-pos-btn').addEventListener('click', () => {
-  closeOverflowMenu();
-  openNodatetimeGrid().catch(e => { log('Fix date & position error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
 async function openLocatedUndatedGrid() {
@@ -1239,7 +1210,50 @@ async function openLocatedUndatedGrid() {
   await openGrid(fetcher, total, { reopen: openLocatedUndatedGrid });
   return true;
 }
-document.getElementById('log-open-btn').addEventListener('click', () => { infoPopup.style.display = 'none'; toggleLog(); });
+
+// Every cached photo, regardless of category — the "Total" row in Settings.
+async function openAllGrid() {
+  const total = await countAllNonIgnored();
+  if (!total) { showBriefStatus('No photos in cache.'); return false; }
+  const fetcher = (offset, limit) => getAllNonIgnoredPage(offset, limit);
+  async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
+    const t = await countAllNonIgnored();
+    if (!t) { showBriefStatus('No photos left in cache.'); return; }
+    openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
+  }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    reopenSlideshow();
+  }));
+  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
+  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  await openGrid(fetcher, total, { reopen: openAllGrid });
+  return true;
+}
+
+// Photos with both a date and a location — the "Position & Date" row in Settings.
+async function openPositionAndDateGrid() {
+  const total = await countGeotaggedInRange(1, UNDATED_TS - 1);
+  if (!total) { showBriefStatus('No photos with both date and location.'); return false; }
+  const fetcher = (offset, limit) => getPositionAndDatePage(offset, limit);
+  async function reopenSlideshow() {
+    const savedIdx = getCurrentSlideshowIndex();
+    const t = await countGeotaggedInRange(1, UNDATED_TS - 1);
+    if (!t) { showBriefStatus('No photos left with both date and location.'); return; }
+    openLazySlideshow(fetcher, t, { startIndex: Math.min(savedIdx, t - 1) });
+  }
+  setGeotagHandler(photo => startGeotagging(photo, ({ success }) => {
+    if (success) { sessionGeotagged++; reloadTopbarCounts(); showBriefStatus(`📍 Location updated!`); }
+    reopenSlideshow();
+  }));
+  setFixDateHandler(photo => startFixDate(photo, reopenSlideshow));
+  setFixTimeHandler(photo => startFixTime(photo, reopenSlideshow));
+  setIgnoreHandler(async photo => { await ignorePhoto(photo.fileid); setIgnoredEntry(photo.fileid); await reloadTopbarCounts(); });
+  await openGrid(fetcher, total, { reopen: openPositionAndDateGrid });
+  return true;
+}
 
 function showApp() {
   loginOverlay.style.display = 'none';
@@ -1734,7 +1748,7 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
 }
 
 function updateRetryBtn() {
-  const btn = document.getElementById('retry-menu-btn');
+  const btn = document.getElementById('retry-info-btn');
   if (!btn) return;
   if (retryQueue.length === 0) {
     btn.style.display = 'none';
@@ -1815,7 +1829,8 @@ async function main() {
   initMap();
   setAfterDeleteCallback(() => reloadTopbarCounts());
   setAfterBulkGeotagCallback(() => reloadTopbarCounts());
-  document.getElementById('retry-menu-btn').addEventListener('click', () => {
+  document.getElementById('retry-info-btn').addEventListener('click', () => {
+    closeInfoPopup();
     if (retryQueue.length > 0) showRetryDialog(retryQueue);
   });
 

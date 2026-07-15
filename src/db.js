@@ -261,6 +261,60 @@ export async function countGeotaggedInRange(fromTs, toTs) {
   return count;
 }
 
+// Every cached (non-ignored) photo regardless of category — the "Total" tile
+// view in Settings. A plain cursor scan rather than the by_ts index: ts can
+// be null for some records (e.g. located-but-undated ones), and null isn't a
+// valid IDB key so those would silently drop out of an index-based query.
+// Sorted by fileid (the store's natural key order) rather than chronologically.
+export async function countAllNonIgnored() {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.openCursor();
+  let count = 0;
+  while (cursor) {
+    if (cursor.value.ignored !== 1) count++;
+    cursor = await cursor.continue();
+  }
+  return count;
+}
+
+export async function getAllNonIgnoredPage(offset, limit) {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.openCursor();
+  const results = [];
+  let skipped = 0;
+  while (cursor) {
+    if (cursor.value.ignored !== 1) {
+      if (skipped < offset) { skipped++; }
+      else { results.push(cursor.value); if (results.length >= limit) break; }
+    }
+    cursor = await cursor.continue();
+  }
+  return results;
+}
+
+// Photos with both GPS and a real date — "Position & Date" in Settings.
+// Unlike countAllNonIgnored above, this subset is defined by having a valid
+// ts, so the by_ts index (chronological order, like every other grid) is
+// safe to use here. Count via the existing countGeotaggedInRange(1, UNDATED_TS-1)
+// — same predicate, no need for a separate counter.
+export async function getPositionAndDatePage(offset, limit) {
+  const d = await db();
+  const tx = d.transaction(STORE, 'readonly');
+  let cursor = await tx.store.index('by_ts').openCursor(IDBKeyRange.bound(1, UNDATED_TS - 1));
+  const results = [];
+  let skipped = 0;
+  while (cursor) {
+    if (cursor.value.lat != null && cursor.value.ignored !== 1) {
+      if (skipped < offset) { skipped++; }
+      else { results.push(cursor.value); if (results.length >= limit) break; }
+    }
+    cursor = await cursor.continue();
+  }
+  return results;
+}
+
 export async function countLocatedUndated() {
   const d = await db();
   const tx = d.transaction(STORE, 'readonly');
