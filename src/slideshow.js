@@ -789,7 +789,10 @@ function updateCounter() {
     ? lazyTotal
     : lazyDone ? photos.length : `${photos.length}+`;
   const { ts, lat } = photos[current];
-  const dateStr = (ts && ts < UNDATED_TS) ? new Date(ts).toLocaleDateString(getDateLocale()) : '';
+  // hour12:false forces 24h time regardless of locale (en-US would otherwise give AM/PM).
+  const dateStr = (ts && ts < UNDATED_TS)
+    ? `${new Date(ts).toLocaleDateString(getDateLocale())} ${new Date(ts).toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })}`
+    : '';
   const metaStr = [lat != null ? '📍' : '', _facesRegions.length ? `👥 ${_facesRegions.length}` : '']
     .filter(Boolean).join(' ');
   const parts = [`${current + 1} / ${total}`, dateStr, metaStr].filter(Boolean);
