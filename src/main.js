@@ -144,6 +144,7 @@ async function openNodatetimeGrid() {
 
 const fixDateBar      = document.getElementById('fix-date-bar');
 const fixDateHint     = document.getElementById('fix-date-hint');
+const fixDateInputsEl = document.getElementById('fix-date-inputs');
 const fixDateInput    = document.getElementById('fix-date-input');
 const fixDateTimeInput = document.getElementById('fix-date-time-input');
 const fixDateSaveBtn  = document.getElementById('fix-date-save');
@@ -159,6 +160,42 @@ const fixTimeShiftHrNext  = document.getElementById('fix-time-shift-hr-next');
 const fixTimeShiftMinutes = document.getElementById('fix-time-shift-minutes');
 const fixTimeShiftMinPrev = document.getElementById('fix-time-shift-min-prev');
 const fixTimeShiftMinNext = document.getElementById('fix-time-shift-min-next');
+const fixDateApplyModeRow = document.getElementById('fix-date-apply-mode-row');
+const fixDateModeFixed    = document.getElementById('fix-date-mode-fixed');
+const fixDateModeShift    = document.getElementById('fix-date-mode-shift');
+const fixDateShiftPreview = document.getElementById('fix-date-shift-preview');
+
+// Bulk mode ('both') offers a choice the other modes don't need: apply one
+// fixed date/time to every selected photo, or shift each photo by an amount
+// relative to its own current date (e.g. a camera clock that was
+// consistently N hours/days off) — very different results for a batch that
+// doesn't already share one date. Single-photo modes don't need the choice:
+// "shift this one photo's date" and "set this one photo's date" already
+// converge to the same field edit, which shiftFixDateTime below still does.
+function isBulkShiftMode() { return fixDateMode === 'both' && fixDateModeShift.checked; }
+
+// Pending per-photo shift, only meaningful in bulk-shift mode — unlike
+// shiftFixDateTime (which edits the single shared date/time value Save
+// applies to everyone), these are a delta applied to *each* photo's own ts.
+let _pendingShiftDays = 0, _pendingShiftHours = 0, _pendingShiftMinutes = 0;
+
+function updateShiftPreview() {
+  if (!isBulkShiftMode()) { fixDateShiftPreview.style.display = 'none'; return; }
+  const parts = [];
+  if (_pendingShiftDays)    parts.push(`${_pendingShiftDays > 0 ? '+' : ''}${_pendingShiftDays}d`);
+  if (_pendingShiftHours)   parts.push(`${_pendingShiftHours > 0 ? '+' : ''}${_pendingShiftHours}h`);
+  if (_pendingShiftMinutes) parts.push(`${_pendingShiftMinutes > 0 ? '+' : ''}${_pendingShiftMinutes}m`);
+  fixDateShiftPreview.textContent = parts.length ? `Shift: ${parts.join(' ')}` : 'No shift set yet — tap ‹ or › below';
+  fixDateShiftPreview.style.display = '';
+}
+
+function applyDateModeVisibility() {
+  const shift = isBulkShiftMode();
+  fixDateInputsEl.style.display = shift ? 'none' : 'flex';
+  updateShiftPreview();
+}
+fixDateModeFixed.addEventListener('change', applyDateModeVisibility);
+fixDateModeShift.addEventListener('change', applyDateModeVisibility);
 
 // Nudges the date/time inputs by the given offsets — a quick fix for a
 // whole batch that's systematically off by a known amount (e.g. a camera
@@ -180,12 +217,28 @@ function shiftFixDateTime({ days = 0, hours = 0, minutes = 0 }) {
   fixDateTimeInput.value = `${String(base.getHours()).padStart(2, '0')}:${String(base.getMinutes()).padStart(2, '0')}`;
 }
 const shiftN = el => Math.max(1, parseInt(el.value, 10) || 1);
-fixDateShiftPrev.addEventListener('click', () => shiftFixDateTime({ days: -shiftN(fixDateShiftDays) }));
-fixDateShiftNext.addEventListener('click', () => shiftFixDateTime({ days: shiftN(fixDateShiftDays) }));
-fixTimeShiftHrPrev.addEventListener('click', () => shiftFixDateTime({ hours: -shiftN(fixTimeShiftHours) }));
-fixTimeShiftHrNext.addEventListener('click', () => shiftFixDateTime({ hours: shiftN(fixTimeShiftHours) }));
-fixTimeShiftMinPrev.addEventListener('click', () => shiftFixDateTime({ minutes: -shiftN(fixTimeShiftMinutes) }));
-fixTimeShiftMinNext.addEventListener('click', () => shiftFixDateTime({ minutes: shiftN(fixTimeShiftMinutes) }));
+
+// Each button either nudges the single shared date/time value (fixed mode,
+// or single-photo modes where there's no separate "shift" concept) or sets
+// this unit's pending per-photo delta (bulk-shift mode) — set, not
+// accumulated, so the last tap for a given unit is what's applied.
+function handleShiftTap(unit, dir, countEl) {
+  const n = dir * shiftN(countEl);
+  if (isBulkShiftMode()) {
+    if (unit === 'days') _pendingShiftDays = n;
+    else if (unit === 'hours') _pendingShiftHours = n;
+    else _pendingShiftMinutes = n;
+    updateShiftPreview();
+  } else {
+    shiftFixDateTime({ [unit]: n });
+  }
+}
+fixDateShiftPrev.addEventListener('click', () => handleShiftTap('days', -1, fixDateShiftDays));
+fixDateShiftNext.addEventListener('click', () => handleShiftTap('days', 1, fixDateShiftDays));
+fixTimeShiftHrPrev.addEventListener('click', () => handleShiftTap('hours', -1, fixTimeShiftHours));
+fixTimeShiftHrNext.addEventListener('click', () => handleShiftTap('hours', 1, fixTimeShiftHours));
+fixTimeShiftMinPrev.addEventListener('click', () => handleShiftTap('minutes', -1, fixTimeShiftMinutes));
+fixTimeShiftMinNext.addEventListener('click', () => handleShiftTap('minutes', 1, fixTimeShiftMinutes));
 
 let fixDateMode    = 'date'; // 'date' | 'time' | 'both'
 let fixDatePhoto   = null;
@@ -361,8 +414,11 @@ function startFixDate(photo, onDone) {
   const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
   const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
   fixDateInput.value     = toDateStr(seed.getTime());
+  fixDateInputsEl.style.display  = 'flex';
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = 'none';
+  fixDateApplyModeRow.style.display = 'none'; // single photo — shift and fixed converge to the same edit
+  fixDateShiftPreview.style.display = 'none';
   fixDateShiftRow.style.display  = 'flex';
   fixTimeShiftRow.style.display  = 'none'; // no visible time to shift in date-only mode
   fixDateHint.textContent    = 'Change date for this photo';
@@ -378,8 +434,11 @@ function startFixTime(photo, onDone) {
   const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
   const seed = hasOwnDate ? new Date(photo.ts) : (_lastFixDateTs ? new Date(_lastFixDateTs) : new Date());
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
+  fixDateInputsEl.style.display  = 'flex';
   fixDateInput.style.display     = 'none';
   fixDateTimeInput.style.display = '';
+  fixDateApplyModeRow.style.display = 'none'; // single photo — shift and fixed converge to the same edit
+  fixDateShiftPreview.style.display = 'none';
   fixDateShiftRow.style.display  = 'none'; // no visible date to shift in time-only mode
   fixTimeShiftRow.style.display  = 'flex';
   fixDateHint.textContent    = 'Change time for this photo';
@@ -399,6 +458,10 @@ function startBulkFixDate(photos, onDone) {
   fixDateTimeInput.style.display = '';
   fixDateShiftRow.style.display  = 'flex';
   fixTimeShiftRow.style.display  = 'flex';
+  fixDateApplyModeRow.style.display = 'flex';
+  fixDateModeFixed.checked = true; // default to "set all to this exact value", matches prior behavior
+  _pendingShiftDays = 0; _pendingShiftHours = 0; _pendingShiftMinutes = 0;
+  applyDateModeVisibility();
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   showFixDateBar();
@@ -406,9 +469,19 @@ function startBulkFixDate(photos, onDone) {
 
 fixDateSaveBtn.addEventListener('click', () => {
   if (fixDatePhotos) {
-    if (!fixDateInput.value) return;
     const list = fixDatePhotos;
     const cb   = fixDateOnDone;
+
+    if (isBulkShiftMode()) {
+      const deltaMs = _pendingShiftDays * 86400000 + _pendingShiftHours * 3600000 + _pendingShiftMinutes * 60000;
+      if (!deltaMs) { showBriefStatus('Set a shift amount first — tap ‹ or › below.'); return; }
+      hideFixDateBar();
+      fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
+      _runBulkShiftDate(list, deltaMs, cb);
+      return;
+    }
+
+    if (!fixDateInput.value) return;
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     hideFixDateBar();
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
@@ -503,6 +576,51 @@ async function _runBulkFixDate(list, ts, cb) {
     if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
   }
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
+}
+
+// Bulk-shift mode counterpart to _runBulkFixDate: instead of one shared ts
+// applied to every photo, each photo is shifted by `deltaMs` from its own
+// current ts — preserving whatever date/time differences already existed
+// between the selected photos (e.g. correcting a camera clock that was
+// consistently off, rather than collapsing the whole batch to one moment).
+async function _runBulkShiftDate(list, deltaMs, cb) {
+  let ok = 0, staleCount = 0, skipped = 0;
+  const failedItems = [];
+  for (let i = 0; i < list.length; i++) {
+    await waitForVisible();
+    setStatus(`📅 Shifting… ${i + 1}/${list.length}`, 0);
+    const photo = list[i];
+    const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+    if (!hasOwnDate) { skipped++; continue; } // nothing to shift from
+    try {
+      const r = await applyFixDateToPhoto(photo, photo.ts + deltaMs);
+      if (r.lat != null && r.newFileid !== r.oldFileid) {
+        removeMarker(r.oldFileid);
+        addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
+      }
+      ok++;
+    } catch (e) {
+      if (e.staleFile) { staleCount++; log('Bulk shift', `${photo.name}: no longer exists on pCloud — removed`); }
+      else { failedItems.push(photo); log('Bulk shift error', `${photo.name}: ${e.message}`); }
+    }
+  }
+
+  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
+  const skipNote  = skipped > 0 ? ` (${skipped} had no date to shift from, skipped)` : '';
+  if (failedItems.length > 0) {
+    showBriefStatus(`📅 Shifted ${ok}/${list.length - skipped} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
+  } else {
+    showBriefStatus(`📅 Shifted ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`);
+  }
+
+  try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
+  flushPhotoIndex();
+
+  if (failedItems.length > 0) {
+    const retry = await askRetry(failedItems.length, 'photo');
+    if (retry) { _runBulkShiftDate(failedItems, deltaMs, cb); return; }
+  }
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
 }
 
 fixDateCancelBtn.addEventListener('click', cancelFixDate);

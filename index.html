@@ -198,10 +198,21 @@
   </div>
   <div id="fix-date-bar" style="display:none">
     <span id="fix-date-hint">Set date for this photo</span>
+    <div id="fix-date-apply-mode-row" style="display:none">
+      <label class="fix-date-mode-label">
+        <input type="radio" name="fix-date-apply-mode" id="fix-date-mode-fixed" value="fixed" checked />
+        Fixed date/time
+      </label>
+      <label class="fix-date-mode-label">
+        <input type="radio" name="fix-date-apply-mode" id="fix-date-mode-shift" value="shift" />
+        Shift by amount
+      </label>
+    </div>
     <div id="fix-date-inputs">
       <input type="date" id="fix-date-input" />
       <input type="time" id="fix-date-time-input" value="12:00" />
     </div>
+    <span id="fix-date-shift-preview" style="display:none"></span>
     <div id="fix-date-shift-row" class="fix-shift-row">
       <button id="fix-date-shift-prev" class="fix-shift-btn" title="Shift back">‹</button>
       <input type="number" id="fix-date-shift-days" class="fix-shift-input" min="1" value="1" inputmode="numeric" />
