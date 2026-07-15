@@ -73,8 +73,8 @@ async function reloadTopbarCounts() {
     .catch(e => log('reloadTopbarCounts', `countLocatedUndated error: ${e.message}`));
 }
 
-function showBriefStatus(msg) {
-  setStatus(msg);
+function showBriefStatus(msg, timeoutMs = 4000) {
+  setStatus(msg, timeoutMs);
 }
 const progressFill = document.getElementById('progress-fill');
 const loginOverlay = document.getElementById('login-overlay');
@@ -705,11 +705,18 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
   await startScan();
 });
 
-// Shows `msg` in the status bar. The bar stays up permanently — this just
-// replaces its text — until the next status call replaces it in turn.
-function setStatus(msg) {
+let statusHideTimer = null;
+
+// Shows `msg` in the status bar, then auto-hides it after `timeoutMs` unless
+// another status call (e.g. the next scan-progress tick) replaces it first.
+function setStatus(msg, timeoutMs = 6000) {
+  clearTimeout(statusHideTimer);
   scanStatusEl.textContent = msg;
+  scanStatusEl.classList.remove('hidden');
   log('status', msg);
+  if (timeoutMs > 0) {
+    statusHideTimer = setTimeout(() => scanStatusEl.classList.add('hidden'), timeoutMs);
+  }
 }
 
 scanStatusEl.addEventListener('click', () => toggleLog());

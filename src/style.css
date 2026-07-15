@@ -9,7 +9,7 @@ html, body {
 
 #menu-fab {
   position: fixed;
-  bottom: 36px; /* clears the always-on status bar (bottom:4px, 22px tall) */
+  bottom: 24px;
   left: 16px;
   width: 48px;
   height: 48px;
@@ -32,7 +32,7 @@ html, body {
 
 #fix-position-only-btn {
   position: fixed;
-  bottom: 92px;
+  bottom: 80px;
   left: 16px;
   width: 48px;
   height: 48px;
@@ -55,7 +55,7 @@ html, body {
 
 #people-fab {
   position: fixed;
-  bottom: 148px;
+  bottom: 136px;
   left: 16px;
   width: 48px;
   height: 48px;
@@ -189,8 +189,8 @@ html, body {
   transition: opacity .15s, background .15s;
   z-index: 1000;
 }
-#heatmap-btn { bottom: 36px; }
-#media-type-btn { bottom: 92px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#heatmap-btn { bottom: 24px; }
+#media-type-btn { bottom: 80px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 .mf-all { line-height: 1; white-space: nowrap; }
 #heatmap-btn:hover, #media-type-btn:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
@@ -238,11 +238,17 @@ html, body {
   letter-spacing: .02em;
   cursor: pointer;
   user-select: none;
+  opacity: 1;
+  transition: opacity .3s ease-out;
+}
+#scan-status.hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 #stop-scan-btn {
   position: fixed;
-  bottom: 44px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1002;
