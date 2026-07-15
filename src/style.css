@@ -1398,6 +1398,39 @@ body.filter-open #map { top: 48px; }
   color-scheme: dark;
 }
 
+#fix-date-shift-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#fix-date-shift-prev, #fix-date-shift-next {
+  background: #334155;
+  color: #e2e8f0;
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+#fix-date-shift-prev:hover, #fix-date-shift-next:hover { background: #475569; }
+#fix-date-shift-days {
+  width: 44px;
+  background: #0f3460;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 5px 4px;
+  font-size: .88rem;
+  text-align: center;
+  color-scheme: dark;
+}
+#fix-date-shift-label {
+  font-size: .78rem;
+  color: #94a3b8;
+}
+
 #fix-date-actions {
   display: flex;
   gap: 10px;

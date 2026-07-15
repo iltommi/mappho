@@ -148,6 +148,24 @@ const fixDateInput    = document.getElementById('fix-date-input');
 const fixDateTimeInput = document.getElementById('fix-date-time-input');
 const fixDateSaveBtn  = document.getElementById('fix-date-save');
 const fixDateCancelBtn = document.getElementById('fix-date-cancel');
+const fixDateShiftRow  = document.getElementById('fix-date-shift-row');
+const fixDateShiftDays = document.getElementById('fix-date-shift-days');
+const fixDateShiftPrev = document.getElementById('fix-date-shift-prev');
+const fixDateShiftNext = document.getElementById('fix-date-shift-next');
+
+// Nudges the date input by ±N days (time of day unchanged) — a quick fix
+// for a whole batch that's systematically off by a known number of days
+// (e.g. a camera clock set to the wrong date), without hand-picking a date.
+function shiftFixDate(dir) {
+  if (!fixDateInput.value) return;
+  const n = Math.max(1, parseInt(fixDateShiftDays.value, 10) || 1);
+  const time = fixDateTimeInput.value || '12:00';
+  const base = new Date(`${fixDateInput.value}T${time}`);
+  base.setDate(base.getDate() + dir * n);
+  fixDateInput.value = toDateStr(base.getTime());
+}
+fixDateShiftPrev.addEventListener('click', () => shiftFixDate(-1));
+fixDateShiftNext.addEventListener('click', () => shiftFixDate(1));
 
 let fixDateMode    = 'date'; // 'date' | 'time' | 'both'
 let fixDatePhoto   = null;
@@ -325,6 +343,7 @@ function startFixDate(photo, onDone) {
   fixDateInput.value     = toDateStr(seed.getTime());
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = 'none';
+  fixDateShiftRow.style.display  = 'flex';
   fixDateHint.textContent    = 'Change date for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
   showFixDateBar();
@@ -340,6 +359,7 @@ function startFixTime(photo, onDone) {
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateInput.style.display     = 'none';
   fixDateTimeInput.style.display = '';
+  fixDateShiftRow.style.display  = 'none'; // no visible date to shift in time-only mode
   fixDateHint.textContent    = 'Change time for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
   showFixDateBar();
@@ -355,6 +375,7 @@ function startBulkFixDate(photos, onDone) {
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = '';
+  fixDateShiftRow.style.display  = 'flex';
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   showFixDateBar();
