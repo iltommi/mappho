@@ -100,6 +100,7 @@ nextBtn.addEventListener('click', () => step(1));
 // centre directly instead of stepping through it one span at a time.
 const jumpPicker = document.createElement('input');
 jumpPicker.type = 'date';
+jumpPicker.lang = 'en-GB'; // day-first, matching every other date display — see index.html's <html lang>
 jumpPicker.className = 'filter-dt-input';
 panel.appendChild(jumpPicker);
 jumpPicker.addEventListener('change', () => {
