@@ -1398,12 +1398,12 @@ body.filter-open #map { top: 48px; }
   color-scheme: dark;
 }
 
-#fix-date-shift-row {
+.fix-shift-row {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-#fix-date-shift-prev, #fix-date-shift-next {
+.fix-shift-btn {
   background: #334155;
   color: #e2e8f0;
   border: none;
@@ -1414,9 +1414,9 @@ body.filter-open #map { top: 48px; }
   line-height: 1;
   cursor: pointer;
 }
-#fix-date-shift-prev:hover, #fix-date-shift-next:hover { background: #475569; }
-#fix-date-shift-days {
-  width: 44px;
+.fix-shift-btn:hover { background: #475569; }
+.fix-shift-input {
+  width: 40px;
   background: #0f3460;
   color: #e2e8f0;
   border: 1px solid #334155;
@@ -1426,7 +1426,7 @@ body.filter-open #map { top: 48px; }
   text-align: center;
   color-scheme: dark;
 }
-#fix-date-shift-label {
+.fix-shift-label {
   font-size: .78rem;
   color: #94a3b8;
 }

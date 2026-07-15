@@ -152,20 +152,40 @@ const fixDateShiftRow  = document.getElementById('fix-date-shift-row');
 const fixDateShiftDays = document.getElementById('fix-date-shift-days');
 const fixDateShiftPrev = document.getElementById('fix-date-shift-prev');
 const fixDateShiftNext = document.getElementById('fix-date-shift-next');
+const fixTimeShiftRow     = document.getElementById('fix-time-shift-row');
+const fixTimeShiftHours   = document.getElementById('fix-time-shift-hours');
+const fixTimeShiftHrPrev  = document.getElementById('fix-time-shift-hr-prev');
+const fixTimeShiftHrNext  = document.getElementById('fix-time-shift-hr-next');
+const fixTimeShiftMinutes = document.getElementById('fix-time-shift-minutes');
+const fixTimeShiftMinPrev = document.getElementById('fix-time-shift-min-prev');
+const fixTimeShiftMinNext = document.getElementById('fix-time-shift-min-next');
 
-// Nudges the date input by ±N days (time of day unchanged) — a quick fix
-// for a whole batch that's systematically off by a known number of days
-// (e.g. a camera clock set to the wrong date), without hand-picking a date.
-function shiftFixDate(dir) {
-  if (!fixDateInput.value) return;
-  const n = Math.max(1, parseInt(fixDateShiftDays.value, 10) || 1);
+// Nudges the date/time inputs by the given offsets — a quick fix for a
+// whole batch that's systematically off by a known amount (e.g. a camera
+// clock set to the wrong date/time), without hand-picking a new value.
+// fixDateInput can be blank in fix-time-only mode (its value isn't used at
+// save time there — the save handler takes the date straight from the
+// photo's own ts instead — see fixDateSaveBtn below), so fall back to
+// today's date as an arbitrary base just for the hour/minute arithmetic to
+// wrap correctly; a shift big enough to roll into a different day only
+// matters when the date input is actually visible (fix-date/bulk modes).
+function shiftFixDateTime({ days = 0, hours = 0, minutes = 0 }) {
   const time = fixDateTimeInput.value || '12:00';
-  const base = new Date(`${fixDateInput.value}T${time}`);
-  base.setDate(base.getDate() + dir * n);
+  const dateStr = fixDateInput.value || toDateStr(Date.now());
+  const base = new Date(`${dateStr}T${time}`);
+  base.setDate(base.getDate() + days);
+  base.setHours(base.getHours() + hours);
+  base.setMinutes(base.getMinutes() + minutes);
   fixDateInput.value = toDateStr(base.getTime());
+  fixDateTimeInput.value = `${String(base.getHours()).padStart(2, '0')}:${String(base.getMinutes()).padStart(2, '0')}`;
 }
-fixDateShiftPrev.addEventListener('click', () => shiftFixDate(-1));
-fixDateShiftNext.addEventListener('click', () => shiftFixDate(1));
+const shiftN = el => Math.max(1, parseInt(el.value, 10) || 1);
+fixDateShiftPrev.addEventListener('click', () => shiftFixDateTime({ days: -shiftN(fixDateShiftDays) }));
+fixDateShiftNext.addEventListener('click', () => shiftFixDateTime({ days: shiftN(fixDateShiftDays) }));
+fixTimeShiftHrPrev.addEventListener('click', () => shiftFixDateTime({ hours: -shiftN(fixTimeShiftHours) }));
+fixTimeShiftHrNext.addEventListener('click', () => shiftFixDateTime({ hours: shiftN(fixTimeShiftHours) }));
+fixTimeShiftMinPrev.addEventListener('click', () => shiftFixDateTime({ minutes: -shiftN(fixTimeShiftMinutes) }));
+fixTimeShiftMinNext.addEventListener('click', () => shiftFixDateTime({ minutes: shiftN(fixTimeShiftMinutes) }));
 
 let fixDateMode    = 'date'; // 'date' | 'time' | 'both'
 let fixDatePhoto   = null;
@@ -344,6 +364,7 @@ function startFixDate(photo, onDone) {
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = 'none';
   fixDateShiftRow.style.display  = 'flex';
+  fixTimeShiftRow.style.display  = 'none'; // no visible time to shift in date-only mode
   fixDateHint.textContent    = 'Change date for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
   showFixDateBar();
@@ -360,6 +381,7 @@ function startFixTime(photo, onDone) {
   fixDateInput.style.display     = 'none';
   fixDateTimeInput.style.display = '';
   fixDateShiftRow.style.display  = 'none'; // no visible date to shift in time-only mode
+  fixTimeShiftRow.style.display  = 'flex';
   fixDateHint.textContent    = 'Change time for this photo';
   fixDateSaveBtn.textContent = '💾 Save';
   showFixDateBar();
@@ -376,6 +398,7 @@ function startBulkFixDate(photos, onDone) {
   fixDateInput.style.display     = '';
   fixDateTimeInput.style.display = '';
   fixDateShiftRow.style.display  = 'flex';
+  fixTimeShiftRow.style.display  = 'flex';
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   showFixDateBar();
