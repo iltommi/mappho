@@ -4,7 +4,7 @@ import { getDateLocale } from './auth.js';
 import { viewOpened, viewClosed } from './nav.js';
 
 const panel        = document.getElementById('filter-panel');
-const spanRow       = document.getElementById('filter-span-row');
+const spanSelect    = document.getElementById('filter-span-select');
 const navRow        = document.getElementById('filter-nav-row');
 const rangeDisplay  = document.getElementById('filter-range-val');
 const prevBtn       = document.getElementById('filter-prev-btn');
@@ -66,19 +66,15 @@ function apply() {
     nextBtn.disabled = toTs >= maxTs;
     navRow.style.display = 'flex';
   }
-  spanRow.querySelectorAll('.filter-span-chip').forEach(chip => {
-    chip.classList.toggle('active', (chip.dataset.span || null) === (span == null ? null : String(span)));
-  });
+  spanSelect.value = span == null ? '' : String(span);
   _savedSpan     = span;
   _savedAnchorTs = anchorTs;
   filterMarkers(fromTs, toTs);
   scheduleRangeInfo();
 }
 
-spanRow.addEventListener('click', e => {
-  const chip = e.target.closest('.filter-span-chip');
-  if (!chip) return;
-  const value = chip.dataset.span;
+spanSelect.addEventListener('change', () => {
+  const value = spanSelect.value;
   if (!value) {
     span = null;
   } else {
@@ -121,19 +117,19 @@ async function init() {
   if (!range) {
     noDatesEl.textContent = 'No photo dates in cache — rescan to pick up dates.';
     noDatesEl.style.display = '';
-    spanRow.style.display = 'none';
+    spanSelect.style.display = 'none';
     navRow.style.display  = 'none';
     return;
   }
   if (range.min === range.max) {
     noDatesEl.textContent = `All photos are from ${fmt(range.min)} — filter not available.`;
     noDatesEl.style.display = '';
-    spanRow.style.display = 'none';
+    spanSelect.style.display = 'none';
     navRow.style.display  = 'none';
     return;
   }
   noDatesEl.style.display = 'none';
-  spanRow.style.display   = 'flex';
+  spanSelect.style.display = '';
   const saneMax = Date.now() + 2 * 365 * 24 * 3600 * 1000;
   minTs = Math.max(range.min, 0);
   maxTs = Math.min(range.max, saneMax);

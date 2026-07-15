@@ -545,28 +545,18 @@ html, body {
 #filter-panel.open { display: flex; }
 body.filter-open #map { top: 76px; }
 
-#filter-span-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.filter-span-chip {
-  flex: 1;
-  min-width: 44px;
+#filter-span-select {
+  width: 100%;
   background: #1e293b;
   border: 1px solid #334155;
-  border-radius: 999px;
-  color: #94a3b8;
-  font-size: .78rem;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: .85rem;
   font-weight: 600;
-  padding: 6px 4px;
+  padding: 8px 10px;
   cursor: pointer;
 }
-.filter-span-chip.active {
-  background: #1e3a5f;
-  border-color: #0ea5e9;
-  color: #7dd3fc;
-}
+#filter-span-select:focus { outline: none; border-color: #0ea5e9; }
 
 #filter-nav-row {
   display: flex;
