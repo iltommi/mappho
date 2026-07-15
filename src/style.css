@@ -530,7 +530,7 @@ html, body {
   min-height: 1em;
 }
 
-/* Filter panel */
+/* Filter panel — everything on one row: span picker, ‹ range › nav, ✕ close. */
 #filter-panel {
   display: none;
   position: fixed;
@@ -538,39 +538,44 @@ html, body {
   z-index: 900;
   background: #16213e;
   border-bottom: 1px solid #334155;
-  padding: 8px 16px;
-  flex-direction: column;
-  gap: 4px;
+  padding: 8px 10px;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto; /* safety net on narrow screens / larger system font sizes */
 }
 #filter-panel.open { display: flex; }
-body.filter-open #map { top: 76px; }
+body.filter-open #map { top: 48px; }
 
 #filter-span-select {
-  width: 100%;
+  flex: 0 0 auto;
+  width: 84px;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 8px;
   color: #e2e8f0;
-  font-size: .85rem;
+  font-size: .76rem;
   font-weight: 600;
-  padding: 8px 10px;
+  padding: 7px 4px;
   cursor: pointer;
 }
 #filter-span-select:focus { outline: none; border-color: #0ea5e9; }
 
 #filter-nav-row {
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 4px;
+  min-width: 0;
 }
 #filter-prev-btn, #filter-next-btn {
+  flex: 0 0 auto;
   background: none;
   border: none;
   color: #94a3b8;
   font-size: 1.3rem;
   line-height: 1;
-  padding: 2px 10px;
+  padding: 2px 6px;
   cursor: pointer;
   border-radius: 6px;
 }
@@ -578,14 +583,15 @@ body.filter-open #map { top: 76px; }
 #filter-prev-btn:disabled, #filter-next-btn:disabled { opacity: .3; cursor: default; }
 
 .filter-val {
-  font-size: .82rem;
+  font-size: .78rem;
   color: #7dd3fc;
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 6px;
   background: #1e3a5f;
   cursor: pointer;
   user-select: none;
   text-align: center;
+  white-space: nowrap;
 }
 .filter-dt-input {
   position: absolute;
@@ -594,11 +600,25 @@ body.filter-open #map { top: 76px; }
   width: 1px; height: 1px;
 }
 .filter-no-dates {
+  flex: 1;
   font-size: .78rem;
   color: #94a3b8;
-  text-align: center;
-  padding: 4px 0;
+  text-align: left;
+  padding: 0;
+  margin: 0;
 }
+
+#filter-close-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: .95rem;
+  padding: 4px 6px;
+}
+#filter-close-btn:hover { color: #f87171; }
 
 /* Grid view */
 #grid-view {

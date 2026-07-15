@@ -1,6 +1,5 @@
 import { filterMarkers, getDateRange } from './map.js';
 import { getOrphanDateRange, countOrphansInRange, countGeotaggedInRange } from './db.js';
-import { getDateLocale } from './auth.js';
 import { viewOpened, viewClosed } from './nav.js';
 
 const panel        = document.getElementById('filter-panel');
@@ -9,6 +8,7 @@ const navRow        = document.getElementById('filter-nav-row');
 const rangeDisplay  = document.getElementById('filter-range-val');
 const prevBtn       = document.getElementById('filter-prev-btn');
 const nextBtn       = document.getElementById('filter-next-btn');
+const closeBtn      = document.getElementById('filter-close-btn');
 
 const ONE_DAY_MS = 24 * 3600 * 1000;
 
@@ -23,8 +23,12 @@ let anchorTs  = null;
 let _savedSpan     = null;
 let _savedAnchorTs = null;
 
+// DD/MM/YY, fixed regardless of datacenter locale — the range display is too
+// tight on a single-line panel for a locale-varying, month-name format.
 function fmt(ts) {
-  return new Date(ts).toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(-2)}`;
 }
 
 // Local-time YYYY-MM-DD for <input type="date"> — toISOString() would use UTC
@@ -106,6 +110,8 @@ rangeDisplay.addEventListener('click', () => {
   jumpPicker.value = toDateStr(anchorTs ?? maxTs);
   if (jumpPicker.showPicker) jumpPicker.showPicker(); else jumpPicker.click();
 });
+
+closeBtn.addEventListener('click', () => toggleFilter());
 
 async function init() {
   const noDatesEl   = panel.querySelector('.filter-no-dates');
