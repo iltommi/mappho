@@ -160,10 +160,12 @@ const fixTimeShiftHrNext  = document.getElementById('fix-time-shift-hr-next');
 const fixTimeShiftMinutes = document.getElementById('fix-time-shift-minutes');
 const fixTimeShiftMinPrev = document.getElementById('fix-time-shift-min-prev');
 const fixTimeShiftMinNext = document.getElementById('fix-time-shift-min-next');
-const fixDateApplyModeRow = document.getElementById('fix-date-apply-mode-row');
-const fixDateModeFixed    = document.getElementById('fix-date-mode-fixed');
-const fixDateModeShift    = document.getElementById('fix-date-mode-shift');
-const fixDateShiftPreview = document.getElementById('fix-date-shift-preview');
+const fixDateApplyModeRow  = document.getElementById('fix-date-apply-mode-row');
+const fixDateModeFixed     = document.getElementById('fix-date-mode-fixed');
+const fixDateModeShift     = document.getElementById('fix-date-mode-shift');
+const fixDateShiftPreview  = document.getElementById('fix-date-shift-preview');
+const fixDateKeepTimeLabel = document.getElementById('fix-date-keep-time-label');
+const fixDateKeepTime      = document.getElementById('fix-date-keep-time');
 
 // Bulk mode ('both') offers a choice the other modes don't need: apply one
 // fixed date/time to every selected photo, or shift each photo by an amount
@@ -173,6 +175,14 @@ const fixDateShiftPreview = document.getElementById('fix-date-shift-preview');
 // "shift this one photo's date" and "set this one photo's date" already
 // converge to the same field edit, which shiftFixDateTime below still does.
 function isBulkShiftMode() { return fixDateMode === 'both' && fixDateModeShift.checked; }
+
+// "Fixed date/time" mode's own sub-choice: apply the same date to everyone
+// but let each photo keep its own time-of-day, instead of also collapsing
+// the time to one shared value. (Single-photo 'date' mode already does this
+// unconditionally — see fixDateSaveBtn's mode==='date' branch below — this
+// checkbox is only needed in bulk, where "fixed" otherwise means both
+// fields are shared.)
+function isBulkKeepTimeMode() { return fixDateMode === 'both' && fixDateModeFixed.checked && fixDateKeepTime.checked; }
 
 // Pending per-photo shift, only meaningful in bulk-shift mode — unlike
 // shiftFixDateTime (which edits the single shared date/time value Save
@@ -191,16 +201,21 @@ function updateShiftPreview() {
 
 // Bulk mode shows only the controls that matter for whichever choice is
 // selected — the absolute date/time pickers for "fixed", or the day/hour/
-// minute shift controls for "shift" — rather than both at once.
+// minute shift controls for "shift" — rather than both at once. Within
+// "fixed", the time input additionally hides when "keep each photo's own
+// time" is checked, since that field's value wouldn't be used at save time.
 function applyDateModeVisibility() {
   const shift = isBulkShiftMode();
-  fixDateInputsEl.style.display = shift ? 'none' : 'flex';
-  fixDateShiftRow.style.display = shift ? 'flex' : 'none';
-  fixTimeShiftRow.style.display = shift ? 'flex' : 'none';
+  fixDateInputsEl.style.display  = shift ? 'none' : 'flex';
+  fixDateShiftRow.style.display  = shift ? 'flex' : 'none';
+  fixTimeShiftRow.style.display  = shift ? 'flex' : 'none';
+  fixDateKeepTimeLabel.style.display = shift ? 'none' : '';
+  fixDateTimeInput.style.display = isBulkKeepTimeMode() ? 'none' : '';
   updateShiftPreview();
 }
 fixDateModeFixed.addEventListener('change', applyDateModeVisibility);
 fixDateModeShift.addEventListener('change', applyDateModeVisibility);
+fixDateKeepTime.addEventListener('change', applyDateModeVisibility);
 
 // Nudges the date/time inputs by the given offsets — a quick fix for a
 // whole batch that's systematically off by a known amount (e.g. a camera
@@ -460,11 +475,11 @@ function startBulkFixDate(photos, onDone) {
   fixDateInput.value     = toDateStr(seed.getTime());
   fixDateTimeInput.value = seed.toTimeString().slice(0, 5);
   fixDateInput.style.display     = '';
-  fixDateTimeInput.style.display = '';
   fixDateApplyModeRow.style.display = 'flex';
   fixDateModeFixed.checked = true; // default to "set all to this exact value", matches prior behavior
+  fixDateKeepTime.checked  = false;
   _pendingShiftDays = 0; _pendingShiftHours = 0; _pendingShiftMinutes = 0;
-  applyDateModeVisibility(); // sets fixDateShiftRow/fixTimeShiftRow to match the default (hidden, since "fixed" is selected)
+  applyDateModeVisibility(); // sets fixDateTimeInput/fixDateShiftRow/fixTimeShiftRow to match the defaults above
   fixDateHint.textContent    = `Set date & time for ${photos.length} photo${photos.length === 1 ? '' : 's'}`;
   fixDateSaveBtn.textContent = `💾 Save (${photos.length})`;
   showFixDateBar();
@@ -485,6 +500,15 @@ fixDateSaveBtn.addEventListener('click', () => {
     }
 
     if (!fixDateInput.value) return;
+
+    if (isBulkKeepTimeMode()) {
+      const dateStr = fixDateInput.value;
+      hideFixDateBar();
+      fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
+      _runBulkFixDateKeepTime(list, dateStr, cb);
+      return;
+    }
+
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     hideFixDateBar();
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
@@ -540,14 +564,26 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
   }
 }
 
-async function _runBulkFixDate(list, ts, cb) {
-  let ok = 0, staleCount = 0;
+// Shared bulk-photo-date-edit loop — `computeTs(photo)` decides the new
+// timestamp per photo, so the three modes below differ only in that
+// function: a constant (fixed date/time), a per-photo combine of a shared
+// date with that photo's own time (keep-time), or an offset from that
+// photo's own ts (shift). Returns the run's stats instead of calling `cb`
+// itself, since only the fixed-date/time mode needs the extra step of
+// updating _lastFixDateTs afterward.
+async function _runBulkDateOp(list, computeTs, { verb, pastVerb, skipUndated = false }) {
+  let ok = 0, staleCount = 0, skipped = 0;
   const failedItems = [];
   for (let i = 0; i < list.length; i++) {
     await waitForVisible();
-    setStatus(`📅 Fixing dates… ${i + 1}/${list.length}`, 0);
+    setStatus(`📅 ${verb}… ${i + 1}/${list.length}`, 0);
+    const photo = list[i];
+    if (skipUndated) {
+      const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+      if (!hasOwnDate) { skipped++; continue; } // nothing to shift from
+    }
     try {
-      const r = await applyFixDateToPhoto(list[i], ts);
+      const r = await applyFixDateToPhoto(photo, computeTs(photo));
       if (r.lat != null && r.newFileid !== r.oldFileid) {
         removeMarker(r.oldFileid);
         addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
@@ -557,23 +593,29 @@ async function _runBulkFixDate(list, ts, cb) {
       // A stale photo's record is already purged (see applyFixDateToPhoto) —
       // it's permanently gone, not a transient failure, so don't offer to
       // retry it: retrying the same dead fileid can only ever fail again.
-      if (e.staleFile) { staleCount++; log('Bulk fix date', `${list[i].name}: no longer exists on pCloud — removed`); }
-      else { failedItems.push(list[i]); log('Bulk fix date error', `${list[i].name}: ${e.message}`); }
+      if (e.staleFile) { staleCount++; log('Bulk fix date', `${photo.name}: no longer exists on pCloud — removed`); }
+      else { failedItems.push(photo); log('Bulk fix date error', `${photo.name}: ${e.message}`); }
     }
   }
-  if (ok > 0) _lastFixDateTs = ts;
 
-  // Show result immediately so the user knows the loop is done.
   const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
+  const skipNote  = skipped > 0 ? ` (${skipped} had no date to shift from, skipped)` : '';
+  const total = list.length - skipped;
   if (failedItems.length > 0) {
-    showBriefStatus(`📅 Dated ${ok}/${list.length} — ${failedItems.length} failed${staleNote}`, 0);
+    showBriefStatus(`📅 ${pastVerb} ${ok}/${total} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
   } else {
-    showBriefStatus(`📅 Dated ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}`);
+    showBriefStatus(`📅 ${pastVerb} ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`);
   }
 
   try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
   flushPhotoIndex();
 
+  return { ok, staleCount, skipped, failedItems };
+}
+
+async function _runBulkFixDate(list, ts, cb) {
+  const { ok, staleCount, failedItems } = await _runBulkDateOp(list, () => ts, { verb: 'Fixing dates', pastVerb: 'Dated' });
+  if (ok > 0) _lastFixDateTs = ts;
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
@@ -581,44 +623,33 @@ async function _runBulkFixDate(list, ts, cb) {
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
 }
 
-// Bulk-shift mode counterpart to _runBulkFixDate: instead of one shared ts
-// applied to every photo, each photo is shifted by `deltaMs` from its own
-// current ts — preserving whatever date/time differences already existed
-// between the selected photos (e.g. correcting a camera clock that was
-// consistently off, rather than collapsing the whole batch to one moment).
-async function _runBulkShiftDate(list, deltaMs, cb) {
-  let ok = 0, staleCount = 0, skipped = 0;
-  const failedItems = [];
-  for (let i = 0; i < list.length; i++) {
-    await waitForVisible();
-    setStatus(`📅 Shifting… ${i + 1}/${list.length}`, 0);
-    const photo = list[i];
+// Same shared `dateStr` for every photo, but each keeps its own time-of-day
+// (falling back to noon for the rare photo with no date of its own) instead
+// of also collapsing to one shared time — mirrors what single-photo 'date'
+// mode already does by default (see fixDateSaveBtn's mode==='date' branch).
+async function _runBulkFixDateKeepTime(list, dateStr, cb) {
+  const computeTs = photo => {
     const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
-    if (!hasOwnDate) { skipped++; continue; } // nothing to shift from
-    try {
-      const r = await applyFixDateToPhoto(photo, photo.ts + deltaMs);
-      if (r.lat != null && r.newFileid !== r.oldFileid) {
-        removeMarker(r.oldFileid);
-        addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
-      }
-      ok++;
-    } catch (e) {
-      if (e.staleFile) { staleCount++; log('Bulk shift', `${photo.name}: no longer exists on pCloud — removed`); }
-      else { failedItems.push(photo); log('Bulk shift error', `${photo.name}: ${e.message}`); }
-    }
-  }
-
-  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
-  const skipNote  = skipped > 0 ? ` (${skipped} had no date to shift from, skipped)` : '';
+    const existingTime = hasOwnDate ? new Date(photo.ts).toTimeString().slice(0, 5) : '12:00';
+    return new Date(`${dateStr}T${existingTime}`).getTime();
+  };
+  const { ok, staleCount, failedItems } = await _runBulkDateOp(list, computeTs, { verb: 'Fixing dates', pastVerb: 'Dated' });
   if (failedItems.length > 0) {
-    showBriefStatus(`📅 Shifted ${ok}/${list.length - skipped} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
-  } else {
-    showBriefStatus(`📅 Shifted ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`);
+    const retry = await askRetry(failedItems.length, 'photo');
+    if (retry) { _runBulkFixDateKeepTime(failedItems, dateStr, cb); return; }
   }
+  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
+}
 
-  try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
-  flushPhotoIndex();
-
+// Instead of one shared ts applied to every photo, each photo is shifted by
+// `deltaMs` from its own current ts — preserving whatever date/time
+// differences already existed between the selected photos (e.g. correcting
+// a camera clock that was consistently off, rather than collapsing the
+// whole batch to one moment).
+async function _runBulkShiftDate(list, deltaMs, cb) {
+  const { ok, staleCount, skipped, failedItems } = await _runBulkDateOp(
+    list, photo => photo.ts + deltaMs, { verb: 'Shifting', pastVerb: 'Shifted', skipUndated: true },
+  );
   if (failedItems.length > 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkShiftDate(failedItems, deltaMs, cb); return; }
