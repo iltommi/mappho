@@ -274,7 +274,12 @@ function shiftFixDateTime({ days = 0, hours = 0, minutes = 0 }) {
   fixDateInput.value = toDateStr(base.getTime());
   fixDateTimeInput.value = `${String(base.getHours()).padStart(2, '0')}:${String(base.getMinutes()).padStart(2, '0')}`;
 }
-const shiftN = el => Math.max(1, parseInt(el.value, 10) || 1);
+// `|| 1` would coerce an explicitly-typed 0 back to 1 (0 is falsy in JS) —
+// checked separately so 0 is a real, tappable shift amount, not just "blank".
+const shiftN = el => {
+  const n = parseInt(el.value, 10);
+  return Number.isNaN(n) ? 1 : Math.max(0, n);
+};
 
 // Each button either nudges the single shared date/time value (fixed mode,
 // or single-photo modes where there's no separate "shift" concept) or sets
@@ -1301,7 +1306,8 @@ function intersectHashSets(a, b) {
 // Faces/locations/embeddings entries are all joined to cached photo records
 // by content hash — the grid needs fileids for thumbnails, so matches with
 // no cached record are silently dropped.
-async function openTaggedGrid({ people = [], locations = [], searchText = '' } = {}) {
+async function openTaggedGrid(query = {}) {
+  const { people = [], locations = [], searchText = '' } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -1362,7 +1368,7 @@ async function openTaggedGrid({ people = [], locations = [], searchText = '' } =
   // every view, so it would otherwise linger over the results grid.
   if (searchText.trim()) showBriefStatus(`🔍 ${items.length} result${items.length === 1 ? '' : 's'}`);
   await openGrid((offset, limit) => Promise.resolve(items.slice(offset, offset + limit)), items.length,
-    { title: label, sameDayFetch: sameDayFromList(items) });
+    { title: label, sameDayFetch: sameDayFromList(items), reopen: () => openTaggedGrid(query) });
   return true;
 }
 

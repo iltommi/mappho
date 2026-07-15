@@ -9,7 +9,7 @@ import { deleteRecord, deleteOrphan } from './db.js';
 import { isVideo } from './mp4.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler } from './slideshow.js';
-import { openGrid } from './grid.js';
+import { openGrid, setBulkIgnoreHandler } from './grid.js';
 import { sameDayFromList } from './dayrange.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
@@ -155,6 +155,27 @@ export function initMap() {
   let pressedClusterEl = null;
   let pressOrigin = null;
 
+  // Re-reads the cluster's current members rather than closing over the
+  // photos list from the initial long-press, so a reopen (e.g. after
+  // Cancelling a bulk fix-date) reflects any edit made in the meantime —
+  // matches how every other grid's `reopen` re-fetches fresh instead of
+  // replaying a stale snapshot.
+  function openClusterGrid(layer) {
+    const children = layer.getAllChildMarkers();
+    const photos = children.map(m => markerData.get(m)).filter(Boolean)
+      .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+    if (!photos.length) return false;
+    log('cluster long-press', `${photos.length} photos`);
+    setGeotagHandler(markerGeotagHandler);
+    setFixDateHandler(markerFixDateHandler);
+    setFixTimeHandler(markerFixTimeHandler);
+    setIgnoreHandler(null);
+    setBulkIgnoreHandler(null);
+    openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length,
+      { sameDayFetch: sameDayFromList(photos), reopen: () => openClusterGrid(layer) });
+    return true;
+  }
+
   map.getContainer().addEventListener('pointerdown', e => {
     const clusterEl = e.target.closest('.marker-cluster');
     if (!clusterEl) return;
@@ -165,17 +186,7 @@ export function initMap() {
       suppressNextClusterClick = true;
       cluster._featureGroup.eachLayer(layer => {
         if (layer._icon !== pressedClusterEl) return;
-        const children = layer.getAllChildMarkers();
-        const photos = children.map(m => markerData.get(m)).filter(Boolean)
-          .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
-        if (!photos.length) return;
-        log('cluster long-press', `${photos.length} photos`);
-        setGeotagHandler(markerGeotagHandler);
-        setFixDateHandler(markerFixDateHandler);
-        setFixTimeHandler(markerFixTimeHandler);
-        setIgnoreHandler(null);
-        openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length,
-          { sameDayFetch: sameDayFromList(photos) });
+        openClusterGrid(layer);
       });
     }, 500);
   }, { capture: true });
