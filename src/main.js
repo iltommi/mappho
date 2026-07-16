@@ -10,7 +10,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, t
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn } from './geotag.js';
@@ -89,10 +89,13 @@ function handleEditResult(r, advance) {
 
 // Shared by every "problem" grid's setIgnoreHandler (single photo, via the
 // slideshow's ignore button) and setBulkIgnoreHandler (multiple, via the
-// grid's bulk toolbar) — same underlying operation either way.
+// grid's bulk toolbar) — same underlying operation either way. Also used by
+// the map's pin-cluster grid, whose photos do have a marker — removeMarker
+// is a no-op for the "problem" grids' photos, which never had one.
 async function ignoreOnePhoto(photo) {
   await ignorePhoto(photo.fileid);
   setIgnoredEntry(photo.fileid);
+  removeMarker(photo.fileid);
   await reloadTopbarCounts();
 }
 
@@ -2181,6 +2184,8 @@ async function main() {
   })));
   setMarkerFixDateHandler(photo => startFixDate(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setMarkerFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
+  setMarkerIgnoreHandler(ignoreOnePhoto);
+  setMarkerBulkIgnoreHandler(bulkIgnorePhotos);
 
   const token = getToken();
   setupAuthBtn(!!token);

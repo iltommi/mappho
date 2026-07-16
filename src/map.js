@@ -73,6 +73,10 @@ let markerFixDateHandler = null;
 export function setMarkerFixDateHandler(fn) { markerFixDateHandler = fn; }
 let markerFixTimeHandler = null;
 export function setMarkerFixTimeHandler(fn) { markerFixTimeHandler = fn; }
+let markerIgnoreHandler = null;
+export function setMarkerIgnoreHandler(fn) { markerIgnoreHandler = fn; }
+let markerBulkIgnoreHandler = null;
+export function setMarkerBulkIgnoreHandler(fn) { markerBulkIgnoreHandler = fn; }
 
 const PIN_ICON = L.icon({
   iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
@@ -169,8 +173,8 @@ export function initMap() {
     setGeotagHandler(markerGeotagHandler);
     setFixDateHandler(markerFixDateHandler);
     setFixTimeHandler(markerFixTimeHandler);
-    setIgnoreHandler(null);
-    setBulkIgnoreHandler(null);
+    setIgnoreHandler(markerIgnoreHandler);
+    setBulkIgnoreHandler(markerBulkIgnoreHandler);
     openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length,
       { sameDayFetch: sameDayFromList(photos), reopen: () => openClusterGrid(layer) });
     return true;
