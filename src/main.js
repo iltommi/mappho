@@ -362,11 +362,23 @@ async function withStaleCheck(fileid, fn) {
   }
 }
 
+// Drives the top progress bar through the 3 stages of applying an edit —
+// download, rewrite EXIF, upload — instead of leaving it sitting at 0 until
+// the upload starts. Download and EXIF-rewrite have no byte-level progress
+// of their own, so those two just jump to their checkpoint; only the upload
+// leg (the slow one, and the only one FileTransfer reports progress for)
+// actually animates within its 66–100 share.
+function setStep(step) {
+  if (step === 'download') setProgress(0);
+  else if (step === 'process') setProgress(33);
+  else if (step === 'upload')  setProgress(66);
+}
+
 // Wraps an upload call so the top progress bar always gets reset once the
 // upload settles (success or failure) instead of being left stuck mid-way.
 async function withUploadProgress(fn) {
   try {
-    return await fn((bytes, total) => setProgress(total ? (bytes / total) * 100 : 0));
+    return await fn((bytes, total) => setProgress(66 + (total ? (bytes / total) * 34 : 0)));
   } finally {
     setProgress(0);
   }
@@ -390,18 +402,21 @@ async function applyFixDateToPhoto(photo, ts) {
     log('Fix date', 'sync organize');
     syncedName = await syncMapphoOnEdit({ oldHash: newHash, newFileid: fileid, newHash, ts });
   } else if (isHeic) {
+    setStep('download');
     log('Fix date', 'extract HEIC meta');
     const preserveFrom = await withStaleCheck(fileid, () => fetchHeicExifForPreserve(fileid));
     log('Fix date', 'stat (heic)');
     const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
     log('Fix date', 'download HEIC');
     const heicBuf = await withStaleCheck(fileid, () => downloadFullFile(fileid));
+    setStep('process');
     log('Fix date', `convert to JPEG (${heicBuf.byteLength}B)`);
     const jpegBuf = await heicToJpeg(heicBuf);
     const jpegWithExif = injectExif(jpegBuf, { ts, resetOrientation: true, preserveFrom });
     newName = name.replace(/\.heic$/i, '.jpg');
     log('Fix date', 'stat for parent folder');
     const { parentfolderid } = await getFileStat(fileid);
+    setStep('upload');
     log('Fix date', `upload JPEG ${newName}`);
     newFileid = await withUploadProgress(onProgress => uploadFile(parentfolderid, newName, jpegWithExif, { onProgress }));
     log('Fix date', `delete original HEIC ${fileid}`);
@@ -425,14 +440,17 @@ async function applyFixDateToPhoto(photo, ts) {
       // Cross-month: server-side copy to the destination folder first.
       // The original survives until the modified copy is verified and the index
       // is updated, so any failure up to that point leaves the data recoverable.
+      setStep('download');
       log('Fix date', `cross-month copy to folder ${targetFolderId}`);
       const copyFileid = await withStaleCheck(fileid, () => copyFile(fileid, targetFolderId));
       log('Fix date', `copy ${copyFileid} — verifying`);
       await getFileStat(copyFileid);
       log('Fix date', 'download copy');
       const buffer = await downloadFullFile(copyFileid);
+      setStep('process');
       log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
       const modified = injectExif(buffer, { ts });
+      setStep('upload');
       log('Fix date', 'overwrite copy');
       newFileid = await withUploadProgress(onProgress => overwriteFile(copyFileid, modified, { onProgress }));
       log('Fix date', 'stat modified copy');
@@ -444,10 +462,13 @@ async function applyFixDateToPhoto(photo, ts) {
       // untouched and newFileid remains as an untracked copy in targetFolderId.
     } else {
       // Same month: content change in place.
+      setStep('download');
       log('Fix date', 'download');
       const buffer = await withStaleCheck(fileid, () => downloadFullFile(fileid));
+      setStep('process');
       log('Fix date', `inject EXIF (${buffer.byteLength}B)`);
       const modified = injectExif(buffer, { ts });
+      setStep('upload');
       log('Fix date', 'overwrite');
       newFileid = await withUploadProgress(onProgress => overwriteFile(fileid, modified, { onProgress }));
       log('Fix date', 'stat new file');

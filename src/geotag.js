@@ -29,12 +29,25 @@ export function setGeotagStatusFn(fn) { _statusFn = fn; }
 let _progressFn = null;
 export function setGeotagProgressFn(fn) { _progressFn = fn; }
 
+// Drives the progress bar through the 3 stages of applying an edit —
+// download, rewrite EXIF, upload — instead of leaving it sitting at 0 until
+// the upload starts. Download and EXIF-rewrite have no byte-level progress
+// of their own, so those two just jump to their checkpoint; only the upload
+// leg (the slow one, and the only one FileTransfer reports progress for)
+// actually animates within its 66–100 share.
+function setStep(step) {
+  if (!_progressFn) return;
+  if (step === 'download') _progressFn(0);
+  else if (step === 'process') _progressFn(33);
+  else if (step === 'upload')  _progressFn(66);
+}
+
 // Wraps an upload call so the progress bar always gets reset once the
 // upload settles (success or failure) instead of being left stuck mid-way.
 async function withUploadProgress(fn) {
   if (!_progressFn) return fn(undefined);
   try {
-    return await fn((bytes, total) => _progressFn(total ? (bytes / total) * 100 : 0));
+    return await fn((bytes, total) => _progressFn(66 + (total ? (bytes / total) * 34 : 0)));
   } finally {
     _progressFn(0);
   }
@@ -239,12 +252,14 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   }
 
   if (isHeic) {
+    setStep('download');
     log('Geotag', `HEIC → JPEG: fetching original EXIF…`);
     const preserveFrom = await withStaleCheck(fileid, () => fetchHeicExifForPreserve(fileid));
 
     log('Geotag', `Downloading ${name}…`);
     const heicBuf = await withStaleCheck(fileid, () => downloadFullFile(fileid));
 
+    setStep('process');
     log('Geotag', 'Converting to JPEG…');
     const jpegBuf = await heicToJpeg(heicBuf);
 
@@ -254,6 +269,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
     const jpegName = name.replace(/\.heic$/i, '.jpg');
     const { parentfolderid, hash: oldHash } = await getFileStat(fileid);
 
+    setStep('upload');
     log('Geotag', `Uploading ${jpegName}…`);
     const newFileid = await withUploadProgress(onProgress => uploadFile(parentfolderid, jpegName, jpegWithExif, { onProgress }));
 
@@ -274,9 +290,11 @@ async function applyGeotagToPhoto(photo, lat, lng) {
 
   const { hash: oldHash } = await getFileStat(fileid).catch(() => ({}));
 
+  setStep('download');
   log('Geotag', `Downloading ${name}…`);
   const buffer = await withStaleCheck(fileid, () => downloadFullFile(fileid));
 
+  setStep('process');
   log('Geotag', `Injecting GPS ${lat.toFixed(5)}, ${lng.toFixed(5)}…`);
   const modified = injectGPS(buffer, lat, lng);
 
@@ -285,6 +303,7 @@ async function applyGeotagToPhoto(photo, lat, lng) {
   // round-trips, causing popup opens to hit pCloud 2009 and auto-purge the marker.
   removeMarker(fileid);
 
+  setStep('upload');
   log('Geotag', 'Uploading to pCloud…');
   const newFileid = await withUploadProgress(onProgress => overwriteFile(fileid, modified, { onProgress }));
 
