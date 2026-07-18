@@ -179,6 +179,25 @@ function tileAt(index) {
   return track.children[index] ?? null;
 }
 
+// Keeps a currently-open grid in sync after a single-photo edit made from
+// the slideshow on top of it (geotag/fix-date/fix-time/photo-edit) — every
+// edit gives the photo a new fileid (pCloud has no true in-place overwrite),
+// so without this the tile would keep pointing at a now-deleted fileid: a
+// stale thumbnail for photo-edit (pixels actually changed), and a 2009 on
+// any later bulk-select for all of them. No-op if this grid isn't currently
+// showing that photo. `thumbSrc`, when given, is drawn immediately instead
+// of waiting on a re-fetch — geotag/date fixes don't change pixels, so only
+// photo-edit needs to pass one.
+export function updateGridItem(oldFileid, patch, thumbSrc) {
+  const idx = items.findIndex(it => it.fileid === oldFileid);
+  if (idx === -1) return;
+  items[idx] = { ...items[idx], ...patch };
+  const tile = tileAt(idx);
+  if (!tile) return;
+  tile._item = items[idx];
+  if (thumbSrc) tile._img.src = thumbSrc;
+}
+
 function updateBulkBar() {
   // Just the count, not "N selected" — the bar is tight on space once every
   // action button (including Ignore) is shown.

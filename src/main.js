@@ -14,7 +14,7 @@ import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleH
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn } from './photoedit.js';
 import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn } from './geotag.js';
-import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback } from './grid.js';
+import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback, updateGridItem } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
@@ -83,6 +83,10 @@ function handleEditResult(r, advance) {
   if (r.stale) {
     reloadTopbarCounts();
     showBriefStatus('⚠️ That photo no longer exists on pCloud — removed from your library.');
+  } else if (r.newFileid != null && r.newFileid !== r.oldFileid) {
+    // Keeps a grid sitting underneath this slideshow in sync — see
+    // updateGridItem's comment in grid.js for why this matters beyond looks.
+    updateGridItem(r.oldFileid, { fileid: r.newFileid, name: r.newName, ts: r.ts, lat: r.lat, lng: r.lng });
   }
   advance();
 }
@@ -2186,6 +2190,10 @@ async function main() {
             removeMarker(photo.fileid);
             addMarker({ fileid: newFileid, name: newName, lat: cached.lat, lng: cached.lng, ts: cached.ts });
           }
+          // Grid tiles are only this photo's rendered pixels, not just its
+          // identity — pass the freshly-edited thumbnail so it doesn't sit
+          // there stale until the grid is fully reopened.
+          updateGridItem(photo.fileid, { fileid: newFileid, name: newName, hash }, newThumb);
         }
       } catch (e) {
         log('Photo edit cache update error', e.message);
