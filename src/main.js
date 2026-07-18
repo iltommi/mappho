@@ -776,11 +776,11 @@ menuFab.addEventListener('click', (e) => {
 });
 
 // Android hardware/gesture back: unwind the open view stack one level at a
-// time; only when nothing is left to close does it background the app (the
-// stock Android behavior this replaces — registering any backButton
-// listener disables Capacitor's default exit).
+// time; only when nothing is left to close does it exit the app (registering
+// any backButton listener disables Capacitor's default exit behavior, so
+// this has to be done explicitly).
 App.addListener('backButton', () => {
-  if (!navBack()) App.minimizeApp().catch(() => {});
+  if (!navBack()) App.exitApp().catch(() => {});
 });
 
 let pendingTfaToken = null;
