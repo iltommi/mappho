@@ -141,6 +141,16 @@ export function initMap() {
     chunkedLoading: true,
     zoomToBoundsOnClick: false,
     showCoverageOnHover: false,
+    // Leaflet.markercluster's expand/contract animation runs on its own
+    // timer racing Leaflet's own zoom animation — on a fast zoom/pan (or
+    // just an unlucky frame), the two finish out of order and the library's
+    // internal bookkeeping of which zoom level's clusters are on the map
+    // gets left stuck mid-transition, showing two cluster icons for what's
+    // really one. Long-standing upstream bug (still open: see
+    // Leaflet/Leaflet.markercluster#1056, #140, #655, #930), not something
+    // fixable from here — disabling the animation removes the race outright
+    // since clusters then resolve synchronously on zoomend.
+    animate: false,
     iconCreateFunction(c) {
       const n    = c.getChildCount();
       const xl   = n > 9999;
