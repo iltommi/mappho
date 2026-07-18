@@ -127,3 +127,14 @@ Go to **repo → Settings → Secrets and variables → Actions → New reposito
 </details>
 
 The CI workflow decodes `KEYSTORE_BASE64` back to a file and passes the other three to Gradle for signing.
+
+## App icon
+
+`icon.svg` (repo root) is the source of truth for the app icon — it's what's shown when the icon is viewed directly, and a copy of it lives in `assets/icon.svg` for the generator below to pick up. To change the icon, replace both with the new source image, then regenerate every Android launcher icon (regular, round, and adaptive foreground/background layers, across all densities) and the splash screen with [`@capacitor/assets`](https://github.com/ionic-team/capacitor-assets):
+
+```bash
+cp icon.svg assets/icon.svg
+npx @capacitor/assets generate --android --iconBackgroundColor '#ffffff' --iconBackgroundColorDark '#ffffff'
+```
+
+`assets/icon.svg` (or `assets/icon.png`, at least 1024×1024) is what the tool actually reads — `--android` scopes generation to the Android project only, since there's no iOS or PWA target here. Then `npx cap sync android` and rebuild to see the new icon on-device.
