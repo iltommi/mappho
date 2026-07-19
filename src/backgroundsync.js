@@ -7,8 +7,11 @@ import { registerPlugin } from '@capacitor/core';
 // proceeds in the foreground-only fallback instead of erroring out.
 const BackgroundSync = registerPlugin('BackgroundSync');
 
+// Returns the promise (unlike update/stop) so a caller can await it before
+// starting work that might otherwise race a user backgrounding the app
+// mid-permission-dialog.
 export function startBackgroundSync(title, body) {
-  BackgroundSync.start({ title, body }).catch(() => {});
+  return BackgroundSync.start({ title, body }).catch(() => {});
 }
 
 export function updateBackgroundSync(title, body) {

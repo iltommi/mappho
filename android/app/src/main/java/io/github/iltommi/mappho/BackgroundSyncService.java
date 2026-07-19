@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import androidx.core.app.NotificationCompat;
 
 // Keeps the app process (and its WebView JS) alive while backgrounded for a
@@ -21,6 +22,8 @@ public class BackgroundSyncService extends Service {
     public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_BODY = "body";
 
+    private PowerManager.WakeLock wakeLock;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -31,6 +34,21 @@ public class BackgroundSyncService extends Service {
             channel.setDescription("Shown while a bulk photo operation keeps running in the background");
             nm.createNotificationChannel(channel);
         }
+
+        // The foreground service keeps the process from being killed, but on
+        // its own doesn't stop the CPU from dozing once the screen turns off
+        // mid-batch — a bulk operation left running unattended for a while is
+        // exactly when that happens. Timeout is a safety net, not a real
+        // limit: stop() always releases this well before 30 minutes.
+        PowerManager pm = getSystemService(PowerManager.class);
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mappho:sync");
+        wakeLock.acquire(30 * 60 * 1000L);
+    }
+
+    @Override
+    public void onDestroy() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        super.onDestroy();
     }
 
     @Override

@@ -9,7 +9,7 @@ import { flushPhotoIndex } from './photoindex.js';
 import { viewOpened, viewClosed } from './nav.js';
 import { searchLocation } from './geocode.js';
 import { log } from './log.js';
-import { askRetry, waitForVisible } from './confirm.js';
+import { askRetry } from './confirm.js';
 import { startBackgroundSync, updateBackgroundSync, stopBackgroundSync } from './backgroundsync.js';
 
 const bar        = document.getElementById('pin-drop-bar');
@@ -386,9 +386,14 @@ function finish() {
 async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   let ok = 0, staleCount = 0;
   const failedItems = [];
-  startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
+  // No waitForVisible() pause here (unlike bulk fix-date) — the background
+  // sync service below is what makes it safe to keep going while hidden;
+  // pausing until the app comes back to the foreground would defeat it.
+  // Awaited so the foreground service (and its permission prompt, the first
+  // time) is fully up before any work starts, not still racing a background
+  // tap.
+  await startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
   for (let i = 0; i < list.length; i++) {
-    await waitForVisible();
     _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
     updateBackgroundSync('Mappho — geotagging', `Placing… ${i + 1}/${list.length}`);
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
