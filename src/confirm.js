@@ -8,6 +8,44 @@ export function waitForVisible() {
   });
 }
 
+// Same shape as askRetry, worded for resuming a bulk job interrupted by an
+// app kill (OS memory pressure winning out over the background-sync service)
+// rather than the ordinary partial-failure retry.
+export function askResume(count) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:6000;display:flex;align-items:center;justify-content:center';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#16213e;border:1px solid #334155;border-radius:12px;padding:20px 24px;max-width:300px;width:90vw;display:flex;flex-direction:column;gap:14px';
+
+    const msg = document.createElement('p');
+    msg.style.cssText = 'color:#e2e8f0;margin:0;font-size:.95rem;text-align:center;line-height:1.4';
+    msg.textContent = `A bulk geotag was interrupted with ${count} photo${count !== 1 ? 's' : ''} left. Resume?`;
+
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:10px';
+
+    const yes = document.createElement('button');
+    yes.textContent = '▶ Resume';
+    yes.style.cssText = 'flex:1;padding:10px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:.9rem;cursor:pointer';
+
+    const no = document.createElement('button');
+    no.textContent = 'Discard';
+    no.style.cssText = 'flex:1;padding:10px;border:none;border-radius:8px;background:#334155;color:#e2e8f0;font-size:.9rem;cursor:pointer';
+
+    btns.append(yes, no);
+    box.append(msg, btns);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const done = ok => { overlay.remove(); viewClosed('dialog', { restoreParent: false }); resolve(ok); };
+    viewOpened('dialog', { close: () => done(false) }); // back = Discard
+    yes.addEventListener('click', () => done(true));
+    no.addEventListener('click', () => done(false));
+  });
+}
+
 export function askRetry(count, noun) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');

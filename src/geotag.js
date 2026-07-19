@@ -1,5 +1,5 @@
 import { parseDateFromFilename, injectGPS, heicToJpeg, fetchHeicExifForPreserve, injectExif } from './exif.js';
-import { deleteRecord, deleteOrphan, putCached, UNDATED_TS, findClosestGeotagged } from './db.js';
+import { deleteRecord, deleteOrphan, putCached, getCached, UNDATED_TS, findClosestGeotagged } from './db.js';
 import { downloadFullFile, overwriteFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { enterPinDropMode, exitPinDropMode, flyToAndPlacePin, addMarker, removeMarker } from './map.js';
 import { syncMapphoOnEdit, ensureInPhotos } from './organize.js';
@@ -29,6 +29,34 @@ export function setGeotagStatusFn(fn) { _statusFn = fn; }
 // photo. Optional — falls back to a plain upload with no progress if unset.
 let _progressFn = null;
 export function setGeotagProgressFn(fn) { _progressFn = fn; }
+
+// Tracks a running bulk geotag's remaining work in localStorage (survives an
+// app kill, unlike anything in-memory) so it can be offered as a resume on
+// next launch if the background-sync service didn't manage to keep the
+// process alive after all — see resumeBulkGeotag below and main.js's
+// startup check.
+const PENDING_KEY = 'mappho_pending_bulk_geotag';
+
+function savePendingBulkGeotag(lat, lng, fileids) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ lat, lng, fileids })); } catch {}
+}
+
+function clearPendingBulkGeotag() {
+  try { localStorage.removeItem(PENDING_KEY); } catch {}
+}
+
+// Exported for main.js's startup prompt, when the user declines to resume.
+export function discardPendingBulkGeotag() {
+  clearPendingBulkGeotag();
+}
+
+// Exported for main.js's startup check — just reads, doesn't act.
+export function getPendingBulkGeotag() {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
 
 // Drives the progress bar through the 3 stages of applying an edit —
 // download, rewrite EXIF, upload — instead of leaving it sitting at 0 until
@@ -393,6 +421,7 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   // time) is fully up before any work starts, not still racing a background
   // tap.
   await startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
+  savePendingBulkGeotag(lat, lng, list.map(p => p.fileid));
   for (let i = 0; i < list.length; i++) {
     _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
     updateBackgroundSync('Mappho — geotagging', `Placing… ${i + 1}/${list.length}`);
@@ -407,6 +436,10 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
       if (e.staleFile) { staleCount++; log('Bulk geotag', `${list[i].name}: no longer exists on pCloud — removed`); }
       else { failedItems.push(list[i]); log('Bulk geotag error', `${list[i].name}: ${e.message}`); }
     }
+    // Recorded as done regardless of outcome — a genuine failure is already
+    // captured in failedItems for the retry prompt below, and re-resuming it
+    // here too would just fail the exact same way again.
+    savePendingBulkGeotag(lat, lng, list.slice(i + 1).map(p => p.fileid));
   }
   flushPhotoIndex();
 
@@ -422,6 +455,30 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
   }
+  clearPendingBulkGeotag();
   stopBackgroundSync();
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
+}
+
+// Offered on next launch when the background-sync service didn't manage to
+// keep the app alive through a whole bulk geotag after all (OS memory
+// pressure can still win). Re-derives full photo objects from the persisted
+// fileids via the cache rather than trying to serialize/restore them
+// directly, and drops any that got a location some other way or vanished
+// from the cache since. Returns false (and clears the stale entry either
+// way) if there's nothing left worth resuming.
+export async function resumeBulkGeotag(callback) {
+  const pending = getPendingBulkGeotag();
+  clearPendingBulkGeotag();
+  if (!pending || !pending.fileids?.length) return false;
+
+  const photos = [];
+  for (const fileid of pending.fileids) {
+    const cached = await getCached(fileid);
+    if (cached && cached.lat == null) photos.push({ fileid: cached.fileid, name: cached.name, ts: cached.ts, hash: cached.hash ?? null });
+  }
+  if (!photos.length) return false;
+
+  _runBulkGeotag(photos, pending.lat, pending.lng, callback);
+  return true;
 }

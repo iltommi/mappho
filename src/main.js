@@ -13,7 +13,7 @@ import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn } from './photoedit.js';
-import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn } from './geotag.js';
+import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn, getPendingBulkGeotag, resumeBulkGeotag, discardPendingBulkGeotag } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback, updateGridItem } from './grid.js';
 import { findMapphoRootIfExists, syncMapphoOnEdit, getMapphoRoot, getMapphoMonthFolder, loadOrganizeIndex, flushOrganizeIndex, organizeFile, resetOrganizeState, isHashOrganized, normHash } from './organize.js';
 import { applyVideoMeta } from './videometa.js';
@@ -23,7 +23,7 @@ import { refreshLocations, getLocationStats, getEntriesForLocations } from './lo
 import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
-import { askRetry, waitForVisible } from './confirm.js';
+import { askRetry, askResume, waitForVisible } from './confirm.js';
 import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, countAllNonIgnored, getAllNonIgnoredPage, getPositionAndDatePage, countGeotaggedInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import { distinctDayRanges, sameDayFromList } from './dayrange.js';
 import './style.css';
@@ -1027,6 +1027,7 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
   saveToken(token);
   showApp();
   await startScan();
+  await checkPendingBulkGeotagResume();
 });
 
 let statusHideTimer = null;
@@ -1612,6 +1613,7 @@ loginForm.addEventListener('submit', async (e) => {
     }
     showApp();
     await startScan();
+    await checkPendingBulkGeotagResume();
   } catch (err) {
     if (err instanceof TwoFactorRequired) {
       pendingTfaToken = err.tfaToken;
@@ -1726,6 +1728,16 @@ async function startScan() {
   startScanInProgress = false;
 }
 
+// Offers to pick a bulk geotag back up after an app kill the background-sync
+// service didn't manage to prevent (OS memory pressure can still win). Runs
+// after startScan so resumeBulkGeotag's cache lookups have something to find.
+async function checkPendingBulkGeotagResume() {
+  const pending = getPendingBulkGeotag();
+  if (!pending || !pending.fileids?.length) return;
+  const resume = await askResume(pending.fileids.length);
+  if (!resume) { discardPendingBulkGeotag(); return; }
+  await resumeBulkGeotag(() => reloadTopbarCounts());
+}
 
 // Per-scan organize state. Reset at the start of each scan.
 let _organizeRoot = null;  // Photos/ folderid (null = organize not ready)
@@ -2224,6 +2236,7 @@ async function main() {
   }
 
   await startScan();
+  await checkPendingBulkGeotagResume();
   setupFacesResumeSync();
 }
 
