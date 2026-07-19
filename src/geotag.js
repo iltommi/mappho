@@ -420,10 +420,11 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   // Awaited so the foreground service (and its permission prompt, the first
   // time) is fully up before any work starts, not still racing a background
   // tap.
-  await startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
+  const protectedRun = await startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
+  const bgNote = protectedRun ? '' : ' — keep Mappho open, background sync unavailable';
   savePendingBulkGeotag(lat, lng, list.map(p => p.fileid));
   for (let i = 0; i < list.length; i++) {
-    _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
+    _statusFn?.(`📍 Placing… ${i + 1}/${list.length}${bgNote}`, 0);
     updateBackgroundSync('Mappho — geotagging', `Placing… ${i + 1}/${list.length}`);
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
     try {
