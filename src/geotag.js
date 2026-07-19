@@ -10,6 +10,7 @@ import { viewOpened, viewClosed } from './nav.js';
 import { searchLocation } from './geocode.js';
 import { log } from './log.js';
 import { askRetry, waitForVisible } from './confirm.js';
+import { startBackgroundSync, updateBackgroundSync, stopBackgroundSync } from './backgroundsync.js';
 
 const bar        = document.getElementById('pin-drop-bar');
 const hintEl     = document.getElementById('pin-drop-hint');
@@ -385,9 +386,11 @@ function finish() {
 async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   let ok = 0, staleCount = 0;
   const failedItems = [];
+  startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
   for (let i = 0; i < list.length; i++) {
     await waitForVisible();
     _statusFn?.(`📍 Placing… ${i + 1}/${list.length}`, 0);
+    updateBackgroundSync('Mappho — geotagging', `Placing… ${i + 1}/${list.length}`);
     log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
     try {
       await applyGeotagToPhoto(list[i], lat, lng);
@@ -414,5 +417,6 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
     const retry = await askRetry(failedItems.length, 'photo');
     if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
   }
+  stopBackgroundSync();
   cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
 }
