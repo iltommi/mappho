@@ -21,6 +21,27 @@ const _yearFolders   = new Map(); // 'YYYY' -> folderid
 const _monthFolders  = new Map(); // 'YYYY-MM' -> folderid
 const _nameCounters  = new Map(); // 'YYYY-MM-DD_HH-MM-SS' -> next N to try
 
+// organizeFile and syncMapphoOnEdit both pick names from / mutate
+// _takenNames and _nameCounters, which isn't safe if two calls run at once.
+// This used to be the caller's responsibility (see processFile in main.js,
+// which serialized its own concurrent workers around organizeFile) but now
+// that bulk geotag can also run edits concurrently — and any other caller
+// might in the future — every caller needs the same protection. Simplest to
+// guarantee it here once, so no caller has to know or remember to do it
+// themselves.
+let _organizeLock = Promise.resolve();
+async function withOrganizeLock(fn) {
+  const prev = _organizeLock;
+  let release;
+  _organizeLock = new Promise(r => { release = r; });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 // ── Hash index ────────────────────────────────────────────────────────────────
 
 const HASH_INDEX_FILENAME   = 'hash-index.json';
@@ -230,10 +251,12 @@ export function isHashOrganized(hash) {
 }
 
 // Organizes one file into Photos/YYYY/MM/ with a date-based name.
-// Must be called inside a serialisation lock (see main.js) so that _takenNames
-// and _nameCounters are never updated by two concurrent calls at once.
 // Returns the new name on success, null if already organized or doesn't qualify.
 export async function organizeFile(record, rootFolderId) {
+  return withOrganizeLock(() => _organizeFileLocked(record, rootFolderId));
+}
+
+async function _organizeFileLocked(record, rootFolderId) {
   const hash = record.hash;
 
   // Double-check inside the lock (another concurrent processFile may have just organized this hash)
@@ -302,7 +325,11 @@ export async function removeOrganizedEntry(fileid) {
 // the next scan, and keep the faces database keyed to the new hash/name.
 // `newName` is the actual filename the caller gave newFileid when it differs
 // from the indexed one (HEIC→JPEG conversions upload x.jpg in place of x.heic).
-export async function syncMapphoOnEdit({ oldHash, newFileid, newHash, ts, newName = null }) {
+export async function syncMapphoOnEdit(opts) {
+  return withOrganizeLock(() => _syncMapphoOnEditLocked(opts));
+}
+
+async function _syncMapphoOnEditLocked({ oldHash, newFileid, newHash, ts, newName = null }) {
   oldHash = normHash(oldHash);
   newHash = normHash(newHash);
   if (!oldHash) return;

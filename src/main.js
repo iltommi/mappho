@@ -1741,7 +1741,6 @@ async function checkPendingBulkGeotagResume() {
 
 // Per-scan organize state. Reset at the start of each scan.
 let _organizeRoot = null;  // Photos/ folderid (null = organize not ready)
-let _organizeLock = Promise.resolve(); // serialises concurrent organizeFile calls
 
 let scanOperationInProgress = false;
 
@@ -1825,7 +1824,6 @@ async function rebuildScan() {
 
   // Process files for EXIF — already in Photos/, do not re-organise.
   _organizeRoot = null;
-  _organizeLock = Promise.resolve();
   _rebuildSeenHashes = new Set();
   const stats = { scanned: 0, geotagged: 0, dated: 0, completed: 0, cached: 0 };
   const pool = new Set(), inFlight = new Map(), failedFiles = [];
@@ -1930,21 +1928,14 @@ async function processFile(file, stats) {
   const hasGps = exif.lat != null && !isNaN(exif.lat) && exif.lng != null && !isNaN(exif.lng);
   const record = { fileid: file.fileid, name: file.name, lat: hasGps ? exif.lat : null, lng: hasGps ? exif.lng : null, ts: exif.ts ?? null, hash: file.hash != null ? String(file.hash) : null, rotation: exif.rotation ?? null };
 
-  // Organize: serialize name-pick + rename so concurrent processFile calls
-  // don't race on _takenNames / _nameCounters.
+  // organizeFile serializes its own name-pick + rename internally now (it
+  // has to, since bulk geotag/fix-date can run edits concurrently too) —
+  // concurrent processFile workers no longer need to coordinate a lock here.
   if (_organizeRoot) {
-    let resolveOrganizeLock;
-    const prevLock = _organizeLock;
-    _organizeLock = new Promise(r => { resolveOrganizeLock = r; });
-    await prevLock;
-    try {
-      const newName = await organizeFile(record, _organizeRoot);
-      if (newName) {
-        record.name = newName;
-        updateMarkerName(record.fileid, newName);
-      }
-    } finally {
-      resolveOrganizeLock();
+    const newName = await organizeFile(record, _organizeRoot);
+    if (newName) {
+      record.name = newName;
+      updateMarkerName(record.fileid, newName);
     }
   }
 
@@ -1981,7 +1972,6 @@ async function scan() {
 
   // Initialise organize index before Phase 2 so each processFile can move files immediately.
   _organizeRoot = null;
-  _organizeLock = Promise.resolve();
   try {
     const root = await getMapphoRoot();
     resetOrganizeState();

@@ -58,6 +58,13 @@ export function getPendingBulkGeotag() {
   } catch { return null; }
 }
 
+// Bulk mode runs 2 photos' download/modify/upload concurrently (see
+// _runBulkGeotag), so a single item's byte-level progress no longer means
+// anything on its own — two uploads would just fight over the same bar.
+// _runBulkGeotag drives the bar itself instead, as completed/total, while
+// this suppresses the single-item version for its duration.
+let _bulkMode = false;
+
 // Drives the progress bar through the 3 stages of applying an edit —
 // download, rewrite EXIF, upload — instead of leaving it sitting at 0 until
 // the upload starts. Download and EXIF-rewrite have no byte-level progress
@@ -65,7 +72,7 @@ export function getPendingBulkGeotag() {
 // leg (the slow one, and the only one FileTransfer reports progress for)
 // actually animates within its 66–100 share.
 function setStep(step) {
-  if (!_progressFn) return;
+  if (!_progressFn || _bulkMode) return;
   if (step === 'download') _progressFn(0);
   else if (step === 'process') _progressFn(33);
   else if (step === 'upload')  _progressFn(66);
@@ -74,7 +81,7 @@ function setStep(step) {
 // Wraps an upload call so the progress bar always gets reset once the
 // upload settles (success or failure) instead of being left stuck mid-way.
 async function withUploadProgress(fn) {
-  if (!_progressFn) return fn(undefined);
+  if (!_progressFn || _bulkMode) return fn(undefined);
   try {
     return await fn((bytes, total) => _progressFn(66 + (total ? (bytes / total) * 34 : 0)));
   } finally {
@@ -411,8 +418,16 @@ function finish() {
   viewClosed('pindrop', { restoreParent: false });
 }
 
+// pCloud doesn't throttle concurrent requests from one account (confirmed
+// against another app doing 8 in parallel), so 2 concurrent download/
+// modify/upload cycles is safe on that front — the real constraint was
+// organize.js's shared name-picking state, now self-serializing internally
+// (see withOrganizeLock there) so it's safe regardless of what calls it
+// concurrently.
+const BULK_CONCURRENCY = 2;
+
 async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
-  let ok = 0, staleCount = 0;
+  let ok = 0, staleCount = 0, completed = 0;
   const failedItems = [];
   // No waitForVisible() pause here (unlike bulk fix-date) — the background
   // sync service below is what makes it safe to keep going while hidden;
@@ -420,27 +435,47 @@ async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
   // Awaited so the foreground service (and its permission prompt, the first
   // time) is fully up before any work starts, not still racing a background
   // tap.
-  const protectedRun = await startBackgroundSync('Mappho — geotagging', `Placing… 1/${list.length}`);
+  const protectedRun = await startBackgroundSync('Mappho — geotagging', `Placing… 0/${list.length}`);
   const bgNote = protectedRun ? '' : ' — keep Mappho open, background sync unavailable';
-  savePendingBulkGeotag(lat, lng, list.map(p => p.fileid));
-  for (let i = 0; i < list.length; i++) {
-    _statusFn?.(`📍 Placing… ${i + 1}/${list.length}${bgNote}`, 0);
-    updateBackgroundSync('Mappho — geotagging', `Placing… ${i + 1}/${list.length}`);
-    log('Bulk geotag', `${i + 1}/${list.length}: ${list[i].name}`);
-    try {
-      await applyGeotagToPhoto(list[i], lat, lng);
-      ok++;
-    } catch (e) {
-      // A stale photo's record is already purged (see applyGeotagToPhoto) —
-      // it's permanently gone, not a transient failure, so don't offer to
-      // retry it: retrying the same dead fileid can only ever fail again.
-      if (e.staleFile) { staleCount++; log('Bulk geotag', `${list[i].name}: no longer exists on pCloud — removed`); }
-      else { failedItems.push(list[i]); log('Bulk geotag error', `${list[i].name}: ${e.message}`); }
+
+  // Remaining (not-yet-attempted) fileids as a set, not list.slice(i+1) —
+  // concurrent workers finish out of order, so there's no single "everything
+  // after index i" boundary to persist anymore.
+  const remaining = new Set(list.map(p => p.fileid));
+  savePendingBulkGeotag(lat, lng, [...remaining]);
+
+  _bulkMode = true;
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < list.length) {
+      const item = list[nextIndex++];
+      log('Bulk geotag', item.name);
+      try {
+        await applyGeotagToPhoto(item, lat, lng);
+        ok++;
+      } catch (e) {
+        // A stale photo's record is already purged (see applyGeotagToPhoto) —
+        // it's permanently gone, not a transient failure, so don't offer to
+        // retry it: retrying the same dead fileid can only ever fail again.
+        if (e.staleFile) { staleCount++; log('Bulk geotag', `${item.name}: no longer exists on pCloud — removed`); }
+        else { failedItems.push(item); log('Bulk geotag error', `${item.name}: ${e.message}`); }
+      }
+      // Recorded as done regardless of outcome — a genuine failure is already
+      // captured in failedItems for the retry prompt below, and re-resuming it
+      // here too would just fail the exact same way again.
+      completed++;
+      remaining.delete(item.fileid);
+      _statusFn?.(`📍 Placing… ${completed}/${list.length}${bgNote}`, 0);
+      updateBackgroundSync('Mappho — geotagging', `Placing… ${completed}/${list.length}`);
+      _progressFn?.((completed / list.length) * 100);
+      savePendingBulkGeotag(lat, lng, [...remaining]);
     }
-    // Recorded as done regardless of outcome — a genuine failure is already
-    // captured in failedItems for the retry prompt below, and re-resuming it
-    // here too would just fail the exact same way again.
-    savePendingBulkGeotag(lat, lng, list.slice(i + 1).map(p => p.fileid));
+  }
+  try {
+    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, list.length) }, worker));
+  } finally {
+    _bulkMode = false;
+    _progressFn?.(0);
   }
   flushPhotoIndex();
 
