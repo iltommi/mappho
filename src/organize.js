@@ -1,4 +1,4 @@
-import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
+import { listImages, listFolders, createFolderIfNotExists, renameFile, deleteFile, uploadFile, getFileStat, downloadJsonFile, uploadJsonToFolder } from './pcloud.js';
 import { clearMapphoIndex, bulkPutMapphoIndex, putMapphoIndexEntry, getMapphoIndexEntry, deleteMapphoIndexEntry, getAllMapphoIndex, UNDATED_TS } from './db.js';
 import { renameFacesEntry, removeFacesEntry } from './faces.js';
 import { renameFlagEntry, removeFlagEntry } from './flags.js';
@@ -282,6 +282,48 @@ async function _organizeFileLocked(record, rootFolderId) {
     await putMapphoIndexEntry({ hash, fileid: record.fileid, folderid: folderId, name });
   }
   return name;
+}
+
+// Uploads a brand-new file (not previously on pCloud at all — e.g. a photo
+// shared into Mappho from the device) straight into Photos/YYYY/MM with a
+// date-based name. Mirrors _organizeFileLocked's folder/name-picking exactly,
+// but *uploads* the bytes instead of renaming an existing fileid (there
+// isn't one until the upload gives us one), and — since that also means the
+// hash isn't known until after the upload settles — stats the new file and
+// records the hash-index entry itself, all inside the one lock, rather than
+// making the caller reach back into this module's private _hashMap/
+// _hashDirty state for a second step. Requires the hash index to already be
+// loaded (see loadOrganizeIndex) — same guard ensureInPhotos uses —
+// otherwise _takenNames doesn't reflect what's really in Photos/ yet and a
+// fresh upload could collide with an existing file.
+export async function importNewFile({ buf, filename, ts }) {
+  return withOrganizeLock(() => _importNewFileLocked({ buf, filename, ts }));
+}
+
+async function _importNewFileLocked({ buf, filename, ts }) {
+  if (!_indexReady) throw new Error('Photo index not loaded yet');
+  const rootFolderId = await getMapphoRoot();
+  const hasDate = ts != null && ts > 0;
+
+  const folderId = hasDate
+    ? await getMapphoMonthFolder(rootFolderId, ts)
+    : await getMapphoUnknownFolder(rootFolderId);
+
+  const name = hasDate
+    ? nextName(ts, extOf(filename))
+    : nextNameForUnknown(filename, extOf(filename));
+
+  const fileid = await uploadFile(folderId, name, buf);
+  _takenNames.add(name);
+
+  const { hash: rawHash } = await getFileStat(fileid).catch(() => ({}));
+  const hash = normHash(rawHash);
+  if (hash) {
+    _hashMap.set(hash, { fileid, folderid: folderId, name });
+    _hashDirty = true;
+    await putMapphoIndexEntry({ hash, fileid, folderid: folderId, name });
+  }
+  return { fileid, name, hash };
 }
 
 // If the file isn't already tracked in Photos/, organizes it there now.

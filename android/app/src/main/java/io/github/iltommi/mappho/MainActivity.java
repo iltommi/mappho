@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(IntentPlugin.class);
         registerPlugin(DownloadPlugin.class);
         registerPlugin(BackgroundSyncPlugin.class);
+        registerPlugin(MediaExchangePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

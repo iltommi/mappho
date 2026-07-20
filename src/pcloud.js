@@ -117,7 +117,7 @@ async function getCdnUrl(fileid) {
   return `https://${host}${linkData.path}`;
 }
 
-function base64ToArrayBuffer(b64) {
+export function base64ToArrayBuffer(b64) {
   const bin = atob(b64.replace(/\s/g, ''));
   const buf = new ArrayBuffer(bin.length);
   const view = new Uint8Array(buf);
