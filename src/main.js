@@ -11,9 +11,8 @@ import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile,
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler } from './map.js';
-import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setEditExternalHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
+import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
-import { exportForExternalEdit } from './externaledit.js';
 import { checkPendingShare, listenForShares } from './import.js';
 import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn, getPendingBulkGeotag, resumeBulkGeotag, discardPendingBulkGeotag } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback, updateGridItem } from './grid.js';
@@ -2173,15 +2172,6 @@ async function main() {
       reloadTopbarCounts();
       flushPhotoIndex();
       showBriefStatus('✅ Photo saved');
-    });
-  });
-  setEditExternalHandler(photo => {
-    exportForExternalEdit(photo, r => {
-      if (r.cancelled) return; // user backed out of the share sheet — nothing to report
-      if (r.unsupported) { showBriefStatus('Video and HEIC photos can\'t be exported for external editing yet.'); return; }
-      if (r.stale) { reloadTopbarCounts(); showBriefStatus('⚠️ That photo no longer exists on pCloud — removed from your library.'); return; }
-      if (!r.success) { showBriefStatus(`❌ Export failed${r.error ? `: ${r.error}` : ''}`); return; }
-      showBriefStatus('📤 Exported — share the edited result back to Mappho when you\'re done.');
     });
   });
   // Live "go check now" signal for a share arriving while already running —

@@ -39,7 +39,6 @@ const geotagBtn   = document.getElementById('ss-geotag-btn');
 const fixDateBtn  = document.getElementById('ss-fixdate-btn');
 const fixTimeBtn  = document.getElementById('ss-fixtime-btn');
 const editBtn     = document.getElementById('ss-edit-btn');
-const editExternalBtn = document.getElementById('ss-edit-external-btn');
 const ignoreBtn   = document.getElementById('ss-ignore-btn');
 const exifBtn     = document.getElementById('ss-exif-btn');
 const filterBtn   = document.getElementById('ss-filter-btn');
@@ -55,7 +54,6 @@ let fixDateHandler   = null;
 let fixTimeHandler   = null;
 let ignoreHandler    = null;
 let editHandler      = null;
-let editExternalHandler = null;
 let afterDeleteCb    = null;
 export function setGeotagHandler(fn)       { geotagHandler = fn; }
 export function setFixDateHandler(fn)      { fixDateHandler = fn; }
@@ -68,7 +66,6 @@ export function setIgnoreHandler(fn, { icon = '🚫', title = 'Ignore' } = {}) {
   ignoreBtn.title = title;
 }
 export function setEditHandler(fn)         { editHandler = fn; }
-export function setEditExternalHandler(fn) { editExternalHandler = fn; }
 export function setAfterDeleteCallback(fn) { afterDeleteCb = fn; }
 
 let photos  = [];
@@ -295,7 +292,6 @@ function close({ handoff = false } = {}) {
   fixDateBtn.style.display = 'none';
   fixTimeBtn.style.display = 'none';
   editBtn.style.display    = 'none';
-  editExternalBtn.style.display = 'none';
   ignoreBtn.style.display  = 'none';
   filterBtn.style.display  = 'none';
   facesMode = false;
@@ -352,18 +348,6 @@ editBtn.addEventListener('click', () => {
   if (!photo || !editHandler) return;
   const thumbSrc = curImg.src || '';
   editHandler(photo, thumbSrc);
-});
-
-// No close()/snapshotForResume() — unlike fixDate/fixTime, this doesn't
-// navigate to a different in-app view. It just opens the OS share sheet
-// (backgrounding Mappho while the user picks an app) and downloads a copy
-// out; nothing about the current photo changes as a result, so there's
-// nothing to refresh the slide with afterwards either — the edited result
-// only reappears once the user separately shares it back into Mappho.
-editExternalBtn.addEventListener('click', () => {
-  const photo = photos[current];
-  if (!photo || !editExternalHandler) return;
-  editExternalHandler(photo);
 });
 
 ignoreBtn.addEventListener('click', async () => {
@@ -851,7 +835,6 @@ function updateCaption() {
   playBadge.style.display   = isVideo(name) ? '' : 'none';
   exifBtn.style.display  = isVideo(name) ? 'none' : '';
   editBtn.style.display  = (editHandler && !isVideo(name) && !/\.heic$/i.test(name)) ? '' : 'none';
-  editExternalBtn.style.display = (editExternalHandler && !isVideo(name) && !/\.heic$/i.test(name)) ? '' : 'none';
   shareBtn.style.display = '';
   refreshFacesState().catch(() => {});
   refreshFlagState().catch(() => {});
@@ -1004,7 +987,6 @@ export function openSlideshow(photoList, startIndex = 0) {
   fixDateBtn.style.display = 'none';
   fixTimeBtn.style.display = 'none';
   editBtn.style.display    = 'none';
-  editExternalBtn.style.display = 'none';
   ignoreBtn.style.display  = 'none';
   el.classList.add('open');
   viewOpened('slideshow', { close: () => close() });
