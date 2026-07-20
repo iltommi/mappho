@@ -1732,9 +1732,10 @@ async function startScan() {
 // service didn't manage to prevent (OS memory pressure can still win). Runs
 // after startScan so resumeBulkGeotag's cache lookups have something to find.
 async function checkPendingBulkGeotagResume() {
-  const pending = getPendingBulkGeotag();
-  if (!pending || !pending.fileids?.length) return;
-  const resume = await askResume(pending.fileids.length);
+  const pending = getPendingBulkGeotag(); // array of { lat, lng, fileids } batches
+  const total = pending?.reduce((n, b) => n + (b.fileids?.length ?? 0), 0) ?? 0;
+  if (!total) return;
+  const resume = await askResume(total);
   if (!resume) { discardPendingBulkGeotag(); return; }
   await resumeBulkGeotag(() => reloadTopbarCounts());
 }

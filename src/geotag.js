@@ -30,15 +30,21 @@ export function setGeotagStatusFn(fn) { _statusFn = fn; }
 let _progressFn = null;
 export function setGeotagProgressFn(fn) { _progressFn = fn; }
 
-// Tracks a running bulk geotag's remaining work in localStorage (survives an
-// app kill, unlike anything in-memory) so it can be offered as a resume on
-// next launch if the background-sync service didn't manage to keep the
-// process alive after all — see resumeBulkGeotag below and main.js's
-// startup check.
+// Tracks a running bulk geotag queue's remaining work in localStorage
+// (survives an app kill, unlike anything in-memory) so it can be offered as
+// a resume on next launch if the background-sync service didn't manage to
+// keep the process alive after all — see resumeBulkGeotag below and
+// main.js's startup check. Stored as an array of { lat, lng, fileids }
+// batches (one queue can hold several, each with its own target location)
+// rather than a single one, now that a second bulk geotag started while one
+// is already running joins the queue instead of racing it.
 const PENDING_KEY = 'mappho_pending_bulk_geotag';
 
-function savePendingBulkGeotag(lat, lng, fileids) {
-  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ lat, lng, fileids })); } catch {}
+function savePendingBulkQueue(batches) {
+  try {
+    if (batches.length) localStorage.setItem(PENDING_KEY, JSON.stringify(batches));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {}
 }
 
 function clearPendingBulkGeotag() {
@@ -50,19 +56,24 @@ export function discardPendingBulkGeotag() {
   clearPendingBulkGeotag();
 }
 
-// Exported for main.js's startup check — just reads, doesn't act.
+// Exported for main.js's startup check — just reads, doesn't act. Returns
+// an array of { lat, lng, fileids } batches, or null.
 export function getPendingBulkGeotag() {
   try {
     const raw = localStorage.getItem(PENDING_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed) return null;
+    // Back-compat: earlier (single-batch) builds stored one bare object.
+    return Array.isArray(parsed) ? parsed : [parsed];
   } catch { return null; }
 }
 
 // Bulk mode runs 2 photos' download/modify/upload concurrently (see
-// _runBulkGeotag), so a single item's byte-level progress no longer means
-// anything on its own — two uploads would just fight over the same bar.
-// _runBulkGeotag drives the bar itself instead, as completed/total, while
-// this suppresses the single-item version for its duration.
+// runBulkGeotagBatch), so a single item's byte-level progress no longer
+// means anything on its own — two uploads would just fight over the same
+// bar. runBulkGeotagBatch drives the bar itself instead, as a queue-wide
+// completed/total, while this suppresses the single-item version for its
+// duration.
 let _bulkMode = false;
 
 // Drives the progress bar through the 3 stages of applying an edit —
@@ -371,7 +382,7 @@ saveBtn.addEventListener('click', async () => {
       cb?.({ success: false, count: 0, failed: 0, skipped });
       return;
     }
-    _runBulkGeotag(list, lat, lng, cb, skipped);
+    enqueueBulkGeotag(list, lat, lng, cb, skipped);
     return;
   }
 
@@ -426,95 +437,161 @@ function finish() {
 // concurrently.
 const BULK_CONCURRENCY = 2;
 
-async function _runBulkGeotag(list, lat, lng, cb, skipped = 0) {
-  let ok = 0, staleCount = 0, completed = 0;
-  const failedItems = [];
+// A second bulk geotag started while one's already running joins this queue
+// instead of racing it as a second, competing run — the progress bar,
+// resume persistence, and the background-sync service itself are all
+// single shared things that only make sense for one run at a time (they'd
+// otherwise clobber each other's state, and whichever batch finished first
+// would tear down background-sync out from under the other). One session
+// drains the whole queue batch after batch; background-sync/progress span
+// the session and only tear down once the queue is empty.
+const _bulkQueue = []; // batches not yet started: { list, lat, lng, cb, skipped }
+let _bulkQueueRunning = false;
+let _current = null; // batch actively being processed: { remaining: Set<fileid> }
+let _queueTotal     = 0; // grand total across every batch this session has seen
+let _queueCompleted = 0; // grand total processed (any outcome) so far this session
+
+function persistBulkQueueState() {
+  const batches = [];
+  if (_current) batches.push({ lat: _current.lat, lng: _current.lng, fileids: [..._current.remaining] });
+  for (const b of _bulkQueue) batches.push({ lat: b.lat, lng: b.lng, fileids: b.list.map(p => p.fileid) });
+  savePendingBulkQueue(batches);
+}
+
+// Queues a batch to be geotagged to (lat, lng), starting the queue runner if
+// it isn't already going. Joining an already-running session updates the
+// live status/progress/notification immediately to include the addition,
+// rather than waiting for the next processed item to catch up.
+export function enqueueBulkGeotag(list, lat, lng, cb, skipped = 0) {
+  _bulkQueue.push({ list, lat, lng, cb, skipped });
+  _queueTotal += list.length;
+  if (_bulkQueueRunning) {
+    persistBulkQueueState();
+    _statusFn?.(`📍 Placing… ${_queueCompleted}/${_queueTotal} (+${list.length} just added)`, 0);
+    updateBackgroundSync('Mappho — geotagging', `Placing… ${_queueCompleted}/${_queueTotal}`);
+  } else {
+    runBulkQueue();
+  }
+}
+
+async function runBulkQueue() {
+  _bulkQueueRunning = true;
   // No waitForVisible() pause here (unlike bulk fix-date) — the background
   // sync service below is what makes it safe to keep going while hidden;
   // pausing until the app comes back to the foreground would defeat it.
   // Awaited so the foreground service (and its permission prompt, the first
   // time) is fully up before any work starts, not still racing a background
   // tap.
-  const protectedRun = await startBackgroundSync('Mappho — geotagging', `Placing… 0/${list.length}`);
+  const protectedRun = await startBackgroundSync('Mappho — geotagging', `Placing… 0/${_queueTotal}`);
   const bgNote = protectedRun ? '' : ' — keep Mappho open, background sync unavailable';
-
-  // Remaining (not-yet-attempted) fileids as a set, not list.slice(i+1) —
-  // concurrent workers finish out of order, so there's no single "everything
-  // after index i" boundary to persist anymore.
-  const remaining = new Set(list.map(p => p.fileid));
-  savePendingBulkGeotag(lat, lng, [...remaining]);
-
-  _bulkMode = true;
-  let nextIndex = 0;
-  async function worker() {
-    while (nextIndex < list.length) {
-      const item = list[nextIndex++];
-      log('Bulk geotag', item.name);
-      try {
-        await applyGeotagToPhoto(item, lat, lng);
-        ok++;
-      } catch (e) {
-        // A stale photo's record is already purged (see applyGeotagToPhoto) —
-        // it's permanently gone, not a transient failure, so don't offer to
-        // retry it: retrying the same dead fileid can only ever fail again.
-        if (e.staleFile) { staleCount++; log('Bulk geotag', `${item.name}: no longer exists on pCloud — removed`); }
-        else { failedItems.push(item); log('Bulk geotag error', `${item.name}: ${e.message}`); }
-      }
-      // Recorded as done regardless of outcome — a genuine failure is already
-      // captured in failedItems for the retry prompt below, and re-resuming it
-      // here too would just fail the exact same way again.
-      completed++;
-      remaining.delete(item.fileid);
-      _statusFn?.(`📍 Placing… ${completed}/${list.length}${bgNote}`, 0);
-      updateBackgroundSync('Mappho — geotagging', `Placing… ${completed}/${list.length}`);
-      _progressFn?.((completed / list.length) * 100);
-      savePendingBulkGeotag(lat, lng, [...remaining]);
-    }
-  }
   try {
-    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, list.length) }, worker));
+    while (_bulkQueue.length) {
+      const { list, lat, lng, cb, skipped } = _bulkQueue.shift();
+      await runBulkGeotagBatch(list, lat, lng, cb, skipped, bgNote);
+    }
   } finally {
-    _bulkMode = false;
-    _progressFn?.(0);
+    _current = null;
+    _queueTotal = 0;
+    _queueCompleted = 0;
+    clearPendingBulkGeotag();
+    stopBackgroundSync();
+    _bulkQueueRunning = false;
   }
-  flushPhotoIndex();
+}
 
-  const skipNote  = skipped > 0 ? ` (${skipped} already located, skipped)` : '';
-  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
-  if (failedItems.length > 0) {
-    _statusFn?.(`📍 Placed ${ok}/${list.length} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
-  } else {
-    _statusFn?.(`📍 Placed ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`, staleCount > 0 ? 6000 : 4000);
-  }
+// Processes one queued batch to completion, including any retry rounds the
+// user asks for — the queue runner above only moves on to the next batch
+// once this fully settles, so a retry loops in place rather than (as the
+// single-batch version used to) recursing and relying on the caller to stop.
+async function runBulkGeotagBatch(initialList, lat, lng, cb, skipped, bgNote) {
+  let list = initialList;
+  let totalOk = 0, totalStale = 0;
 
-  if (failedItems.length > 0) {
-    const retry = await askRetry(failedItems.length, 'photo');
-    if (retry) { _runBulkGeotag(failedItems, lat, lng, cb); return; }
+  for (;;) {
+    let ok = 0, staleCount = 0;
+    const failedItems = [];
+    _current = { lat, lng, remaining: new Set(list.map(p => p.fileid)) };
+    persistBulkQueueState();
+
+    _bulkMode = true;
+    let nextIndex = 0;
+    async function worker() {
+      while (nextIndex < list.length) {
+        const item = list[nextIndex++];
+        log('Bulk geotag', item.name);
+        try {
+          await applyGeotagToPhoto(item, lat, lng);
+          ok++;
+        } catch (e) {
+          // A stale photo's record is already purged (see applyGeotagToPhoto) —
+          // it's permanently gone, not a transient failure, so don't offer to
+          // retry it: retrying the same dead fileid can only ever fail again.
+          if (e.staleFile) { staleCount++; log('Bulk geotag', `${item.name}: no longer exists on pCloud — removed`); }
+          else { failedItems.push(item); log('Bulk geotag error', `${item.name}: ${e.message}`); }
+        }
+        // Recorded as done regardless of outcome — a genuine failure is already
+        // captured in failedItems for the retry prompt below, and re-resuming it
+        // here too would just fail the exact same way again.
+        _queueCompleted++;
+        _current.remaining.delete(item.fileid);
+        _statusFn?.(`📍 Placing… ${_queueCompleted}/${_queueTotal}${bgNote}`, 0);
+        updateBackgroundSync('Mappho — geotagging', `Placing… ${_queueCompleted}/${_queueTotal}`);
+        _progressFn?.((_queueCompleted / _queueTotal) * 100);
+        persistBulkQueueState();
+      }
+    }
+    try {
+      await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, list.length) }, worker));
+    } finally {
+      _bulkMode = false;
+      _progressFn?.(0);
+    }
+    flushPhotoIndex();
+
+    totalOk += ok;
+    totalStale += staleCount;
+    // skipNote only ever reflects this batch's original skip count — dropped
+    // on a retry round (matches the prior single-batch behavior, where the
+    // recursive retry call didn't pass skipped through either).
+    const skipNote  = skipped > 0 ? ` (${skipped} already located, skipped)` : '';
+    const staleNote = totalStale > 0 ? ` (${totalStale} no longer existed, removed)` : '';
+    skipped = 0;
+
+    if (failedItems.length > 0) {
+      _statusFn?.(`📍 Placed ${totalOk}/${initialList.length} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
+      const retry = await askRetry(failedItems.length, 'photo');
+      if (retry) { list = failedItems; continue; }
+      cb?.({ success: totalOk > 0, count: totalOk, failed: failedItems.length, stale: totalStale, skipped: 0 });
+      return;
+    }
+    _statusFn?.(`📍 Placed ${totalOk} photo${totalOk !== 1 ? 's' : ''}${staleNote}${skipNote}`, totalStale > 0 ? 6000 : 4000);
+    cb?.({ success: totalOk > 0, count: totalOk, failed: 0, stale: totalStale, skipped: 0 });
+    return;
   }
-  clearPendingBulkGeotag();
-  stopBackgroundSync();
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
 }
 
 // Offered on next launch when the background-sync service didn't manage to
-// keep the app alive through a whole bulk geotag after all (OS memory
-// pressure can still win). Re-derives full photo objects from the persisted
-// fileids via the cache rather than trying to serialize/restore them
-// directly, and drops any that got a location some other way or vanished
-// from the cache since. Returns false (and clears the stale entry either
-// way) if there's nothing left worth resuming.
+// keep the app alive through a whole bulk geotag queue after all (OS memory
+// pressure can still win). Re-derives full photo objects for every pending
+// batch from the persisted fileids via the cache rather than trying to
+// serialize/restore them directly, dropping any that got a location some
+// other way or vanished from the cache since, then re-queues whatever's
+// left. Returns false (and clears the stale entry either way) if there's
+// nothing left worth resuming.
 export async function resumeBulkGeotag(callback) {
-  const pending = getPendingBulkGeotag();
+  const batches = getPendingBulkGeotag();
   clearPendingBulkGeotag();
-  if (!pending || !pending.fileids?.length) return false;
+  if (!batches?.length) return false;
 
-  const photos = [];
-  for (const fileid of pending.fileids) {
-    const cached = await getCached(fileid);
-    if (cached && cached.lat == null) photos.push({ fileid: cached.fileid, name: cached.name, ts: cached.ts, hash: cached.hash ?? null });
+  let queued = false;
+  for (const { lat, lng, fileids } of batches) {
+    if (!fileids?.length) continue;
+    const photos = [];
+    for (const fileid of fileids) {
+      const cached = await getCached(fileid);
+      if (cached && cached.lat == null) photos.push({ fileid: cached.fileid, name: cached.name, ts: cached.ts, hash: cached.hash ?? null });
+    }
+    if (photos.length) { enqueueBulkGeotag(photos, lat, lng, callback); queued = true; }
   }
-  if (!photos.length) return false;
-
-  _runBulkGeotag(photos, pending.lat, pending.lng, callback);
-  return true;
+  return queued;
 }
