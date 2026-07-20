@@ -355,11 +355,11 @@ editBtn.addEventListener('click', () => {
 });
 
 // No close()/snapshotForResume() — unlike fixDate/fixTime, this doesn't
-// navigate to a different in-app view. The native hand-off just backgrounds
-// Mappho while another app is in front; the slideshow stays exactly as the
-// user left it and gets refreshed in place once the upload settles (same
-// updateCurrentSlideshowItem/refreshSlideshowImage callback pattern the
-// in-app editor already uses).
+// navigate to a different in-app view. It just opens the OS share sheet
+// (backgrounding Mappho while the user picks an app) and downloads a copy
+// out; nothing about the current photo changes as a result, so there's
+// nothing to refresh the slide with afterwards either — the edited result
+// only reappears once the user separately shares it back into Mappho.
 editExternalBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !editExternalHandler) return;

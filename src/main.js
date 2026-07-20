@@ -7,13 +7,13 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
-import { listImages, listFolders, folderExists, fetchFileHead, fetchThumbSrc, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setEditExternalHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
-import { startExternalEdit, setExternalEditProgressFn, setExternalEditStatusFn, checkPendingExternalEditResume } from './externaledit.js';
+import { exportForExternalEdit } from './externaledit.js';
 import { checkPendingShare, listenForShares } from './import.js';
 import { startGeotagging, setGeotagStatusFn, setGeotagProgressFn, getPendingBulkGeotag, resumeBulkGeotag, discardPendingBulkGeotag } from './geotag.js';
 import { openGrid, setBulkFixDateHandler, setBulkIgnoreHandler, setAfterBulkGeotagCallback, updateGridItem } from './grid.js';
@@ -1698,8 +1698,7 @@ async function checkPendingBulkResume() {
   await checkPendingBulkGeotagResume();
   await fixdateQueue.checkPendingResume(() => reloadTopbarCounts());
   await checkPendingPhotoEditResume(() => reloadTopbarCounts());
-  await checkPendingExternalEditResume(() => reloadTopbarCounts());
-  // Not a resume in the same sense as the four above (nothing was
+  // Not a resume in the same sense as the three above (nothing was
   // interrupted mid-flight to offer resuming) — just: the app may have just
   // been launched by an incoming share, and this is the first point after
   // startScan where organize.js's hash index is guaranteed loaded, which
@@ -2176,44 +2175,13 @@ async function main() {
       showBriefStatus('✅ Photo saved');
     });
   });
-  setExternalEditStatusFn(setStatus);
-  setExternalEditProgressFn(setProgress);
   setEditExternalHandler(photo => {
-    startExternalEdit(photo, async r => {
-      if (r.cancelled) return; // user backed out, or the editor didn't cooperate — nothing to report
-      if (r.unsupported) { showBriefStatus('Video and HEIC photos can\'t be edited externally yet.'); return; }
+    exportForExternalEdit(photo, r => {
+      if (r.cancelled) return; // user backed out of the share sheet — nothing to report
+      if (r.unsupported) { showBriefStatus('Video and HEIC photos can\'t be exported for external editing yet.'); return; }
       if (r.stale) { reloadTopbarCounts(); showBriefStatus('⚠️ That photo no longer exists on pCloud — removed from your library.'); return; }
-      if (!r.success) { showBriefStatus(`❌ External edit failed${r.error ? `: ${r.error}` : ''}`); return; }
-
-      const { newFileid, newName, newHash } = r.results[0].result;
-      // No client-rendered preview to work from here (unlike the in-app
-      // editor's canvas) — fetch a fresh thumbnail under the new fileid so
-      // the slideshow doesn't keep showing the pre-edit image.
-      let newThumb = null;
-      try { newThumb = await fetchThumbSrc(newFileid, '1024x1024'); } catch (e) { log('External edit thumb refresh error', e.message); }
-
-      try {
-        if (newFileid !== photo.fileid) {
-          const cached = await getCached(photo.fileid);
-          await deleteRecord(photo.fileid);
-          await deleteOrphan(photo.fileid);
-          const hash = newHash ?? cached?.hash ?? null;
-          if (cached) await putCached({ ...cached, fileid: newFileid, name: newName, hash });
-          if (!cached || cached.lat == null) await putOrphan({ fileid: newFileid, name: newName, ts: cached?.ts ?? photo.ts, hash });
-          if (cached?.lat != null) {
-            removeMarker(photo.fileid);
-            addMarker({ fileid: newFileid, name: newName, lat: cached.lat, lng: cached.lng, ts: cached.ts });
-          }
-          updateGridItem(photo.fileid, { fileid: newFileid, name: newName, hash }, newThumb);
-        }
-      } catch (e) {
-        log('External edit cache update error', e.message);
-      }
-      updateCurrentSlideshowItem({ fileid: newFileid, name: newName, ts: photo.ts });
-      if (newThumb) refreshSlideshowImage(newFileid, newThumb);
-      reloadTopbarCounts();
-      flushPhotoIndex();
-      showBriefStatus('✅ Photo saved');
+      if (!r.success) { showBriefStatus(`❌ Export failed${r.error ? `: ${r.error}` : ''}`); return; }
+      showBriefStatus('📤 Exported — share the edited result back to Mappho when you\'re done.');
     });
   });
   // Live "go check now" signal for a share arriving while already running —
