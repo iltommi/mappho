@@ -10,8 +10,10 @@ export function waitForVisible() {
 
 // Same shape as askRetry, worded for resuming a bulk job interrupted by an
 // app kill (OS memory pressure winning out over the background-sync service)
-// rather than the ordinary partial-failure retry.
-export function askResume(count) {
+// rather than the ordinary partial-failure retry. `label` names which kind
+// of job it was (e.g. "bulk geotag", "bulk date fix") since more than one
+// kind can now have interrupted work waiting to resume.
+export function askResume(count, label) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:6000;display:flex;align-items:center;justify-content:center';
@@ -21,7 +23,7 @@ export function askResume(count) {
 
     const msg = document.createElement('p');
     msg.style.cssText = 'color:#e2e8f0;margin:0;font-size:.95rem;text-align:center;line-height:1.4';
-    msg.textContent = `A bulk geotag was interrupted with ${count} photo${count !== 1 ? 's' : ''} left. Resume?`;
+    msg.textContent = `A ${label} was interrupted with ${count} photo${count !== 1 ? 's' : ''} left. Resume?`;
 
     const btns = document.createElement('div');
     btns.style.cssText = 'display:flex;gap:10px';

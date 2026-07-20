@@ -24,6 +24,7 @@ import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askRetry, askResume, waitForVisible } from './confirm.js';
+import { startBackgroundSync, updateBackgroundSync, stopBackgroundSync } from './backgroundsync.js';
 import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, countAllNonIgnored, getAllNonIgnoredPage, getPositionAndDatePage, countGeotaggedInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import { distinctDayRanges, sameDayFromList } from './dayrange.js';
 import './style.css';
@@ -366,6 +367,13 @@ async function withStaleCheck(fileid, fn) {
   }
 }
 
+// Bulk fix-date runs 2 photos' download/modify/upload concurrently (see
+// runBulkFixDateBatch), so a single item's byte-level progress no longer
+// means anything on its own. runBulkFixDateBatch drives the bar itself
+// instead, as a queue-wide completed/total, while this suppresses the
+// single-item version for its duration.
+let _fixDateBulkMode = false;
+
 // Drives the top progress bar through the 3 stages of applying an edit —
 // download, rewrite EXIF, upload — instead of leaving it sitting at 0 until
 // the upload starts. Download and EXIF-rewrite have no byte-level progress
@@ -373,6 +381,7 @@ async function withStaleCheck(fileid, fn) {
 // leg (the slow one, and the only one FileTransfer reports progress for)
 // actually animates within its 66–100 share.
 function setStep(step) {
+  if (_fixDateBulkMode) return;
   if (step === 'download') setProgress(0);
   else if (step === 'process') setProgress(33);
   else if (step === 'upload')  setProgress(66);
@@ -381,6 +390,7 @@ function setStep(step) {
 // Wraps an upload call so the top progress bar always gets reset once the
 // upload settles (success or failure) instead of being left stuck mid-way.
 async function withUploadProgress(fn) {
+  if (_fixDateBulkMode) return fn(undefined);
   try {
     return await fn((bytes, total) => setProgress(66 + (total ? (bytes / total) * 34 : 0)));
   } finally {
@@ -566,7 +576,7 @@ fixDateSaveBtn.addEventListener('click', () => {
       if (!deltaMs) { showBriefStatus('Set a shift amount first — tap ‹ or › below.'); return; }
       hideFixDateBar();
       fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
-      _runBulkShiftDate(list, deltaMs, cb);
+      enqueueBulkFixDate(list, 'shift', { deltaMs }, cb);
       return;
     }
 
@@ -576,14 +586,14 @@ fixDateSaveBtn.addEventListener('click', () => {
       const dateStr = fixDateInput.value;
       hideFixDateBar();
       fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
-      _runBulkFixDateKeepTime(list, dateStr, cb);
+      enqueueBulkFixDate(list, 'keeptime', { dateStr }, cb);
       return;
     }
 
     const ts = new Date(`${fixDateInput.value}T${fixDateTimeInput.value || '12:00'}`).getTime();
     hideFixDateBar();
     fixDatePhoto = null; fixDatePhotos = null; fixDateOnDone = null;
-    _runBulkFixDate(list, ts, cb);
+    enqueueBulkFixDate(list, 'fixed', { ts }, cb);
     return;
   }
 
@@ -635,97 +645,217 @@ async function _runFixDate(photo, ts, onDone, mode = 'date') {
   }
 }
 
-// Shared bulk-photo-date-edit loop — `computeTs(photo)` decides the new
-// timestamp per photo, so the three modes below differ only in that
-// function: a constant (fixed date/time), a per-photo combine of a shared
-// date with that photo's own time (keep-time), or an offset from that
-// photo's own ts (shift). Returns the run's stats instead of calling `cb`
-// itself, since only the fixed-date/time mode needs the extra step of
-// updating _lastFixDateTs afterward.
-async function _runBulkDateOp(list, computeTs, { verb, pastVerb, skipUndated = false }) {
-  let ok = 0, staleCount = 0, skipped = 0;
-  const failedItems = [];
-  for (let i = 0; i < list.length; i++) {
-    await waitForVisible();
-    setStatus(`📅 ${verb}… ${i + 1}/${list.length}`, 0);
-    const photo = list[i];
-    if (skipUndated) {
-      const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
-      if (!hasOwnDate) { skipped++; continue; } // nothing to shift from
-    }
-    try {
-      const r = await applyFixDateToPhoto(photo, computeTs(photo));
-      if (r.lat != null && r.newFileid !== r.oldFileid) {
-        removeMarker(r.oldFileid);
-        addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
-      }
-      ok++;
-    } catch (e) {
-      // A stale photo's record is already purged (see applyFixDateToPhoto) —
-      // it's permanently gone, not a transient failure, so don't offer to
-      // retry it: retrying the same dead fileid can only ever fail again.
-      if (e.staleFile) { staleCount++; log('Bulk fix date', `${photo.name}: no longer exists on pCloud — removed`); }
-      else { failedItems.push(photo); log('Bulk fix date error', `${photo.name}: ${e.message}`); }
-    }
-  }
+// pCloud doesn't throttle concurrent requests from one account (see
+// geotag.js), and organize.js's shared name-picking state serializes itself
+// internally now, so this is safe for bulk fix-date too.
+const BULK_CONCURRENCY = 2;
 
-  const staleNote = staleCount > 0 ? ` (${staleCount} no longer existed, removed)` : '';
-  const skipNote  = skipped > 0 ? ` (${skipped} had no date to shift from, skipped)` : '';
-  const total = list.length - skipped;
-  if (failedItems.length > 0) {
-    showBriefStatus(`📅 ${pastVerb} ${ok}/${total} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
-  } else {
-    showBriefStatus(`📅 ${pastVerb} ${ok} photo${ok !== 1 ? 's' : ''}${staleNote}${skipNote}`);
-  }
+// ── Bulk fix-date queue ──────────────────────────────────────────────────
+// Mirrors bulk geotag's queue (see geotag.js) for the same reason: a second
+// bulk date-edit started while one's already running must not race it for
+// the progress bar, status text, resume persistence, or the background-sync
+// service. `computeTs(photo)` decides the new timestamp per photo, so the
+// three modes differ only in that function — kept serializable as
+// {mode, params} rather than a raw closure so a batch can be persisted for
+// resume-after-kill and reconstructed later.
 
-  try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
-  flushPhotoIndex();
-
-  return { ok, staleCount, skipped, failedItems };
-}
-
-async function _runBulkFixDate(list, ts, cb) {
-  const { ok, staleCount, failedItems } = await _runBulkDateOp(list, () => ts, { verb: 'Fixing dates', pastVerb: 'Dated' });
-  if (ok > 0) _lastFixDateTs = ts;
-  if (failedItems.length > 0) {
-    const retry = await askRetry(failedItems.length, 'photo');
-    if (retry) { _runBulkFixDate(failedItems, ts, cb); return; }
-  }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
-}
-
-// Same shared `dateStr` for every photo, but each keeps its own time-of-day
-// (falling back to noon for the rare photo with no date of its own) instead
-// of also collapsing to one shared time — mirrors what single-photo 'date'
-// mode already does by default (see fixDateSaveBtn's mode==='date' branch).
-async function _runBulkFixDateKeepTime(list, dateStr, cb) {
-  const computeTs = photo => {
+function computeTsFor(mode, params) {
+  if (mode === 'shift')    return photo => photo.ts + params.deltaMs;
+  if (mode === 'keeptime') return photo => {
     const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
     const existingTime = hasOwnDate ? new Date(photo.ts).toTimeString().slice(0, 5) : '12:00';
-    return new Date(`${dateStr}T${existingTime}`).getTime();
+    return new Date(`${params.dateStr}T${existingTime}`).getTime();
   };
-  const { ok, staleCount, failedItems } = await _runBulkDateOp(list, computeTs, { verb: 'Fixing dates', pastVerb: 'Dated' });
-  if (failedItems.length > 0) {
-    const retry = await askRetry(failedItems.length, 'photo');
-    if (retry) { _runBulkFixDateKeepTime(failedItems, dateStr, cb); return; }
-  }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount });
+  return () => params.ts; // 'fixed'
 }
 
-// Instead of one shared ts applied to every photo, each photo is shifted by
-// `deltaMs` from its own current ts — preserving whatever date/time
-// differences already existed between the selected photos (e.g. correcting
-// a camera clock that was consistently off, rather than collapsing the
-// whole batch to one moment).
-async function _runBulkShiftDate(list, deltaMs, cb) {
-  const { ok, staleCount, skipped, failedItems } = await _runBulkDateOp(
-    list, photo => photo.ts + deltaMs, { verb: 'Shifting', pastVerb: 'Shifted', skipUndated: true },
-  );
-  if (failedItems.length > 0) {
-    const retry = await askRetry(failedItems.length, 'photo');
-    if (retry) { _runBulkShiftDate(failedItems, deltaMs, cb); return; }
+function fixDateVerbsFor(mode) {
+  return mode === 'shift'
+    ? { verb: 'Shifting', pastVerb: 'Shifted', skipUndated: true }
+    : { verb: 'Fixing dates', pastVerb: 'Dated', skipUndated: false };
+}
+
+const FIXDATE_PENDING_KEY = 'mappho_pending_bulk_fixdate';
+
+function savePendingBulkFixDateQueue(batches) {
+  try {
+    if (batches.length) localStorage.setItem(FIXDATE_PENDING_KEY, JSON.stringify(batches));
+    else localStorage.removeItem(FIXDATE_PENDING_KEY);
+  } catch {}
+}
+function clearPendingBulkFixDate() {
+  try { localStorage.removeItem(FIXDATE_PENDING_KEY); } catch {}
+}
+function discardPendingBulkFixDate() { clearPendingBulkFixDate(); }
+function getPendingBulkFixDate() {
+  try {
+    const raw = localStorage.getItem(FIXDATE_PENDING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+const _fixDateQueue = []; // batches not yet started: { list, mode, params, cb }
+let _fixDateQueueRunning = false;
+let _fixDateCurrent = null; // batch actively being processed: { mode, params, remaining: Set<fileid> }
+let _fixDateQueueTotal     = 0;
+let _fixDateQueueCompleted = 0;
+
+function persistFixDateQueueState() {
+  const batches = [];
+  if (_fixDateCurrent) {
+    batches.push({ mode: _fixDateCurrent.mode, params: _fixDateCurrent.params, fileids: [..._fixDateCurrent.remaining] });
   }
-  cb?.({ success: ok > 0, count: ok, failed: failedItems.length, stale: staleCount, skipped });
+  for (const b of _fixDateQueue) batches.push({ mode: b.mode, params: b.params, fileids: b.list.map(p => p.fileid) });
+  savePendingBulkFixDateQueue(batches);
+}
+
+function enqueueBulkFixDate(list, mode, params, cb) {
+  _fixDateQueue.push({ list, mode, params, cb });
+  _fixDateQueueTotal += list.length;
+  if (_fixDateQueueRunning) {
+    persistFixDateQueueState();
+    const { verb } = fixDateVerbsFor(mode);
+    setStatus(`📅 ${verb}… ${_fixDateQueueCompleted}/${_fixDateQueueTotal} (+${list.length} just added)`, 0);
+    updateBackgroundSync('Mappho — fixing dates', `${verb}… ${_fixDateQueueCompleted}/${_fixDateQueueTotal}`);
+  } else {
+    runFixDateQueue();
+  }
+}
+
+async function runFixDateQueue() {
+  _fixDateQueueRunning = true;
+  // No waitForVisible() pause here — the background-sync service below is
+  // what makes it safe to keep going while hidden; pausing until the app
+  // comes back to the foreground would defeat it.
+  const protectedRun = await startBackgroundSync('Mappho — fixing dates', `Working… 0/${_fixDateQueueTotal}`);
+  const bgNote = protectedRun ? '' : ' — keep Mappho open, background sync unavailable';
+  try {
+    while (_fixDateQueue.length) {
+      const { list, mode, params, cb } = _fixDateQueue.shift();
+      await runBulkFixDateBatch(list, mode, params, cb, bgNote);
+    }
+  } finally {
+    _fixDateCurrent = null;
+    _fixDateQueueTotal = 0;
+    _fixDateQueueCompleted = 0;
+    clearPendingBulkFixDate();
+    stopBackgroundSync();
+    _fixDateQueueRunning = false;
+  }
+}
+
+// Processes one queued batch to completion, including any retry rounds the
+// user asks for — the queue runner above only moves on to the next batch
+// once this fully settles.
+async function runBulkFixDateBatch(initialList, mode, params, cb, bgNote) {
+  const { verb, pastVerb, skipUndated } = fixDateVerbsFor(mode);
+  const computeTs = computeTsFor(mode, params);
+  let list = initialList;
+  let totalOk = 0, totalStale = 0, totalSkipped = 0;
+
+  for (;;) {
+    let ok = 0, staleCount = 0, skipped = 0;
+    const failedItems = [];
+    _fixDateCurrent = { mode, params, remaining: new Set(list.map(p => p.fileid)) };
+    persistFixDateQueueState();
+
+    _fixDateBulkMode = true;
+    let nextIndex = 0;
+    async function processOne(photo) {
+      try {
+        const r = await applyFixDateToPhoto(photo, computeTs(photo));
+        if (r.lat != null && r.newFileid !== r.oldFileid) {
+          removeMarker(r.oldFileid);
+          addMarker({ fileid: r.newFileid, name: r.newName, lat: r.lat, lng: r.lng, ts: r.ts });
+        }
+        ok++;
+      } catch (e) {
+        // A stale photo's record is already purged (see applyFixDateToPhoto) —
+        // it's permanently gone, not a transient failure, so don't offer to
+        // retry it: retrying the same dead fileid can only ever fail again.
+        if (e.staleFile) { staleCount++; log('Bulk fix date', `${photo.name}: no longer exists on pCloud — removed`); }
+        else { failedItems.push(photo); log('Bulk fix date error', `${photo.name}: ${e.message}`); }
+      }
+    }
+    async function worker() {
+      while (nextIndex < list.length) {
+        const photo = list[nextIndex++];
+        if (skipUndated) {
+          const hasOwnDate = photo.ts && photo.ts > 0 && photo.ts < UNDATED_TS;
+          if (!hasOwnDate) skipped++; // nothing to shift from
+          else await processOne(photo);
+        } else {
+          await processOne(photo);
+        }
+        _fixDateQueueCompleted++;
+        _fixDateCurrent.remaining.delete(photo.fileid);
+        setStatus(`📅 ${verb}… ${_fixDateQueueCompleted}/${_fixDateQueueTotal}${bgNote}`, 0);
+        updateBackgroundSync('Mappho — fixing dates', `${verb}… ${_fixDateQueueCompleted}/${_fixDateQueueTotal}`);
+        setProgress((_fixDateQueueCompleted / _fixDateQueueTotal) * 100);
+        persistFixDateQueueState();
+      }
+    }
+    try {
+      await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, list.length) }, worker));
+    } finally {
+      _fixDateBulkMode = false;
+      setProgress(0);
+    }
+    try { await reloadTopbarCounts(); } catch (e) { log('Fix date', `reloadTopbarCounts error: ${e.message}`); }
+    flushPhotoIndex();
+
+    totalOk += ok;
+    totalStale += staleCount;
+    totalSkipped += skipped;
+    const staleNote = totalStale > 0 ? ` (${totalStale} no longer existed, removed)` : '';
+    const skipNote  = totalSkipped > 0 ? ` (${totalSkipped} had no date to shift from, skipped)` : '';
+    const total = initialList.length - totalSkipped;
+
+    if (failedItems.length > 0) {
+      showBriefStatus(`📅 ${pastVerb} ${totalOk}/${total} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
+      const retry = await askRetry(failedItems.length, 'photo');
+      if (retry) { list = failedItems; continue; }
+      if (mode === 'fixed' && totalOk > 0) _lastFixDateTs = params.ts;
+      cb?.({ success: totalOk > 0, count: totalOk, failed: failedItems.length, stale: totalStale, skipped: totalSkipped });
+      return;
+    }
+    showBriefStatus(`📅 ${pastVerb} ${totalOk} photo${totalOk !== 1 ? 's' : ''}${staleNote}${skipNote}`);
+    if (mode === 'fixed' && totalOk > 0) _lastFixDateTs = params.ts;
+    cb?.({ success: totalOk > 0, count: totalOk, failed: 0, stale: totalStale, skipped: totalSkipped });
+    return;
+  }
+}
+
+// Offered on next launch when the background-sync service didn't manage to
+// keep the app alive through the whole queue after all (OS memory pressure
+// can still win). Re-derives full photo objects for every pending batch
+// from the persisted fileids via the cache, then re-queues them — mirrors
+// resumeBulkGeotag in geotag.js.
+async function resumeBulkFixDate(callback) {
+  const batches = getPendingBulkFixDate();
+  clearPendingBulkFixDate();
+  if (!batches?.length) return false;
+
+  let queued = false;
+  for (const { mode, params, fileids } of batches) {
+    if (!fileids?.length) continue;
+    const photos = [];
+    for (const fileid of fileids) {
+      const cached = await getCached(fileid);
+      if (cached) photos.push({ fileid: cached.fileid, name: cached.name, ts: cached.ts, hash: cached.hash ?? null });
+    }
+    if (photos.length) { enqueueBulkFixDate(photos, mode, params, callback); queued = true; }
+  }
+  return queued;
+}
+
+async function checkPendingBulkFixDateResume() {
+  const pending = getPendingBulkFixDate();
+  const total = pending?.reduce((n, b) => n + (b.fileids?.length ?? 0), 0) ?? 0;
+  if (!total) return;
+  const resume = await askResume(total, 'bulk date fix');
+  if (!resume) { discardPendingBulkFixDate(); return; }
+  await resumeBulkFixDate(() => reloadTopbarCounts());
 }
 
 fixDateCancelBtn.addEventListener('click', cancelFixDate);
@@ -1027,7 +1157,7 @@ document.getElementById('use-token-btn').addEventListener('click', async () => {
   saveToken(token);
   showApp();
   await startScan();
-  await checkPendingBulkGeotagResume();
+  await checkPendingBulkResume();
 });
 
 let statusHideTimer = null;
@@ -1613,7 +1743,7 @@ loginForm.addEventListener('submit', async (e) => {
     }
     showApp();
     await startScan();
-    await checkPendingBulkGeotagResume();
+    await checkPendingBulkResume();
   } catch (err) {
     if (err instanceof TwoFactorRequired) {
       pendingTfaToken = err.tfaToken;
@@ -1735,9 +1865,16 @@ async function checkPendingBulkGeotagResume() {
   const pending = getPendingBulkGeotag(); // array of { lat, lng, fileids } batches
   const total = pending?.reduce((n, b) => n + (b.fileids?.length ?? 0), 0) ?? 0;
   if (!total) return;
-  const resume = await askResume(total);
+  const resume = await askResume(total, 'bulk geotag');
   if (!resume) { discardPendingBulkGeotag(); return; }
   await resumeBulkGeotag(() => reloadTopbarCounts());
+}
+
+// Checked together at every startup entry point — see each function's own
+// comment for what it resumes.
+async function checkPendingBulkResume() {
+  await checkPendingBulkGeotagResume();
+  await checkPendingBulkFixDateResume();
 }
 
 // Per-scan organize state. Reset at the start of each scan.
@@ -2227,7 +2364,7 @@ async function main() {
   }
 
   await startScan();
-  await checkPendingBulkGeotagResume();
+  await checkPendingBulkResume();
   setupFacesResumeSync();
 }
 

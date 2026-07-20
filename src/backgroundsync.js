@@ -10,7 +10,12 @@ import { log } from './log.js';
 // looks identical, from the loop's perspective, to it just not working.
 const BackgroundSync = registerPlugin('BackgroundSync');
 
-let started = false;
+// Reference-counted: bulk geotag and bulk fix-date each have their own queue
+// and can be running at once, both wanting this same one native service.
+// Without a count, whichever finished first would call stop() and tear the
+// service down out from under the other — the exact bug two concurrent
+// geotag batches had before they got a shared queue, just one level up.
+let refCount = 0;
 
 // Generous — start() legitimately waits on a user-answered permission dialog
 // the first time, which has no fixed upper bound. This is only a backstop
@@ -27,19 +32,32 @@ function withTimeout(promise, ms) {
 // starting work that might otherwise race a user backgrounding the app
 // mid-permission-dialog, and — since this is the courtesy, not the actual
 // bulk work — reflect in its own UI whether it's actually protected rather
-// than silently doing nothing extra.
+// than silently doing nothing extra. Only the first caller (refCount 0 -> 1)
+// actually starts the native service; anyone joining an already-running
+// session just gets its notification text updated instead.
 export function startBackgroundSync(title, body) {
+  refCount++;
+  if (refCount > 1) {
+    updateBackgroundSync(title, body);
+    return Promise.resolve(true);
+  }
   return withTimeout(BackgroundSync.start({ title, body }), 60000)
-    .then(() => { started = true; log('BackgroundSync', 'started'); return true; })
-    .catch(e => { started = false; log('BackgroundSync', `start failed: ${e.message}`); return false; });
+    .then(() => { log('BackgroundSync', 'started'); return true; })
+    .catch(e => { log('BackgroundSync', `start failed: ${e.message}`); return false; });
 }
 
 export function updateBackgroundSync(title, body) {
   BackgroundSync.update({ title, body }).catch(e => log('BackgroundSync', `update failed: ${e.message}`));
 }
 
+// Only actually stops the service once every caller that started it has
+// also stopped — see refCount above.
 export function stopBackgroundSync() {
-  log('BackgroundSync', `stop (was ${started ? '' : 'not '}running)`);
-  started = false;
+  refCount = Math.max(0, refCount - 1);
+  if (refCount > 0) {
+    log('BackgroundSync', `release (${refCount} other session${refCount === 1 ? '' : 's'} still running)`);
+    return;
+  }
+  log('BackgroundSync', 'stop');
   BackgroundSync.stop().catch(e => log('BackgroundSync', `stop failed: ${e.message}`));
 }
