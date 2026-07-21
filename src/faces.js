@@ -201,6 +201,23 @@ export function getFaceRegions(entry) {
   return [];
 }
 
+// Person ids present in an entry, regardless of whether region coordinates
+// are available. getFaceRegions() only returns area-bearing regions (it's
+// built for drawing boxes on a single image) — video entries store presence
+// only (regions: [{person}], no area, since there's no single frame to place
+// a box on), so anything that only cares about "who's in this photo/video",
+// not where, should use this instead.
+export function getPeoplePresent(entry) {
+  if (!entry) return [];
+  if (Array.isArray(entry.regions)) {
+    return [...new Set(entry.regions.map(r => String(r.person)))];
+  }
+  if (Array.isArray(entry.faces)) {
+    return [...new Set(entry.faces.map(f => String(f.person)))];
+  }
+  return [];
+}
+
 // Lookup APIs for future UI (person filter, name captions, face overlays).
 export async function getFacesForHash(hash) {
   await load();
@@ -216,36 +233,33 @@ export function getFacesPeople() {
   return readMeta()?.people ?? {};
 }
 
-// Returns the faces entries of every photo where ALL given people appear
-// together (AND across ids) — a single id is the plain "this person's photos" case.
+// Returns the faces entries of every photo/video where ALL given people
+// appear together (AND across ids) — a single id is the plain "this
+// person's photos/videos" case.
 export async function getEntriesForPeople(personIds) {
   await load();
   const ids = personIds.map(String);
   if (!ids.length) return [];
   const all = await getAllFaces();
   const matched = all.filter(e => {
-    const present = new Set(getFaceRegions(e).map(f => String(f.person)));
+    const present = new Set(getPeoplePresent(e));
     return ids.every(id => present.has(id));
   });
-  log('Faces', `people [${ids.join(',')}]: ${matched.length} photos in mirror (AND)`);
+  log('Faces', `people [${ids.join(',')}]: ${matched.length} entries in mirror (AND)`);
   return matched;
 }
 
-// Aggregates recognised people with their photo counts (a person appearing
-// several times in one photo counts once). Sorted by count, then name.
-// Cached until a mutation or remote refresh invalidates it.
+// Aggregates recognised people with their photo/video counts (a person
+// appearing several times in one entry counts once). Sorted by count, then
+// name. Cached until a mutation or remote refresh invalidates it.
 export async function getPeopleStats() {
   await load();
   if (_stats) { log('Faces', `stats from cache — ${_stats.peopleCount} people`); return _stats; }
   const t0 = Date.now();
   const entries = await getAllFaces();
-  const counts = new Map(); // person id (string) → photo count
+  const counts = new Map(); // person id (string) → entry count
   for (const e of entries) {
-    const seen = new Set();
-    for (const f of getFaceRegions(e)) {
-      const pid = String(f.person);
-      if (seen.has(pid)) continue;
-      seen.add(pid);
+    for (const pid of getPeoplePresent(e)) {
       counts.set(pid, (counts.get(pid) ?? 0) + 1);
     }
   }
@@ -254,6 +268,6 @@ export async function getPeopleStats() {
     .map(([id, count]) => ({ id, name: people[id] ?? `#${id}`, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   _stats = { peopleCount: list.length, list };
-  log('Faces', `stats computed in ${Date.now() - t0}ms — ${list.length} people across ${entries.length} photos`);
+  log('Faces', `stats computed in ${Date.now() - t0}ms — ${list.length} people across ${entries.length} entries`);
   return _stats;
 }
