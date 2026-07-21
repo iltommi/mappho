@@ -1116,6 +1116,17 @@ const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
 const peopleTabPeople    = document.getElementById('people-tab-people');
 const peopleTabLocations = document.getElementById('people-tab-locations');
+const mediaTypePhotos    = document.getElementById('people-mediatype-photos');
+const mediaTypeVideos    = document.getElementById('people-mediatype-videos');
+
+// Read at search time, not live-reactive (same as the scene text input and
+// people/location selections — nothing re-runs until the user taps a row,
+// hits OK, or presses Enter). Unchecking both is allowed but treated as "no
+// filter" rather than "match nothing" — see openTaggedGrid's mediaType
+// handling — so there's no invalid state to guard against here.
+function currentMediaTypeQuery() {
+  return { includePhotos: mediaTypePhotos.checked, includeVideos: mediaTypeVideos.checked };
+}
 function closePeoplePopup() {
   peoplePopup.style.display = 'none';
   viewClosed('search');
@@ -1200,7 +1211,7 @@ function renderPeopleRows(filterText) {
       // grid restores it with the query and selections intact. If the grid
       // never opens (no matches, error), re-show it right away.
       peoplePopup.style.display = 'none';
-      const query = { searchText: peopleSceneInput.value, ...(isPeople ? { people: [p] } : { locations: [p] }) };
+      const query = { searchText: peopleSceneInput.value, ...currentMediaTypeQuery(), ...(isPeople ? { people: [p] } : { locations: [p] }) };
       openTaggedGrid(query)
         .then(opened => { if (!opened) restoreTop(); })
         .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
@@ -1218,6 +1229,7 @@ function runTaggedSearch() {
     people: [..._peopleSelected.values()],
     locations: [..._locationsSelected.values()],
     searchText: peopleSceneInput.value,
+    ...currentMediaTypeQuery(),
   };
   // Same hide-don't-close dance as the per-row tap above.
   peoplePopup.style.display = 'none';
@@ -1240,6 +1252,8 @@ async function openPeoplePopup() {
   _locationsSelected  = new Map();
   peopleSearchInput.value = '';
   peopleSceneInput.value  = '';
+  mediaTypePhotos.checked = true;
+  mediaTypeVideos.checked = true;
   updatePeopleSelectBar();
   setPeopleTab(people.length ? 'people' : 'locations');
   peoplePopup.style.display = 'flex';
@@ -1288,7 +1302,7 @@ function intersectHashSets(a, b) {
 // by content hash — the grid needs fileids for thumbnails, so matches with
 // no cached record are silently dropped.
 async function openTaggedGrid(query = {}) {
-  const { people = [], locations = [], searchText = '' } = query;
+  const { people = [], locations = [], searchText = '', includePhotos = true, includeVideos = true } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -1316,6 +1330,11 @@ async function openTaggedGrid(query = {}) {
     hashSet = intersectHashSets(hashSet, new Set(scoreByHash.keys()));
     labelParts.push(`🔍 “${searchText.trim()}”`);
   }
+  // Both checked (the default) or both unchecked both mean "no constraint" —
+  // there's no useful meaning for "match neither type", so an accidentally-
+  // empty selection fails open to showing everything instead of nothing.
+  const mediaTypeFilter = includePhotos !== includeVideos ? (includeVideos ? 'videos' : 'photos') : null;
+  if (mediaTypeFilter) labelParts.push(mediaTypeFilter === 'videos' ? '🎬 Videos only' : '📷 Photos only');
   const label = labelParts.join(' · ');
   if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 
@@ -1323,13 +1342,14 @@ async function openTaggedGrid(query = {}) {
   for (const r of await getAllCached()) {
     if (r.hash != null && !r.ignored) byHash.set(String(r.hash), r);
   }
-  const items = [];
+  let items = [];
   let missing = 0;
   for (const hash of hashSet) {
     const rec = byHash.get(hash);
     if (rec) items.push(rec); else missing++;
   }
   if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
+  if (mediaTypeFilter) items = items.filter(r => isVideo(r.name) === (mediaTypeFilter === 'videos'));
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return false; }
   // Free-text search results are shown best-match-first; a plain people/
   // places selection stays chronological, matching every other grid in the app.
