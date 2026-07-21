@@ -10,7 +10,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, t
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
 import { checkPendingShare, listenForShares } from './import.js';
@@ -1118,14 +1118,19 @@ const peopleTabPeople    = document.getElementById('people-tab-people');
 const peopleTabLocations = document.getElementById('people-tab-locations');
 const mediaTypePhotos    = document.getElementById('people-mediatype-photos');
 const mediaTypeVideos    = document.getElementById('people-mediatype-videos');
+const viewportCheck      = document.getElementById('people-viewport-check');
 
 // Read at search time, not live-reactive (same as the scene text input and
 // people/location selections — nothing re-runs until the user taps a row,
-// hits OK, or presses Enter). Unchecking both is allowed but treated as "no
-// filter" rather than "match nothing" — see openTaggedGrid's mediaType
-// handling — so there's no invalid state to guard against here.
-function currentMediaTypeQuery() {
-  return { includePhotos: mediaTypePhotos.checked, includeVideos: mediaTypeVideos.checked };
+// hits OK, or presses Enter). Unchecking both media types is allowed but
+// treated as "no filter" rather than "match nothing" — see openTaggedGrid's
+// mediaType handling — so there's no invalid state to guard against here.
+function currentSearchFiltersQuery() {
+  return {
+    includePhotos: mediaTypePhotos.checked,
+    includeVideos: mediaTypeVideos.checked,
+    inViewport: viewportCheck.checked,
+  };
 }
 function closePeoplePopup() {
   peoplePopup.style.display = 'none';
@@ -1145,12 +1150,15 @@ let _peopleTab         = 'people'; // 'people' | 'locations' — which list is c
 function updatePeopleSelectBar() {
   const n = _peopleSelected.size + _locationsSelected.size;
   const hasSearch = peopleSceneInput.value.trim().length > 0;
+  const viewportOnly = viewportCheck.checked;
   const parts = [];
   if (n) parts.push(`${n} selected`);
   if (hasSearch) parts.push('scene search');
+  if (viewportOnly) parts.push('current map view');
   peopleSelectCount.textContent = parts.join(' + ');
-  peopleSelectBar.style.display = (n || hasSearch) ? 'flex' : 'none';
+  peopleSelectBar.style.display = (n || hasSearch || viewportOnly) ? 'flex' : 'none';
 }
+viewportCheck.addEventListener('change', updatePeopleSelectBar);
 
 function setPeopleTab(tab) {
   _peopleTab = tab;
@@ -1211,7 +1219,7 @@ function renderPeopleRows(filterText) {
       // grid restores it with the query and selections intact. If the grid
       // never opens (no matches, error), re-show it right away.
       peoplePopup.style.display = 'none';
-      const query = { searchText: peopleSceneInput.value, ...currentMediaTypeQuery(), ...(isPeople ? { people: [p] } : { locations: [p] }) };
+      const query = { searchText: peopleSceneInput.value, ...currentSearchFiltersQuery(), ...(isPeople ? { people: [p] } : { locations: [p] }) };
       openTaggedGrid(query)
         .then(opened => { if (!opened) restoreTop(); })
         .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
@@ -1224,12 +1232,15 @@ function renderPeopleRows(filterText) {
 peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
 
 function runTaggedSearch() {
-  if (!_peopleSelected.size && !_locationsSelected.size && !peopleSceneInput.value.trim()) return;
+  // "Only in current map view" checked with nothing else selected is a
+  // valid, standalone search (everything currently on screen) — the empty
+  // guard below only blocks a totally criteria-less tap/Enter.
+  if (!_peopleSelected.size && !_locationsSelected.size && !peopleSceneInput.value.trim() && !viewportCheck.checked) return;
   const query = {
     people: [..._peopleSelected.values()],
     locations: [..._locationsSelected.values()],
     searchText: peopleSceneInput.value,
-    ...currentMediaTypeQuery(),
+    ...currentSearchFiltersQuery(),
   };
   // Same hide-don't-close dance as the per-row tap above.
   peoplePopup.style.display = 'none';
@@ -1254,6 +1265,7 @@ async function openPeoplePopup() {
   peopleSceneInput.value  = '';
   mediaTypePhotos.checked = true;
   mediaTypeVideos.checked = true;
+  viewportCheck.checked   = false;
   updatePeopleSelectBar();
   setPeopleTab(people.length ? 'people' : 'locations');
   peoplePopup.style.display = 'flex';
@@ -1302,7 +1314,7 @@ function intersectHashSets(a, b) {
 // by content hash — the grid needs fileids for thumbnails, so matches with
 // no cached record are silently dropped.
 async function openTaggedGrid(query = {}) {
-  const { people = [], locations = [], searchText = '', includePhotos = true, includeVideos = true } = query;
+  const { people = [], locations = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -1335,8 +1347,17 @@ async function openTaggedGrid(query = {}) {
   // empty selection fails open to showing everything instead of nothing.
   const mediaTypeFilter = includePhotos !== includeVideos ? (includeVideos ? 'videos' : 'photos') : null;
   if (mediaTypeFilter) labelParts.push(mediaTypeFilter === 'videos' ? '🎬 Videos only' : '📷 Photos only');
+  // Grabbed once up front (not re-read after the map might have moved) so
+  // the results match what was actually on screen when the search ran.
+  const bounds = inViewport ? getViewportBounds() : null;
+  if (bounds) labelParts.push('🗺️ in view');
   const label = labelParts.join(' · ');
-  if (!hashSet || !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
+  // hashSet stays null when people/locations/searchText were all empty —
+  // normally unreachable (callers require at least one of those or
+  // inViewport before calling this), but a bare "everything in view" search
+  // is a real case: fall through to every cached record instead of bailing.
+  if (!hashSet && !bounds) { showBriefStatus(`No photos found for ${label}.`); return false; }
+  if (hashSet && !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 
   const byHash = new Map();
   for (const r of await getAllCached()) {
@@ -1344,12 +1365,17 @@ async function openTaggedGrid(query = {}) {
   }
   let items = [];
   let missing = 0;
-  for (const hash of hashSet) {
-    const rec = byHash.get(hash);
-    if (rec) items.push(rec); else missing++;
+  if (hashSet) {
+    for (const hash of hashSet) {
+      const rec = byHash.get(hash);
+      if (rec) items.push(rec); else missing++;
+    }
+    if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
+  } else {
+    items = [...byHash.values()];
   }
-  if (missing) log('Tagged grid', `${label}: ${missing} of ${hashSet.size} entries have no cached record`);
   if (mediaTypeFilter) items = items.filter(r => isVideo(r.name) === (mediaTypeFilter === 'videos'));
+  if (bounds) items = items.filter(r => r.lat != null && r.lng != null && bounds.contains([r.lat, r.lng]));
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return false; }
   // Free-text search results are shown best-match-first; a plain people/
   // places selection stays chronological, matching every other grid in the app.

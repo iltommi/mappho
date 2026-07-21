@@ -423,6 +423,14 @@ export function findClosestMarker(ts) {
   return { lat, lng, name: data.name, ts: data.ts, delta: bestDiff };
 }
 
+// Returns the current map viewport as a Leaflet LatLngBounds (with its own
+// .contains([lat,lng])), or null if the map hasn't been initialized yet —
+// shouldn't happen in practice, since initMap() runs at startup before any
+// UI that could call this.
+export function getViewportBounds() {
+  return map ? map.getBounds() : null;
+}
+
 // Returns { min, max } timestamps across all dated markers, or null if none.
 export function getDateRange() {
   const dated = markerIndex.map(m => m.ts).filter(t => t != null);
