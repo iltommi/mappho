@@ -1,6 +1,6 @@
 import { fetchThumbSrc, getFileFolderName, deleteFile, downloadFullFile, getFileStat, getPublicLink, bufToBase64 } from './pcloud.js';
 import { deleteRecord, deleteOrphan, getCached, UNDATED_TS } from './db.js';
-import { getFacesForHash, getFacesPeople, getFaceRegions } from './faces.js';
+import { getFacesForHash, getFacesPeople, getFaceRegions, getPeoplePresent } from './faces.js';
 import { isFlagged, toggleFlag } from './flags.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -107,13 +107,14 @@ function applyImgTransform(animate) {
     ? '' : `translate(${imgTx}px, ${imgTy}px) scale(${imgScale})`;
   // Face boxes only map onto the untransformed image; hide while zoomed/panned.
   if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) facesOverlay.style.display = 'none';
-  else if (facesMode && _facesRegions.length) renderFacesOverlay();
+  else if (facesMode && (_facesRegions.length || _facesPeopleNames.length)) renderFacesOverlay();
 }
 
 // ── Faces overlay ─────────────────────────────────────────────────────────────
 
 let facesMode     = false; // user toggled the 👥 button; sticky across navigation
-let _facesRegions = [];    // normalised regions for the current photo
+let _facesRegions = [];    // normalised, positioned regions for the current photo — empty for videos (no box coordinates)
+let _facesPeopleNames = []; // resolved names for whoever's present, photo or video — drives the 👥 count and (for videos) the name-list overlay
 let _facesReq     = 0;
 
 function hideFacesOverlay() {
@@ -145,29 +146,48 @@ async function refreshFlagState() {
   flagBtn.classList.toggle('active', flagged);
 }
 
-// Resolves the faces entry for the current photo and shows/hides the 👥
-// button. Called on every slide change.
+// Resolves the faces entry for the current photo/video and shows/hides the
+// 👥 button. Called on every slide change. Videos only ever carry presence
+// (regions: [{person}], no area — there's no single frame to place a box on),
+// so _facesRegions stays empty for them; _facesPeopleNames is what actually
+// drives the button/count/overlay for both kinds.
 async function refreshFacesState() {
   const photo = photos[current];
   const req = ++_facesReq;
   _facesRegions = [];
+  _facesPeopleNames = [];
   facesBtn.style.display = 'none';
   hideFacesOverlay();
   updateCounter();
-  if (!photo || isVideo(photo.name)) return;
+  if (!photo) return;
   const hash = await resolvePhotoHash(photo);
   if (req !== _facesReq || hash == null) return;
   const entry = await getFacesForHash(hash);
   if (req !== _facesReq) return;
-  const regions = getFaceRegions(entry);
-  if (!regions.length) return;
-  _facesRegions = regions;
+  const peopleIds = getPeoplePresent(entry);
+  if (!peopleIds.length) return;
+  _facesRegions = getFaceRegions(entry);
+  const peopleMap = getFacesPeople();
+  _facesPeopleNames = peopleIds.map(id => peopleMap[id] ?? `#${id}`);
   facesBtn.style.display = '';
   updateCounter(); // append the 👥 count next to the date
   if (facesMode) renderFacesOverlay();
 }
 
 const FACE_LABEL_GAP = 3; // px — minimum clearance enforced between labels
+
+// Dispatches to whichever overlay applies to the current item: positioned
+// boxes for a photo (_facesRegions), a plain name list for a video
+// (_facesPeopleNames only — there's no per-face coordinate to draw a box
+// with, since the tool only reports presence for video, not a bounding box
+// on any single frame).
+function renderFacesOverlay() {
+  facesOverlay.innerHTML = '';
+  if (!facesMode) { facesOverlay.style.display = 'none'; return; }
+  if (_facesRegions.length) renderFaceBoxes();
+  else if (_facesPeopleNames.length) renderFaceNameList();
+  else facesOverlay.style.display = 'none';
+}
 
 // Draws rectangles + name labels over the current image. Regions come from
 // getFaceRegions() in normalised [0,1] units with cx/cy at the region centre
@@ -181,9 +201,7 @@ const FACE_LABEL_GAP = 3; // px — minimum clearance enforced between labels
 // several faces below its box in a dense cluster, but never on top of another
 // name. Only label-vs-label overlap is resolved; a label sitting over a
 // neighbouring face's box is fine.
-function renderFacesOverlay() {
-  facesOverlay.innerHTML = '';
-  if (!facesMode || !_facesRegions.length) { facesOverlay.style.display = 'none'; return; }
+function renderFaceBoxes() {
   if (imgScale !== 1 || imgTx !== 0 || imgTy !== 0) { facesOverlay.style.display = 'none'; return; }
   if (curImg.style.display === 'none' || !curImg.naturalWidth) { facesOverlay.style.display = 'none'; return; }
   const imgRect  = curImg.getBoundingClientRect();
@@ -235,15 +253,38 @@ function renderFacesOverlay() {
   facesOverlay.style.display = 'block';
 }
 
+// Simple stacked name list, anchored to the video thumbnail's corner —
+// no per-face coordinates to work with, so none of renderFaceBoxes' box/
+// label-collision logic applies here.
+function renderFaceNameList() {
+  if (curImg.style.display === 'none' || !curImg.naturalWidth) { facesOverlay.style.display = 'none'; return; }
+  const imgRect  = curImg.getBoundingClientRect();
+  const paneRect = facesOverlay.parentElement.getBoundingClientRect();
+  if (!imgRect.width || !imgRect.height) { facesOverlay.style.display = 'none'; return; }
+
+  const panel = document.createElement('div');
+  panel.className = 'ss-face-namelist';
+  panel.style.left = `${imgRect.left - paneRect.left + 8}px`;
+  panel.style.top  = `${imgRect.top  - paneRect.top  + 8}px`;
+  for (const name of _facesPeopleNames) {
+    const row = document.createElement('div');
+    row.className = 'ss-face-namelist-row';
+    row.textContent = `👤 ${name}`;
+    panel.appendChild(row);
+  }
+  facesOverlay.appendChild(panel);
+  facesOverlay.style.display = 'block';
+}
+
 facesBtn.addEventListener('click', () => {
   facesMode = !facesMode;
   facesBtn.classList.toggle('active', facesMode);
   renderFacesOverlay();
 });
 
-// Boxes need the image's final layout — (re)draw once the thumb has loaded.
+// Boxes/name-list need the image's final layout — (re)draw once the thumb has loaded.
 curImg.addEventListener('load', () => {
-  if (facesMode && _facesRegions.length) requestAnimationFrame(renderFacesOverlay);
+  if (facesMode && (_facesRegions.length || _facesPeopleNames.length)) requestAnimationFrame(renderFacesOverlay);
 });
 
 function resetImgZoom(animate) {
@@ -298,6 +339,7 @@ function close({ handoff = false } = {}) {
   facesBtn.classList.remove('active');
   facesBtn.style.display = 'none';
   _facesRegions = [];
+  _facesPeopleNames = [];
   _facesReq++;
   hideFacesOverlay();
   flagBtn.classList.remove('active');
@@ -812,7 +854,7 @@ function updateCounter() {
   const hasDate = ts && ts < UNDATED_TS;
   const dateStr = hasDate ? fmtDateTime(ts) : '';
   filterBtn.style.display = hasDate ? '' : 'none';
-  const metaStr = [lat != null ? '📍' : '', _facesRegions.length ? `👥 ${_facesRegions.length}` : '']
+  const metaStr = [lat != null ? '📍' : '', _facesPeopleNames.length ? `👥 ${_facesPeopleNames.length}` : '']
     .filter(Boolean).join(' ');
   const parts = [`${current + 1} / ${total}`, dateStr, metaStr].filter(Boolean);
   counterEl.textContent = parts.join(' · ');
