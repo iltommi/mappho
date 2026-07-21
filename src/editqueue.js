@@ -141,6 +141,12 @@ export function createEditQueue(config) {
       statusFn()?.(`${icon} ${v}… ${queueCompleted}/${queueTotal} (+${list.length} just added)`, 0);
       updateBackgroundSync(notificationTitle, `${v}… ${queueCompleted}/${queueTotal}`);
     } else {
+      // Immediate feedback before run() does any async work — starting
+      // background-sync (which can include a first-time permission dialog)
+      // then the first item's full download/inject/upload cycle — none of
+      // which produces its own status update until the first item finishes.
+      // Without this the status bar sits empty/stale for that whole stretch.
+      statusFn()?.(`${icon} Preparing…`, 0);
       run();
     }
   }
