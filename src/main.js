@@ -1132,6 +1132,32 @@ function currentSearchFiltersQuery() {
     inViewport: viewportCheck.checked,
   };
 }
+
+// Remembers the last search actually run (any entry point — a row tap or
+// the OK button) so reopening the popup later starts from it instead of a
+// blank slate. Stores ids only (not the {id,name,count} objects themselves,
+// which can go stale — a person's name or photo count changes over time) —
+// resolved back against the freshly-loaded list on the next open, so a
+// since-deleted person/place is silently dropped instead of restored broken.
+const LAST_SEARCH_KEY = 'mappho_last_search';
+function saveLastSearch(query) {
+  try {
+    localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({
+      peopleIds: (query.people ?? []).map(p => p.id),
+      locationIds: (query.locations ?? []).map(l => l.id),
+      searchText: query.searchText ?? '',
+      includePhotos: query.includePhotos ?? true,
+      includeVideos: query.includeVideos ?? true,
+      inViewport: query.inViewport ?? false,
+    }));
+  } catch {}
+}
+function loadLastSearch() {
+  try {
+    const raw = localStorage.getItem(LAST_SEARCH_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
 function closePeoplePopup() {
   peoplePopup.style.display = 'none';
   viewClosed('search');
@@ -1220,6 +1246,7 @@ function renderPeopleRows(filterText) {
       // never opens (no matches, error), re-show it right away.
       peoplePopup.style.display = 'none';
       const query = { searchText: peopleSceneInput.value, ...currentSearchFiltersQuery(), ...(isPeople ? { people: [p] } : { locations: [p] }) };
+      saveLastSearch(query);
       openTaggedGrid(query)
         .then(opened => { if (!opened) restoreTop(); })
         .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
@@ -1242,6 +1269,7 @@ function runTaggedSearch() {
     searchText: peopleSceneInput.value,
     ...currentSearchFiltersQuery(),
   };
+  saveLastSearch(query);
   // Same hide-don't-close dance as the per-row tap above.
   peoplePopup.style.display = 'none';
   openTaggedGrid(query)
@@ -1259,15 +1287,26 @@ async function openPeoplePopup() {
   infoPopup.style.display = 'none';
   _peopleList        = people;
   _locationsList      = locations;
-  _peopleSelected     = new Map();
-  _locationsSelected  = new Map();
+
+  // Restores the last search actually run, rather than always starting
+  // blank — ids are resolved against the freshly-loaded lists so a
+  // since-deleted person/place is silently dropped instead of restored
+  // broken. peopleSearchInput (the row-filter box) is deliberately not
+  // part of this — it's a transient way to find a row in a long list, not
+  // part of "the search that was run".
+  const last = loadLastSearch();
+  _peopleSelected    = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
+  _locationsSelected = new Map((last?.locationIds ?? []).map(id => locations.find(l => l.id === id)).filter(Boolean).map(l => [l.id, l]));
   peopleSearchInput.value = '';
-  peopleSceneInput.value  = '';
-  mediaTypePhotos.checked = true;
-  mediaTypeVideos.checked = true;
-  viewportCheck.checked   = false;
+  peopleSceneInput.value  = last?.searchText ?? '';
+  mediaTypePhotos.checked = last?.includePhotos ?? true;
+  mediaTypeVideos.checked = last?.includeVideos ?? true;
+  viewportCheck.checked   = last?.inViewport ?? false;
   updatePeopleSelectBar();
-  setPeopleTab(people.length ? 'people' : 'locations');
+  // Land on whichever tab actually shows the restored selection, rather
+  // than always defaulting to People, so it's visible without an extra tap.
+  const startTab = (_locationsSelected.size > 0 && _peopleSelected.size === 0) ? 'locations' : (people.length ? 'people' : 'locations');
+  setPeopleTab(startTab);
   peoplePopup.style.display = 'flex';
   // Restore just re-shows the popup as it was — the query text and selected
   // people/places survive, so a returning user can refine and re-run.

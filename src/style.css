@@ -1749,24 +1749,12 @@ body.filter-open #map { top: 48px; }
   display: flex;
   gap: 16px;
   padding: 8px 16px 0;
-  font-size: .82rem;
-  color: #94a3b8;
+  font-size: 1.1rem;
 }
 #people-mediatype-row label {
   display: flex;
   align-items: center;
-  gap: 5px;
-  cursor: pointer;
-}
-#people-viewport-row {
-  padding: 6px 16px 0;
-  font-size: .82rem;
-  color: #94a3b8;
-}
-#people-viewport-row label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  gap: 4px;
   cursor: pointer;
 }
 .info-row {
