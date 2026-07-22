@@ -10,6 +10,13 @@ let pz = null;
 let wheelHandler = null;
 let currentFileid = null;
 
+// px — matches the slideshow's own swipe-to-navigate threshold (touchend
+// handler, dragging branch) so a swipe feels the same in both places.
+const SWIPE_THRESHOLD = 50;
+
+let swipeHandler = null;
+export function setSwipeHandler(fn) { swipeHandler = fn; }
+
 function destroyPanzoom() {
   if (pz) {
     if (wheelHandler) { el.removeEventListener('wheel', wheelHandler); wheelHandler = null; }
@@ -47,7 +54,15 @@ let _tapT = 0, _tapN = 0, _tapX = 0, _tapY = 0;
 
 img.addEventListener('pointerdown', e => {
   _tapN++;
-  if (_tapN === 1) { _tapT = Date.now(); _tapX = e.clientX; _tapY = e.clientY; }
+  if (_tapN === 1) {
+    _tapT = Date.now(); _tapX = e.clientX; _tapY = e.clientY;
+    // Without this, a swipe-distance drag moves the pointer off img
+    // entirely partway through, so pointerup fires on whatever's underneath
+    // instead (the backdrop, triggering its own tap-to-close) rather than
+    // here — capture keeps every event routed to img regardless of where
+    // the pointer physically ends up.
+    img.setPointerCapture(e.pointerId);
+  }
   else _tapT = 0;
 });
 
@@ -55,7 +70,18 @@ img.addEventListener('pointerup', e => {
   _tapN = Math.max(0, _tapN - 1);
   if (_tapN === 0 && _tapT) {
     const dx = e.clientX - _tapX, dy = e.clientY - _tapY;
-    if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && (pz?.getScale() ?? 1) <= 1.01) close();
+    const notZoomed = (pz?.getScale() ?? 1) <= 1.01;
+    if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && notZoomed) {
+      close();
+    } else if (notZoomed && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+      // Close ourselves before delegating — the callback (slideshow.js)
+      // advances the underlying photo and opens whichever fullscreen view
+      // fits the new item (this one again, or the video player), which
+      // pushes its own fresh nav-stack entry; leaving ours open would
+      // double-push instead of replacing it.
+      close();
+      swipeHandler?.(dx < 0 ? 1 : -1);
+    }
     _tapT = 0;
   }
 });

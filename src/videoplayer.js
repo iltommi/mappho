@@ -52,6 +52,49 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && player.classList.contains('open')) close();
 });
 
+// px — matches the slideshow's own swipe-to-navigate threshold.
+const SWIPE_THRESHOLD = 50;
+// Native <video controls> render inside this bottom strip of the video's own
+// box (scrubber, play/pause, volume); a gesture starting there is someone
+// interacting with those controls (most commonly scrubbing to seek, which is
+// itself a horizontal drag), not swiping to navigate — ignore gestures that
+// start this close to the bottom rather than trying to tell them apart by
+// distance/speed, which scrubbing can just as easily satisfy.
+const CONTROLS_ZONE_PX = 56;
+
+let swipeHandler = null;
+export function setSwipeHandler(fn) { swipeHandler = fn; }
+
+let _vpTapN = 0, _vpTapX = 0, _vpTapY = 0, _vpInControlsZone = false;
+
+player.addEventListener('pointerdown', e => {
+  _vpTapN++;
+  if (_vpTapN !== 1) return;
+  _vpTapX = e.clientX;
+  _vpTapY = e.clientY;
+  const r = vpVideo.getBoundingClientRect();
+  _vpInControlsZone = e.clientY >= r.bottom - CONTROLS_ZONE_PX && e.clientY <= r.bottom
+    && e.clientX >= r.left && e.clientX <= r.right;
+  // Deliberately no setPointerCapture here (unlike lightbox.js): capturing
+  // to `player` would redirect the pointer away from vpVideo's own native
+  // controls (scrubber, play/pause) for the rest of the gesture, breaking
+  // them even for a plain tap. `player` already covers the full overlay, so
+  // a swipe-distance drag realistically never leaves its bounds anyway —
+  // bubbling from vpVideo up to player is enough.
+});
+
+player.addEventListener('pointerup', e => {
+  _vpTapN = Math.max(0, _vpTapN - 1);
+  if (_vpTapN !== 0 || _vpInControlsZone) return;
+  const dx = e.clientX - _vpTapX, dy = e.clientY - _vpTapY;
+  if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+    close(); // see lightbox.js's identical comment on closing before delegating
+    swipeHandler?.(dx < 0 ? 1 : -1);
+  }
+});
+
+player.addEventListener('pointercancel', () => { _vpTapN = 0; });
+
 export async function openVideoPlayer(fileid, name = '') {
   if (/\.avi$/i.test(name)) {
     try {

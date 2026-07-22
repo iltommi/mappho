@@ -6,10 +6,10 @@ import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
 import { removeIgnoredEntry } from './ignoremeta.js';
 import { removeMarker } from './map.js';
-import { openLightbox } from './lightbox.js';
+import { openLightbox, setSwipeHandler as setLightboxSwipeHandler } from './lightbox.js';
 import { showExif } from './exif.js';
 import { isVideo } from './mp4.js';
-import { openVideoPlayer } from './videoplayer.js';
+import { openVideoPlayer, setSwipeHandler as setVideoPlayerSwipeHandler } from './videoplayer.js';
 import { openFilterAt } from './filter.js';
 import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
@@ -793,6 +793,23 @@ async function navigate(dir) {
   loadSidePanes();
   maybeLoadMore();
 }
+
+// Swiping inside the lightbox or video player calls this (via the setters
+// below) instead of either view knowing about the photo list itself — they
+// just detect a qualifying gesture and hand off the direction. Advances the
+// same current/photos state the 3-pane slideshow itself uses, then opens
+// whichever fullscreen view fits the new item — swiping from a photo's
+// lightbox onto a video (or back) switches views seamlessly rather than
+// getting stuck on whichever one was open first.
+async function navigateFullscreen(dir) {
+  await navigate(dir);
+  const photo = photos[current];
+  if (!photo) return;
+  if (isVideo(photo.name)) openVideoPlayer(photo.fileid, photo.name);
+  else openLightbox(photo.fileid, photo.name);
+}
+setLightboxSwipeHandler(dir => navigateFullscreen(dir));
+setVideoPlayerSwipeHandler(dir => navigateFullscreen(dir));
 
 // ── Cache / preload ───────────────────────────────────────────────────────────
 
