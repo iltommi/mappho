@@ -27,7 +27,13 @@ function destroyPanzoom() {
 
 function initPanzoom() {
   destroyPanzoom();
-  pz = Panzoom(img, { maxScale: 8, minScale: 1, cursor: 'grab' });
+  // panOnlyWhenZoomed defaults to false in this library — without it,
+  // Panzoom treats *every* drag as a pan attempt, even at scale 1, competing
+  // with the swipe-to-navigate gesture below for the same pointer events
+  // (harmless-looking in a mouse-driven test, but real touch input drives
+  // both at once). Also just correct on its own terms: panning an image
+  // that isn't zoomed in doesn't mean anything.
+  pz = Panzoom(img, { maxScale: 8, minScale: 1, cursor: 'grab', panOnlyWhenZoomed: true });
   // Panzoom sets overflow:hidden on the panned element's parent — here
   // that's our snug wrapper (see openLightbox's markup comment), sized to
   // the image's *unscaled* box. Left as-is, that clips a zoomed-in image
