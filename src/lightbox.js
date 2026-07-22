@@ -80,12 +80,13 @@ img.addEventListener('pointerup', e => {
     if (Date.now() - _tapT < 250 && dx*dx + dy*dy < 100 && notZoomed) {
       close();
     } else if (notZoomed && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
-      // Close ourselves before delegating — the callback (slideshow.js)
-      // advances the underlying photo and opens whichever fullscreen view
-      // fits the new item (this one again, or the video player), which
-      // pushes its own fresh nav-stack entry; leaving ours open would
-      // double-push instead of replacing it.
-      close();
+      // Deliberately don't close here — the callback (slideshow.js) knows
+      // whether the adjacent item is another photo (swapLightboxImage, this
+      // overlay stays open and just swaps content — no flash of the
+      // slideshow underneath) or a video (closeLightbox + openVideoPlayer).
+      // Closing unconditionally first, then reopening, was the original
+      // design and is exactly what made every swipe visibly bounce through
+      // the slideshow view first.
       swipeHandler?.(dx < 0 ? 1 : -1);
     }
     _tapT = 0;
@@ -99,10 +100,9 @@ el.addEventListener('pointerup', e => { if (e.target === el) close(); });
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && el.classList.contains('open')) close(); });
 
-export function openLightbox(fileid, name) {
+function loadImage(fileid, name) {
   currentFileid = fileid;
-  el.classList.add('open', 'loading');
-  viewOpened('lightbox', { close });
+  el.classList.add('loading');
   img.alt = name;
   img.onload = null;
   img.src = '';
@@ -118,3 +118,19 @@ export function openLightbox(fileid, name) {
     el.classList.remove('loading');
   });
 }
+
+export function openLightbox(fileid, name) {
+  el.classList.add('open');
+  viewOpened('lightbox', { close });
+  loadImage(fileid, name);
+}
+
+// Swipe-to-adjacent-photo: the overlay is already open and already on the
+// nav stack, so unlike openLightbox this never touches either — just swaps
+// the displayed image in place, with the same brief loading state a fresh
+// open shows.
+export function swapLightboxImage(fileid, name) {
+  loadImage(fileid, name);
+}
+
+export function closeLightbox() { close(); }

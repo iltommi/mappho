@@ -47,7 +47,6 @@ function show() {
 }
 
 vpClose.addEventListener('click', close);
-player.addEventListener('pointerup', e => { if (e.target === player) close(); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && player.classList.contains('open')) close();
 });
@@ -83,34 +82,37 @@ player.addEventListener('pointerdown', e => {
   // bubbling from vpVideo up to player is enough.
 });
 
+// Unifies "tap the backdrop to close" (previously a separate, distance-blind
+// listener that fired close() on ANY pointerup landing on the bare backdrop)
+// with swipe detection. That separation was a real bug, not just untidy: a
+// letterboxed video (near-certain whenever its aspect ratio doesn't match
+// the screen's) leaves visible backdrop above/below the video content, so a
+// swipe that starts or ends there was closing the player outright instead
+// of navigating — the swipe's own distance check never got a say, since the
+// old listener didn't look at distance at all. Now only a short,
+// near-stationary release on the bare backdrop closes; anything swipe-sized
+// is handled below regardless of where it lands, matching lightbox.js's
+// identical tap-vs-swipe distance check.
 player.addEventListener('pointerup', e => {
   _vpTapN = Math.max(0, _vpTapN - 1);
   if (_vpTapN !== 0 || _vpInControlsZone) return;
   const dx = e.clientX - _vpTapX, dy = e.clientY - _vpTapY;
   if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
-    close(); // see lightbox.js's identical comment on closing before delegating
+    // Deliberately don't close here — see lightbox.js's identical comment.
+    // The callback (slideshow.js) decides swapVideoPlayerSrc (stays open) vs
+    // closeVideoPlayer + openLightbox, depending on the adjacent item's type.
     swipeHandler?.(dx < 0 ? 1 : -1);
+  } else if (dx * dx + dy * dy < 100 && e.target === player) {
+    close();
   }
 });
 
 player.addEventListener('pointercancel', () => { _vpTapN = 0; });
 
-export async function openVideoPlayer(fileid, name = '') {
-  if (/\.avi$/i.test(name)) {
-    try {
-      const url = await fetchVideoSrc(fileid);
-      await openWithIntent(url, 'video/x-msvideo');
-    } catch (e) {
-      showError(`Error: ${e.message}`);
-      show();
-    }
-    return;
-  }
-
+async function loadVideoContent(fileid) {
   vpVideo.src = '';
   vpLoad.textContent = 'Loading…';
   vpLoad.style.display = '';
-  show();
   try {
     vpVideo.src = await fetchVideoSrc(fileid);
     vpVideo.play().then(() => {
@@ -128,3 +130,41 @@ export async function openVideoPlayer(fileid, name = '') {
     showError(`Error: ${e.message}`);
   }
 }
+
+export async function openVideoPlayer(fileid, name = '') {
+  if (/\.avi$/i.test(name)) {
+    try {
+      const url = await fetchVideoSrc(fileid);
+      await openWithIntent(url, 'video/x-msvideo');
+    } catch (e) {
+      showError(`Error: ${e.message}`);
+      show();
+    }
+    return;
+  }
+  show();
+  await loadVideoContent(fileid);
+}
+
+// Swipe-to-adjacent-video: the overlay is already open and already on the
+// nav stack, so unlike openVideoPlayer this never calls show()/viewOpened
+// again — just swaps the playing content in place.
+export async function swapVideoPlayerSrc(fileid, name = '') {
+  if (/\.avi$/i.test(name)) {
+    // No in-place equivalent for an intent hand-off to another app — close
+    // first so the external-app launch (or its own error state) isn't stuck
+    // behind an already-open player still showing the previous video.
+    close();
+    try {
+      const url = await fetchVideoSrc(fileid);
+      await openWithIntent(url, 'video/x-msvideo');
+    } catch (e) {
+      showError(`Error: ${e.message}`);
+      show();
+    }
+    return;
+  }
+  await loadVideoContent(fileid);
+}
+
+export function closeVideoPlayer() { close(); }
