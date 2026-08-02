@@ -28,7 +28,17 @@ function showError(msg) {
 // MPEG-4 Part 2 / "mp4v") can play its audio track fine while silently
 // never rendering a frame, with no error event at all — there's no
 // reliable client-side signal to detect that case specifically.
+//
+// loadVideoContent (and close()) deliberately reset vpVideo.src = '' right
+// before loading the real source — a real, confirmed false positive: that
+// reset itself fires a code-4 "Empty src attribute" error synchronously,
+// which this listener used to treat as a genuine, permanent failure,
+// flashing "This video format isn't supported" for an instant before the
+// real src loaded and playback succeeded moments later. vpVideo.src itself
+// isn't a reliable check here — the DOM resolves an empty src against the
+// page's own URL rather than leaving it blank — so check the raw attribute.
 vpVideo.addEventListener('error', () => {
+  if (!vpVideo.getAttribute('src')) return;
   const err = vpVideo.error;
   log('Video playback error', err ? `code ${err.code}: ${err.message || ''}` : 'unknown');
   showError(err ? (MEDIA_ERROR_MESSAGES[err.code] ?? `Playback error (code ${err.code}).`) : 'Playback error.');
