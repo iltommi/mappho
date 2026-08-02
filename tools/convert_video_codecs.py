@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 convert_video_codecs.py — Find MP4/MOV files whose video stream isn't H.264
-and re-encode just those, in place (same fileid, same path). Also finds
-files that are ALREADY H.264 but whose container is non-standard in a way
-that breaks Android's native video decoder even though ffprobe/ffmpeg parse
-them fine, and fixes those with a fast, lossless stream-copy remux instead
-of a full re-encode.
+and re-encode just those, in place (same fileid, same path). Also finds two
+kinds of files that are ALREADY H.264 but decoder-hostile on Android anyway:
+a non-standard container (fixed with a fast, lossless stream-copy remux) or
+full-range YUV (fixed with a real re-encode that remaps pixel values —
+see below, a remux alone can't fix this one).
 
 Some old phone/camera recordings are already .mp4 containers but use an
 older video codec (commonly MPEG-4 Part 2 / "mp4v", the DivX/Xvid-era
@@ -26,6 +26,40 @@ no error event at all. A stream-copy remux (ffmpeg -c copy) rebuilds a
 clean, standard container losslessly — same pixels, same audio, just a
 container ffmpeg produces from scratch instead of whatever muxed the
 original — and fixes this without needing a full, slow re-encode.
+
+Separately again (confirmed on two real files, 2026-07): full-range
+("PC"/JPEG-style, 0-255) YUV instead of the standard limited-range ("TV",
+16-235) YUV Android's hardware video decoder expects — ffprobe reports this
+as pix_fmt yuvj420p or color_range pc. Same silent-no-picture symptom as
+the container issue (no error event; the network/demux layer is fine, only
+the decoded frame never renders), but a different fix: since the actual
+pixel VALUES are out of the expected range, not just a container tag, a
+plain -c copy remux would carry the same broken samples straight through
+unchanged. Needs a real re-encode with the pixel values remapped
+(ffmpeg's scale filter, in_range=full:out_range=tv). Sampled across the
+whole library dating back to 2009: not confined to old pre-H.264 footage
+this script itself re-encoded (though confirmed present there too, carried
+through from the source by an earlier run before this check existed) —
+scattered across every year up to 2025, meaning some phones/camera apps
+genuinely record full-range H.264 natively. This script can't tell you
+whether a specific unconverted file has this without downloading and
+probing it, same as everything else here.
+
+One more variant of the same issue (confirmed 2026-07): a file this script
+had ALREADY range-fixed in an earlier run — before a since-fixed bug here
+added the required -pix_fmt flag (see the long comment on video_args below)
+— had its pixel values correctly remapped by that old run's scale filter,
+but its container tag was left stuck at yuvj420p/pc, and it was completely
+unplayable on Android regardless of the underlying (correct) pixel values.
+Because measurement no longer confirmed genuinely full-range content (this
+particular clip is dim and never reaches the highlight-side threshold),
+the normal full-range check could never flag it again — it would have
+stayed silently broken forever. When BOTH pix_fmt and color_range
+independently say full-range (not just one — the single-signal case is the
+one with the 44% false-positive history against measurement), that tag
+alone is trusted enough to fix, but only losslessly: a bitstream-filter
+rewrite of the H.264 SPS's video_full_range_flag (no re-encode, no pixel
+remapping — verified byte-identical output size on the confirmed case).
 
 Uploads use the same upload-temp -> delete-original -> rename-into-place
 sequence as Mappho's own overwriteFile() in src/pcloud.js: stat the file
@@ -74,8 +108,10 @@ Requirements: rclone (configured), ffmpeg/ffprobe on PATH.
 """
 
 import argparse
+import decimal
 import json
 import os
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -122,12 +158,25 @@ def get_pcloud_creds(remote):
     return hostname or 'api.pcloud.com', token
 
 
-def download_full(remote, path, rel_path, dest: Path) -> bool:
-    r = subprocess.run(
-        ['rclone', 'copyto', f'{remote}:{path}/{rel_path}', str(dest)],
-        capture_output=True,
-    )
-    return r.returncode == 0 and dest.exists()
+def download_full(remote, path, rel_path, dest: Path):
+    """Returns (True, None) on success or (False, stderr_tail) on failure.
+    Previously returned a bare bool, discarding rclone's own error message
+    entirely — a real run hit a sustained multi-hundred-file run of
+    "download failed" with genuinely no way to tell whether that was a
+    network blip, a rate limit, or something else, since nothing about the
+    actual failure was ever surfaced or logged anywhere.
+    """
+    try:
+        r = subprocess.run(
+            ['rclone', 'copyto', f'{remote}:{path}/{rel_path}', str(dest)],
+            capture_output=True, timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        return False, 'rclone copyto timed out after 300s'
+    if r.returncode == 0 and dest.exists():
+        return True, None
+    stderr_tail = r.stderr.decode(errors='replace')[-300:] if r.stderr else '(no stderr)'
+    return False, stderr_tail
 
 
 def _pcloud_api(hostname, token, method, params, timeout=60):
@@ -145,6 +194,40 @@ def _normalize_fileid(file_id):
     pCloud's own API wants the bare number. Mirrors stat_file's existing
     handling so every call site normalizes the same way."""
     return file_id.lstrip('f') if isinstance(file_id, str) else file_id
+
+
+def js_rounded_hash(h):
+    """Replicates what the app's own JS gets from a pCloud hash: every hash
+    faces.json/locations.json/hash-index.json store went through the app's
+    JSON.parse at some point, whose Number type is an IEEE-754 double and
+    silently rounds any integer above 2^53 — see hashutil.js's
+    normPcloudHash, which exists in the app for exactly this reason.
+
+    A real, confirmed bug this fixes: this script's own hash_migrations
+    used the EXACT hash from pCloud's API (Python ints are arbitrary
+    precision, so no rounding happens on this side), and compared it
+    directly against what's stored in these JSON files — which is almost
+    always the rounded value, not the exact one, for any hash above 2^53
+    (~84% of real hashes sampled from faces.json/locations.json). The
+    match silently failed for the vast majority of files this script ever
+    converted, patch_all_dbs treated "0 matching entries" as fully
+    resolved (not a conflict to retry), and the pending migration was
+    dropped — meaning face/location tags for most converted videos were
+    silently left keyed to a hash the file no longer has, invisible to
+    getFacesForHash()'s hash-only lookup (no path/name fallback) even
+    though the raw entry was never deleted.
+
+    repr(float(h)) + Decimal(...) reproduces the exact digit sequence
+    JS's Number(h).toString() would produce (both languages implement
+    shortest-round-trip decimal formatting for the same IEEE-754 double) —
+    verified digit-for-digit against real `node` output across 7 real
+    hash values from this library, all matching exactly.
+    """
+    try:
+        d = decimal.Decimal(repr(float(h)))
+    except (ValueError, OverflowError):
+        return str(h)
+    return format(d, 'f')
 
 
 def stat_file(hostname, token, file_id):
@@ -241,6 +324,69 @@ def probe_streams(path: Path):
     return video, audio
 
 
+# Ground truth beats metadata. An earlier version of the full-range check
+# trusted pix_fmt=='yuvj420p' or color_range=='pc' — sampled against a
+# partial real run and found ~44% of what it flagged were files carrying an
+# explicit, correct-looking color_range=tv tag alongside pix_fmt=yuvj420p.
+# Directly measuring one such file's actual decoded luma values (not just
+# reading its tags) settled it: the real samples spanned the full 0-255
+# range regardless of the tv tag — i.e. the file's OWN metadata was simply
+# wrong, not this script's logic. That cuts both ways: neither pix_fmt nor
+# color_range can be trusted alone, in either direction, so this measures
+# real decoded pixel values directly instead of reading either tag at all.
+#
+# A second, separate iteration on top of that: taking the absolute min/max
+# luma across just a handful of single-frame samples turned out to be WAY
+# too sensitive — sampled against 12 random real files and found 9/12 (75%)
+# flagged, which is implausible for a specific decoder-incompatibility bug.
+# Root cause: ordinary real footage often has one bright highlight or deep
+# shadow somewhere (a window, a light bulb) that legitimately touches a
+# near-extreme luma value even in a properly limited-range video — a SINGLE
+# such frame among many was enough to trip an absolute-min/max threshold.
+# Fixed by decoding many frames continuously (fps=2, not discrete -ss
+# seeks) and taking the MEDIAN ymin/ymax across all of them instead of the
+# absolute extremes — median is specifically robust to a single outlier
+# frame/moment, unlike min/max. Verified against a synthetic file built to
+# be 90% normal limited-range content plus one deliberately inserted
+# extreme frame: the median stayed at the clean file's values (30/203 vs.
+# 30.5/203, basically unmoved), while the two genuinely-broken real files
+# showed ymin=0 in NEARLY EVERY sampled frame (not just one) — a real,
+# consistent signal across the whole file's duration, not a single moment.
+# Thresholds (<=15, >=220) sit with real margin between the confirmed-clean
+# synthetic cases (30/202-203) and the confirmed-broken real files (0/229,
+# 0/244).
+FULL_RANGE_SAMPLE_FPS = 2
+FULL_RANGE_MEDIAN_YMIN_MAX = 15
+FULL_RANGE_MEDIAN_YMAX_MIN = 220
+
+
+def measure_luma_range(path: Path):
+    """Returns (median_ymin, median_ymax) across many continuously-decoded
+    frames (fps-based sampling naturally covers the whole file), or None if
+    ffmpeg produced no usable signalstats output at all (treated as "can't
+    determine" by the caller — same fail-safe posture as every other
+    best-effort probe in this script: skip rather than guess).
+    """
+    try:
+        r = subprocess.run(
+            ['ffmpeg', '-v', 'info', '-i', str(path),
+             '-vf', f'fps={FULL_RANGE_SAMPLE_FPS},signalstats,metadata=print',
+             '-f', 'null', '-'],
+            capture_output=True, text=True, timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    ymins, ymaxs = [], []
+    for line in r.stderr.splitlines():
+        if 'signalstats.YMIN=' in line:
+            ymins.append(int(line.rsplit('=', 1)[1]))
+        elif 'signalstats.YMAX=' in line:
+            ymaxs.append(int(line.rsplit('=', 1)[1]))
+    if not ymins or not ymaxs:
+        return None
+    return statistics.median(ymins), statistics.median(ymaxs)
+
+
 # Deliberately narrow. An earlier version of this check flagged *any*
 # top-level box between ftyp and moov that wasn't on a short allowlist —
 # sampled against 40 real files from this library and found a ~50% false
@@ -261,6 +407,8 @@ def probe_streams(path: Path):
 # against the SAME 40-file sample that broke the old heuristic: 0 matches,
 # vs. 22 "mp42" and 17 "isom" among files that play fine.
 BAD_MAJOR_BRANDS = {'mp4v'}
+
+ACTION_VERBS = {'convert': 'encoding', 'rangefix': 're-encoding (range fix)', 'remux': 'remuxing', 'tagfix': 'fixing tag (lossless)'}
 
 
 def needs_remux(path: Path) -> bool:
@@ -284,9 +432,9 @@ def needs_remux(path: Path) -> bool:
 # ── per-file worker ───────────────────────────────────────────────────────────
 
 def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
-    """Returns a dict with 'kind': 'convert' | 'remux' | 'skipped' | 'error'.
-    'convert' and 'remux' results additionally carry old/new fileid+hash so
-    the caller can fix up the JSON DBs afterward.
+    """Returns a dict with 'kind': 'convert' | 'rangefix' | 'remux' | 'skipped'
+    | 'error'. 'convert'/'rangefix'/'remux' results additionally carry
+    old/new fileid+hash so the caller can fix up the JSON DBs afterward.
 
     on_start(rel, size_mb, action), if given, is called right before the
     ffmpeg run begins — a full re-encode can run for minutes with no other
@@ -297,8 +445,9 @@ def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
 
     with tempfile.TemporaryDirectory(prefix='mappho-vidconv-') as tmpdir:
         local_src = Path(tmpdir) / name
-        if not download_full(remote, path, rel, local_src):
-            return {'kind': 'error', 'rel': rel, 'msg': 'download failed'}
+        ok, dl_err = download_full(remote, path, rel, local_src)
+        if not ok:
+            return {'kind': 'error', 'rel': rel, 'msg': f'download failed: {dl_err}'}
 
         streams = probe_streams(local_src)
         if streams is None:
@@ -308,39 +457,162 @@ def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
             return {'kind': 'skipped', 'rel': rel, 'msg': 'no video stream'}
 
         already_h264 = video.get('codec_name') == 'h264'
-        # Only matters when already h264 — a genuinely non-h264 file is
-        # going through the full re-encode path regardless, which produces
-        # a clean container as a side effect of ffmpeg building it fresh.
-        dirty_container = already_h264 and needs_remux(local_src)
-        if already_h264 and not dirty_container:
+        # Confirmed on real files (2026-07): full-range ("PC"/JPEG-style,
+        # 0-255) YUV in an H.264 stream decodes and demuxes fine (ffprobe/
+        # ffmpeg don't care) but produces no visible frame on Android's
+        # hardware decoder, which expects standard limited-range ("TV",
+        # 16-235) YUV. Unlike the container-brand issue, this needs actual
+        # pixel values remapped, not just a container rebuild — a plain
+        # -c copy remux would carry the same broken full-range samples
+        # through untouched.
+        #
+        # Deliberately requires BOTH signals to agree, after each one alone
+        # proved unreliable on its own:
+        #   - Tag alone (pix_fmt=='yuvj420p' or color_range=='pc'): ~44%
+        #     false-positive rate against files honestly tagged
+        #     color_range=tv (until direct pixel measurement showed one
+        #     such file's real samples spanned 0-255 regardless of its own
+        #     tv tag — the file's OWN metadata was simply wrong).
+        #   - Median pixel measurement alone: ~67-75% "full range" hit rate
+        #     on random real files, implausible for a specific
+        #     incompatibility — ordinary real footage often has SOME
+        #     legitimate near-black/near-white content (a window, a light)
+        #     even when properly limited-range encoded, so "does the
+        #     content reach extreme values" doesn't cleanly separate
+        #     genuinely-mis-encoded files from naturally high-contrast
+        #     ones on its own.
+        # Requiring agreement is deliberately conservative — accepting a
+        # real risk of missing some genuinely-broken files (like the one
+        # tv-tagged case, which happens to still pass since its pix_fmt
+        # was independently yuvj420p) in exchange for not risking
+        # destructive re-encodes of files that are actually fine, which a
+        # false positive here would cause.
+        tag_looks_wrong = video.get('pix_fmt') == 'yuvj420p' or video.get('color_range') == 'pc'
+        measured_range = measure_luma_range(local_src) if tag_looks_wrong else None
+        full_range = (
+            tag_looks_wrong and measured_range is not None
+            and measured_range[0] <= FULL_RANGE_MEDIAN_YMIN_MAX and measured_range[1] >= FULL_RANGE_MEDIAN_YMAX_MIN
+        )
+        # Confirmed on a real file (2026-07): tag_looks_wrong can be true
+        # and full_range still false NOT because the tag is a fluke, but
+        # because the clip is dim/low-contrast and never reaches the
+        # highlight-side threshold — this one measured (0.0, 201.0), well
+        # past FULL_RANGE_MEDIAN_YMIN_MAX on the shadow side but short of
+        # FULL_RANGE_MEDIAN_YMAX_MIN. Its container's own encoder tag
+        # (Lavf/Lavc libx264 — ffmpeg's signature, never a camera's) proved
+        # it had ALREADY been through this script's rangefix path in an
+        # earlier, pre-fix run: the scale filter had correctly remapped the
+        # actual pixel values (that part of the old code always worked —
+        # see the -pix_fmt comment below), but the missing -pix_fmt flag
+        # left the container tag stuck at yuvj420p/pc, and Android refused
+        # to render it regardless of what the real samples measured as.
+        # Under the old logic this file could never be caught again —
+        # full_range requires BOTH thresholds, permanently false here, and
+        # nothing else in this script ever revisits a file once skipped.
+        #
+        # Fix: whenever BOTH pix_fmt and color_range independently agree
+        # (not the single-signal OR case in tag_looks_wrong above, which
+        # covers the historical 44%-false-positive contradictory-tag
+        # scenario — pix_fmt bad but color_range honestly tv), the tag
+        # itself is a reliable enough signal to act on even without
+        # measurement confirmation, PROVIDED the fix stays lossless: a
+        # bitstream-filter rewrite of the H.264 SPS's video_full_range_flag
+        # (h264_metadata bsf), no re-encode, no pixel remapping. Verified
+        # byte-identical output size on the confirmed case. This is safe
+        # specifically because full_range is false here — if measurement
+        # HAD confirmed genuinely out-of-range pixel content, relabeling
+        # without remapping would visibly wash out the image, which is
+        # exactly why that case is routed to the real re-encode (rangefix)
+        # instead, checked first below.
+        strong_tag_wrong = video.get('pix_fmt') == 'yuvj420p' and video.get('color_range') == 'pc'
+        needs_tag_fix = already_h264 and not full_range and strong_tag_wrong and measured_range is not None
+        # Only matters when already h264 and not already getting a real
+        # re-encode for the range fix — a genuinely non-h264 file, or one
+        # needing the range fix, goes through the full re-encode path
+        # regardless, which produces a clean standard container as a side
+        # effect of ffmpeg building it fresh.
+        dirty_container = already_h264 and not full_range and needs_remux(local_src)
+        if already_h264 and not full_range and not dirty_container and not needs_tag_fix:
             return {'kind': 'skipped', 'rel': rel}
 
-        action = 'remux' if already_h264 else 'convert'
+        if not already_h264:
+            action = 'convert'
+        elif full_range:
+            action = 'rangefix'
+        elif needs_tag_fix:
+            action = 'tagfix'
+        else:
+            action = 'remux'
 
         if dry_run:
-            msg = ('container needs a clean remux (non-standard ftyp brand/extra box — '
-                   'decoder-hostile even though already H.264)') if action == 'remux' \
-                else f"video codec: {video.get('codec_name')}"
+            if action == 'remux':
+                msg = 'container needs a clean remux (non-standard ftyp brand/extra box — decoder-hostile even though already H.264)'
+            elif action == 'tagfix':
+                msg = (f"tag says full-range (pix_fmt={video.get('pix_fmt')}, color_range={video.get('color_range')}) "
+                       f"but measured luma (min={measured_range[0]}, max={measured_range[1]}) doesn't confirm it — "
+                       "lossless tag-only fix, no re-encode")
+            elif action == 'rangefix':
+                msg = (f"measured full-range luma (min={measured_range[0]}, max={measured_range[1]} — "
+                       f"tags say pix_fmt={video.get('pix_fmt')}, color_range={video.get('color_range')}) "
+                       "— Android-decoder-hostile even though already H.264")
+            else:
+                msg = f"video codec: {video.get('codec_name')}" + (' (also full-range YUV)' if full_range else '')
             return {'kind': action, 'rel': rel, 'msg': msg}
 
         if on_start:
             on_start(rel, local_src.stat().st_size / 1e6, action)
 
         t0 = time.monotonic()
-        if action == 'remux':
+        if action in ('remux', 'tagfix'):
+            # Both are lossless '-c copy' rebuilds — ffmpeg's mp4 muxer
+            # always assigns its own clean major_brand from scratch
+            # (never copies the source's ftyp verbatim), which is what
+            # actually fixes a dirty_container regardless of the bsf flag
+            # below. tagfix adds the h264_metadata bitstream filter to
+            # additionally rewrite the SPS's video_full_range_flag in
+            # place — see the needs_tag_fix comment above for why this is
+            # safe (and why it's gated on full_range being false).
+            bsf_args = ['-bsf:v', 'h264_metadata=video_full_range_flag=0'] if action == 'tagfix' else []
             local_out = Path(tmpdir) / f'{name}.remuxed.mp4'
             result = subprocess.run(
-                ['ffmpeg', '-i', str(local_src), '-c', 'copy', '-movflags', '+faststart', '-y', str(local_out)],
+                ['ffmpeg', '-i', str(local_src), '-c', 'copy', *bsf_args, '-movflags', '+faststart', '-y', str(local_out)],
                 capture_output=True,
             )
         else:
             audio_codec = audio.get('codec_name') if audio else None
             audio_args = ['-c:a', 'copy'] if audio_codec == 'aac' else ['-c:a', 'aac', '-b:a', '128k']
+            # scale's in_range=full requires knowing the actual source range
+            # to convert correctly (rather than just re-tagging it), so this
+            # only applies when full_range was actually detected — a plain
+            # codec conversion whose source is already standard-range must
+            # NOT run pixel values through this filter at all.
+            #
+            # -pix_fmt yuv420p is NOT optional here — a real, serious bug,
+            # caught the hard way (a live run kept re-processing the same
+            # already-fixed files forever): without it, ffmpeg/libx264
+            # inherits the DECODED yuvj420p pixel format from the full-range
+            # source and writes that same "j" (JPEG-range) tag straight into
+            # the output, even though -color_range tv is also passed and the
+            # scale filter DID correctly remap the actual pixel values. The
+            # result decodes and looks fine, but its own pix_fmt tag still
+            # reads yuvj420p — which is EXACTLY what this script's own
+            # full-range detection checks for, so every "fixed" file kept
+            # measuring as still-broken on the next run, forever, each pass
+            # adding another full lossy re-encode for zero benefit. Verified
+            # the fix directly: reproduced the bug with the old flags (still
+            # yuvj420p/pc afterward), confirmed adding -pix_fmt yuv420p
+            # produces a clean yuv420p tag AND leaves the actual measured
+            # pixel values correctly in the limited range (not just the tag).
+            video_args = (
+                ['-vf', 'scale=in_range=full:out_range=tv', '-pix_fmt', 'yuv420p', '-color_range', 'tv']
+                if full_range else []
+            )
             local_out = Path(tmpdir) / f'{name}.converted.mp4'
             result = subprocess.run(
                 [
                     'ffmpeg', '-i', str(local_src),
                     '-c:v', 'libx264', '-crf', '23', '-preset', 'fast',
+                    *video_args,
                     *audio_args,
                     '-movflags', '+faststart',
                     '-y', str(local_out),
@@ -367,6 +639,10 @@ def process_one(f, remote, path, hostname, token, dry_run, on_start=None):
         new_mb  = len(data) / 1e6
         if action == 'remux':
             msg = f"clean remux, {orig_mb:.1f} MB → {new_mb:.1f} MB"
+        elif action == 'tagfix':
+            msg = f"lossless tag fix (full-range → limited-range flag only), {orig_mb:.1f} MB → {new_mb:.1f} MB"
+        elif action == 'rangefix':
+            msg = f"full-range → limited-range YUV, {orig_mb:.1f} MB → {new_mb:.1f} MB"
         else:
             msg = f"{video.get('codec_name')} → h264, {orig_mb:.1f} MB → {new_mb:.1f} MB"
         return {
@@ -568,15 +844,15 @@ def patch_all_dbs(hostname, token, root_path, hash_migrations, fileid_migrations
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
-# Maps path -> 'converted' | 'remux' | 'skipped'. All three mean "nothing
-# left to do for this file" and are skipped on resume — only 'converted'/
-# 'remux' matter for resuming correctness, but recording 'skipped' too
-# avoids re-downloading and re-probing the (typically large) majority of
-# files that don't need anything every time the script is interrupted and
-# re-run. Errors are deliberately not recorded, so they're retried on the
-# next run. hash_migrations/fileid_migrations persist alongside this so an
-# interrupted run's DB patches aren't lost even if every video file ends up
-# already marked done on the next run.
+# Maps path -> 'converted' | 'rangefix' | 'remux' | 'skipped'. All four mean
+# "nothing left to do for this file" and are skipped on resume — only the
+# three touched-kinds matter for resuming correctness, but recording
+# 'skipped' too avoids re-downloading and re-probing the (typically large)
+# majority of files that don't need anything every time the script is
+# interrupted and re-run. Errors are deliberately not recorded, so they're
+# retried on the next run. hash_migrations/fileid_migrations persist
+# alongside this so an interrupted run's DB patches aren't lost even if
+# every video file ends up already marked done on the next run.
 
 def load_state():
     if not os.path.exists(STATE_FILE):
@@ -621,13 +897,13 @@ def main():
     else:
         checked, hash_migrations, fileid_migrations = load_state()
     pending = [f for f in files if f['Path'] not in checked]
-    prior_done    = sum(1 for v in checked.values() if v in ('converted', 'remux'))
+    prior_done    = sum(1 for v in checked.values() if v in ('converted', 'rangefix', 'remux', 'tagfix'))
     prior_skipped = len(checked) - prior_done
-    print(f'{len(checked)} already checked ({prior_done} converted/remuxed, {prior_skipped} already clean), '
+    print(f'{len(checked)} already checked ({prior_done} converted/rangefixed/remuxed/tagfixed, {prior_skipped} already clean), '
           f'{len(pending)} left to check'
           f"{' (dry run)' if args.dry_run else f', {args.workers} workers'}.\n")
 
-    converted = remuxed = skipped = errors = completed = 0
+    converted = rangefixed = remuxed = tagfixed = skipped = errors = completed = 0
     convert_seconds_total = 0.0  # wall-clock time actually spent inside ffmpeg, for the ETA below
     state_lock = threading.Lock()
     print_lock = threading.Lock()
@@ -651,7 +927,7 @@ def main():
         if completed_count == 0 or elapsed < 1:
             return 'ETA ?'
         remaining_count = total_count - completed_count
-        touched_so_far = converted + remuxed
+        touched_so_far = converted + rangefixed + remuxed + tagfixed
         hit_rate = touched_so_far / completed_count
         expected_remaining_touched = remaining_count * hit_rate
 
@@ -670,58 +946,84 @@ def main():
             return f'ETA {int(remaining // 60)}m {int(remaining % 60)}s'
         return f'ETA {int(remaining)}s'
 
+    # Not a `with ThreadPoolExecutor(...)` block on purpose: that context
+    # manager's __exit__ calls shutdown(wait=True) with no cancellation, so
+    # on Ctrl+C it silently keeps draining the ENTIRE remaining queue (every
+    # file was already submitted up front) before this function can even
+    # reach the KeyboardInterrupt handler below — Ctrl+C looks unresponsive
+    # for as long as the whole rest of the run would've taken, which is
+    # exactly the kind of thing that pushes you toward a hard kill instead.
+    # cancel_futures=True (both here and in the normal-completion path,
+    # where it's a harmless no-op since the queue is already empty by then)
+    # drops every not-yet-started file and only waits on the handful
+    # actually in flight, so Ctrl+C is prompt either way.
+    executor = ThreadPoolExecutor(max_workers=args.workers)
     try:
-        with ThreadPoolExecutor(max_workers=args.workers) as executor:
-            futures = {
-                executor.submit(
-                    process_one, f, args.remote, args.path, hostname, token, args.dry_run,
-                    lambda rel, mb, action: log(f"  ⏳ {'remuxing' if action == 'remux' else 'encoding'} {rel} ({mb:.1f} MB)…"),
-                ): f
-                for f in pending
-            }
-            for future in as_completed(futures):
-                completed += 1
-                try:
-                    r = future.result()
-                except Exception as e:
-                    errors += 1
-                    log(f'[{completed}/{len(pending)}] unexpected error: {e}')
-                    continue
+        futures = {
+            executor.submit(
+                process_one, f, args.remote, args.path, hostname, token, args.dry_run,
+                lambda rel, mb, action: log(f"  ⏳ {ACTION_VERBS.get(action, 'processing')} {rel} ({mb:.1f} MB)…"),
+            ): f
+            for f in pending
+        }
+        for future in as_completed(futures):
+            completed += 1
+            try:
+                r = future.result()
+            except Exception as e:
+                errors += 1
+                log(f'[{completed}/{len(pending)}] unexpected error: {e}')
+                continue
 
-                kind = r['kind']
-                if kind == 'skipped':
-                    skipped += 1
-                    if not args.dry_run:
-                        with state_lock:
-                            checked[r['rel']] = 'skipped'
-                            persist()
-                elif kind in ('converted', 'convert', 'remux'):
-                    if kind == 'remux':
-                        remuxed += 1
-                    else:
-                        converted += 1
-                    convert_seconds_total += r.get('convert_seconds', 0.0)
-                    log(f"[{completed}/{len(pending)}] {r['rel']}  {r.get('msg', '')}  ✓  "
-                        f'{fmt_eta(completed, len(pending))}')
-                    if not args.dry_run:
-                        with state_lock:
-                            checked[r['rel']] = kind
-                            if r.get('old_hash') and r.get('new_hash'):
-                                hash_migrations[r['old_hash']] = r['new_hash']
-                            if r.get('old_fileid') and r.get('new_fileid'):
-                                fileid_migrations[r['old_fileid']] = r['new_fileid']
-                            persist()
-                elif kind == 'error':
-                    errors += 1
-                    log(f"[{completed}/{len(pending)}] {r['rel']}  FAILED: {r['msg']}  "
-                        f'{fmt_eta(completed, len(pending))}')
+            kind = r['kind']
+            if kind == 'skipped':
+                skipped += 1
+                if not args.dry_run:
+                    with state_lock:
+                        checked[r['rel']] = 'skipped'
+                        persist()
+            elif kind in ('converted', 'convert', 'rangefix', 'remux', 'tagfix'):
+                if kind == 'remux':
+                    remuxed += 1
+                elif kind == 'tagfix':
+                    tagfixed += 1
+                elif kind == 'rangefix':
+                    rangefixed += 1
+                else:
+                    converted += 1
+                convert_seconds_total += r.get('convert_seconds', 0.0)
+                log(f"[{completed}/{len(pending)}] {r['rel']}  {r.get('msg', '')}  ✓  "
+                    f'{fmt_eta(completed, len(pending))}')
+                if not args.dry_run:
+                    with state_lock:
+                        checked[r['rel']] = kind
+                        if r.get('old_hash') and r.get('new_hash'):
+                            hash_migrations[r['old_hash']] = r['new_hash']
+                            # See js_rounded_hash's docstring — faces.json/
+                            # locations.json/hash-index.json almost always
+                            # store the JS-rounded form, not this exact
+                            # pCloud value, so patch_hash_keyed_json's
+                            # lookup needs both as possible keys.
+                            js_old = js_rounded_hash(r['old_hash'])
+                            if js_old != r['old_hash']:
+                                hash_migrations[js_old] = r['new_hash']
+                        if r.get('old_fileid') and r.get('new_fileid'):
+                            fileid_migrations[r['old_fileid']] = r['new_fileid']
+                        persist()
+            elif kind == 'error':
+                errors += 1
+                log(f"[{completed}/{len(pending)}] {r['rel']}  FAILED: {r['msg']}  "
+                    f'{fmt_eta(completed, len(pending))}')
 
     except KeyboardInterrupt:
-        print('\nInterrupted — progress saved.')
+        print('\nInterrupted — cancelling queued files (already-processed ones stay saved)…')
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
 
-    total_touched = prior_done + converted + remuxed
-    print(f'\nDone this run — {converted} converted, {remuxed} remuxed, {skipped} already clean, {errors} errors.')
-    print(f'Total converted/remuxed so far (including prior runs): {total_touched}.')
+    total_touched = prior_done + converted + rangefixed + remuxed + tagfixed
+    print(f'\nDone this run — {converted} converted, {rangefixed} range-fixed, {remuxed} remuxed, '
+          f'{tagfixed} tag-fixed, {skipped} already clean, {errors} errors.')
+    print(f'Total converted/rangefixed/remuxed/tagfixed so far (including prior runs): {total_touched}.')
     if errors:
         print('Re-run to retry failed files.')
 
@@ -736,7 +1038,20 @@ def main():
             print('\nSome DB entries could not be patched (a concurrent write was detected) — '
                   're-run this script to retry just the DB fix-up.')
 
-    if not args.dry_run and errors == 0 and not hash_migrations and not fileid_migrations and os.path.exists(STATE_FILE):
+    # completed == len(pending) means the run genuinely drained the whole
+    # pending list rather than being cut short — a real bug caught here:
+    # this used to fire on ANY exit path with errors==0 and no pending
+    # migrations, which is also true right after catching KeyboardInterrupt
+    # (or after cancel_futures dropped the rest of the queue), silently
+    # discarding the "checked" bookkeeping for every file this run — and
+    # every prior run — had already verified, moments after printing that
+    # progress was saved. That forced a full re-download-and-reprobe of the
+    # entire library on the next run, which looks exactly like "it's
+    # re-encoding files it already fixed" even though re-fixing them is not
+    # what was actually happening — detection still correctly skips files
+    # that are genuinely already clean.
+    if (not args.dry_run and completed == len(pending) and errors == 0
+            and not hash_migrations and not fileid_migrations and os.path.exists(STATE_FILE)):
         os.remove(STATE_FILE)
 
     if total_touched and not args.dry_run:
