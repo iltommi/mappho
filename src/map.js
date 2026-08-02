@@ -250,11 +250,21 @@ function _buildMarker(fileid, name, lat, lng, ts, rotation) {
     loading.textContent = 'Loading…';
     div.insertBefore(loading, caption);
 
+    // Lets the slideshow's existing prev/next (swipe, arrow keys/buttons)
+    // move between other photos currently shown on the map — rebuilt fresh
+    // on every open (not cached) so it reflects the live date/media-type
+    // filters and any edit made since the map was last drawn, same as
+    // openClusterGrid's identical rationale for its own marker list.
     function openPhoto() {
       setGeotagHandler(markerGeotagHandler);
       setFixDateHandler(markerFixDateHandler);
       setFixTimeHandler(markerFixTimeHandler);
-      openSlideshow([markerData.get(marker)], 0);
+      const visible = markerIndex
+        .filter(_isVisible)
+        .map(({ marker: m }) => markerData.get(m))
+        .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+      const startIndex = Math.max(0, visible.findIndex(p => p.fileid === markerData.get(marker).fileid));
+      openSlideshow(visible, startIndex);
     }
 
     fetchThumbSrc(fileid, '512x512', rotation ?? 0).then(src => {
