@@ -10,7 +10,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, t
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView } from './map.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
 import { checkPendingShare, listenForShares } from './import.js';
@@ -1037,6 +1037,9 @@ mediaTypeBtn.addEventListener('click', () => {
   mediaTypeBtn.classList.toggle('active', active);
 });
 
+const pinBrowseBtn = document.getElementById('pin-browse-btn');
+pinBrowseBtn.addEventListener('click', () => browsePinsInView());
+
 const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 
@@ -1631,6 +1634,7 @@ function showApp() {
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
+  pinBrowseBtn.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }
 

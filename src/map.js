@@ -10,6 +10,7 @@ import { isVideo } from './mp4.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid, setBulkIgnoreHandler } from './grid.js';
+import { openPinBar } from './pinbar.js';
 import { sameDayFromList } from './dayrange.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
@@ -127,6 +128,22 @@ export function flyToAndPlacePin(lat, lng) {
   map.flyTo([lat, lng], 13);
   placePinAt(lat, lng);
   pinDropOnPlace?.({ lat, lng });
+}
+
+// Non-draggable — reuses PIN_ICON's same red-pin visual as pin-drop mode,
+// but purely as a "here's the current photo" indicator for pinbar.js,
+// never moving the map's own pan/zoom. Needed specifically because the
+// photo's real marker can be merged into a cluster bubble at the current
+// zoom level, with nothing individually visible to point at otherwise.
+let selectionMarker = null;
+
+export function showSelectionMarker(lat, lng) {
+  if (selectionMarker) selectionMarker.setLatLng([lat, lng]);
+  else selectionMarker = L.marker([lat, lng], { icon: PIN_ICON, interactive: false }).addTo(map);
+}
+
+export function hideSelectionMarker() {
+  if (selectionMarker) { map.removeLayer(selectionMarker); selectionMarker = null; }
 }
 
 export function initMap() {
@@ -264,7 +281,11 @@ function _buildMarker(fileid, name, lat, lng, ts, rotation) {
         .map(({ marker: m }) => markerData.get(m))
         .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
       const startIndex = Math.max(0, visible.findIndex(p => p.fileid === markerData.get(marker).fileid));
-      openSlideshow(visible, startIndex);
+      // The bottom bar is now the "current photo" UI while browsing from
+      // the map — showing both it and this small popup at once would be
+      // redundant.
+      marker.closePopup();
+      openPinBar(visible, startIndex);
     }
 
     fetchThumbSrc(fileid, '512x512', rotation ?? 0).then(src => {
@@ -439,6 +460,28 @@ export function findClosestMarker(ts) {
 // UI that could call this.
 export function getViewportBounds() {
   return map ? map.getBounds() : null;
+}
+
+// Entry point for #pin-browse-btn: starts the same map-anchored photo bar
+// as tapping an individual pin, but scoped to whatever's currently in the
+// viewport rather than anchored to one marker — for when relevant pins are
+// merged into a cluster bubble at the current zoom and there's nothing
+// individually tappable to start from. No-ops (logged) if nothing
+// geotagged is currently in view; a live enabled/disabled button state
+// tied to every pan/zoom isn't worth the added complexity for this.
+export function browsePinsInView() {
+  const bounds = getViewportBounds();
+  if (!bounds) return;
+  const visible = markerIndex
+    .filter(_isVisible)
+    .filter(({ marker: m }) => bounds.contains(m.getLatLng()))
+    .map(({ marker: m }) => markerData.get(m))
+    .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+  if (!visible.length) { log('Pin browse', 'nothing geotagged currently in view'); return; }
+  setGeotagHandler(markerGeotagHandler);
+  setFixDateHandler(markerFixDateHandler);
+  setFixTimeHandler(markerFixTimeHandler);
+  openPinBar(visible, 0);
 }
 
 // Returns { min, max } timestamps across all dated markers, or null if none.
