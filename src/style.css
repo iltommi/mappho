@@ -173,7 +173,7 @@ html, body {
 
 /* Overflow menu */
 
-#heatmap-btn, #media-type-btn {
+#heatmap-btn, #media-type-btn, #pin-browse-btn {
   position: fixed;
   right: 16px;
   width: 48px;
@@ -198,7 +198,9 @@ html, body {
 
 /* Map-anchored photo bar — browse pin photos without leaving the map (map
    itself never pans/zooms; see showSelectionMarker in map.js for the
-   temporary marker that shows where the current photo actually is). */
+   temporary marker that shows where the current photo actually is). No
+   explicit close button — tapping the map itself (see initMap's click
+   handler) closes it, matching how the small pin popup already dismisses. */
 #pin-bar {
   display: none;
   position: fixed;
@@ -207,27 +209,19 @@ html, body {
   background: rgba(22, 33, 62, .92);
   border-radius: 14px;
   padding: 8px;
-  align-items: center;
-  gap: 8px;
   box-shadow: 0 2px 10px rgba(0,0,0,.5);
 }
-#pin-bar.open { display: flex; }
-#pin-bar-prev, #pin-bar-next {
-  width: 36px; height: 36px;
-  flex: none;
-  border: none;
-  background: rgba(255,255,255,.12);
-  color: #fff;
-  font-size: 1.5rem;
-  line-height: 1;
-  border-radius: 50%;
-  cursor: pointer;
+#pin-bar.open { display: block; }
+#pin-bar-counter {
+  font-size: .7rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 4px;
 }
-#pin-bar-prev:hover, #pin-bar-next:hover { background: rgba(255,255,255,.22); }
 #pin-bar-thumb-wrap {
-  flex: 1;
-  min-width: 0;
-  height: 64px;
+  position: relative;
+  height: 45vh;
+  max-height: 320px;
   border-radius: 8px;
   overflow: hidden;
   background: #0f172a;
@@ -236,27 +230,28 @@ html, body {
   justify-content: center;
 }
 #pin-bar-thumb {
-  width: 100%; height: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
   cursor: zoom-in;
 }
-#pin-bar-close {
-  width: 32px; height: 32px;
-  flex: none;
+#pin-bar-prev, #pin-bar-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px; height: 40px;
   border: none;
-  background: rgba(255,255,255,.12);
+  background: rgba(255,255,255,.18);
   color: #fff;
-  font-size: 1rem;
+  font-size: 1.6rem;
+  line-height: 1;
   border-radius: 50%;
   cursor: pointer;
+  z-index: 1;
 }
-#pin-bar-close:hover { background: rgba(255,255,255,.22); }
-#pin-bar-counter {
-  position: absolute;
-  top: -18px; left: 12px;
-  font-size: .7rem;
-  color: #94a3b8;
-}
+#pin-bar-prev { left: 8px; }
+#pin-bar-next { right: 8px; }
+#pin-bar-prev:hover, #pin-bar-next:hover { background: rgba(255,255,255,.3); }
 
 .icon-x {
   position: relative;

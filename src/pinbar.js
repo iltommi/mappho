@@ -14,7 +14,6 @@ const el        = document.getElementById('pin-bar');
 const thumbImg  = document.getElementById('pin-bar-thumb');
 const prevBtn   = document.getElementById('pin-bar-prev');
 const nextBtn   = document.getElementById('pin-bar-next');
-const closeBtn  = document.getElementById('pin-bar-close');
 const counterEl = document.getElementById('pin-bar-counter');
 
 // px — matches lightbox.js/slideshow.js's own swipe-to-navigate threshold
@@ -61,7 +60,6 @@ function navigate(dir) {
 
 prevBtn.addEventListener('click', () => navigate(-1));
 nextBtn.addEventListener('click', () => navigate(1));
-closeBtn.addEventListener('click', () => close());
 
 document.addEventListener('keydown', e => {
   if (!el.classList.contains('open')) return;

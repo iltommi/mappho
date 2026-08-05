@@ -10,7 +10,7 @@ import { isVideo } from './mp4.js';
 import { log } from './log.js';
 import { openSlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler } from './slideshow.js';
 import { openGrid, setBulkIgnoreHandler } from './grid.js';
-import { openPinBar } from './pinbar.js';
+import { openPinBar, closePinBar } from './pinbar.js';
 import { sameDayFromList } from './dayrange.js';
 
 // Fix Leaflet's default icon path broken by Vite's asset hashing.
@@ -247,6 +247,13 @@ export function initMap() {
     }
   });
   map.addLayer(cluster);
+
+  // Tapping the map background closes the pin-bar, the same way a plain
+  // marker popup already dismisses on an outside tap — makes the bar's own
+  // explicit close button unnecessary. Leaflet doesn't bubble a marker or
+  // cluster click into the underlying map's own 'click' event, so this
+  // only fires for genuine taps on empty map area.
+  map.on('click', () => closePinBar());
 }
 
 function _buildMarker(fileid, name, lat, lng, ts, rotation) {
