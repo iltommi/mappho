@@ -1,5 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { FileTransfer } from '@capacitor/file-transfer';
 import { handleCallback, getToken, loginWithPassword, loginWithTFA, logout, saveToken, TwoFactorRequired, getApiHost, setApiHost, EU_HOST, US_HOST } from './auth.js';
 import { viewOpened, viewClosed, navBack, restoreTop } from './nav.js';
 
@@ -7,7 +9,7 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
-import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat } from './pcloud.js';
+import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView } from './map.js';
@@ -729,12 +731,26 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       ? releaseSha === APP_SHA
       : new Date(release.published_at) <= BUILD_TIME;
     if (!upToDate) {
-      showBriefStatus(`Update available — downloading…`, 60000);
       const apkUrl = 'https://github.com/iltommi/mappho/releases/download/latest/Mappho.apk';
+      showBriefStatus('Update available — downloading…', 60000);
+      let listener = null;
       try {
-        await Capacitor.Plugins.Downloader.downloadAndInstall({ url: apkUrl });
-      } catch {
+        const { uri: path } = await Filesystem.getUri({ path: 'Mappho.apk', directory: Directory.Cache });
+        listener = await FileTransfer.addListener('progress', p => {
+          if (p.url !== apkUrl || !p.contentLength) return;
+          showBriefStatus(`Downloading update… ${Math.round((p.bytes / p.contentLength) * 100)}%`, 60000);
+        });
+        const result = await FileTransfer.downloadFile({
+          url: apkUrl, path, progress: true,
+          connectTimeout: LARGE_FILE_TIMEOUT, readTimeout: LARGE_FILE_TIMEOUT,
+        });
+        if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
+        await Capacitor.Plugins.Downloader.installApk({ path: result.path });
+      } catch (e) {
+        log('Update download error', e.message);
         window.open(apkUrl, '_system');
+      } finally {
+        listener?.remove();
       }
     } else {
       showBriefStatus('Already up to date.');
