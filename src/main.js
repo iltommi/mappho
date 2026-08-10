@@ -157,6 +157,25 @@ peopleFab.addEventListener('click', () => {
   openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
+// Single toggle that reveals the 6 map FABs (see the body.map-fabs-open
+// CSS rule) instead of showing them all permanently.
+const mapFabsToggle = document.getElementById('map-fabs-toggle');
+mapFabsToggle.addEventListener('click', () => {
+  const open = document.body.classList.toggle('map-fabs-open');
+  mapFabsToggle.textContent = open ? '✕' : '+';
+});
+// Auto-collapse once one of the revealed buttons is actually used, rather
+// than leaving the menu open after its purpose is served. Capture phase
+// specifically: #menu-fab's own handler calls e.stopPropagation() during
+// the bubble phase, which would otherwise suppress a bubble-phase
+// delegated listener from ever seeing that particular click.
+document.addEventListener('click', e => {
+  if (!document.body.classList.contains('map-fabs-open')) return;
+  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn')) return;
+  document.body.classList.remove('map-fabs-open');
+  mapFabsToggle.textContent = '+';
+}, { capture: true });
+
 
 async function openNodatetimeGrid() {
   const allOrphans = await countOrphans();
@@ -1635,6 +1654,7 @@ function showApp() {
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   pinBrowseBtn.style.display = '';
+  mapFabsToggle.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }
 
