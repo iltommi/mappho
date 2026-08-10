@@ -4,10 +4,12 @@
 // the current photo actually is, useful when its real marker is merged
 // into a cluster bubble at the current zoom level). Tapping the thumbnail
 // hands off to the full-screen slideshow (already built, same navigation)
-// for a closer look.
+// for a closer look; swiping up ("pull up") instead opens the same grid
+// view the map's own cluster long-press uses, populated with every photo
+// currently loaded in the bar.
 import { fetchThumbSrc } from './pcloud.js';
 import { openSlideshow } from './slideshow.js';
-import { showSelectionMarker, hideSelectionMarker } from './map.js';
+import { showSelectionMarker, hideSelectionMarker, openGridFromPhotos } from './map.js';
 import { viewOpened, viewClosed } from './nav.js';
 
 const el        = document.getElementById('pin-bar');
@@ -84,7 +86,13 @@ thumbImg.addEventListener('pointerup', e => {
   if (!touching) return;
   touching = false;
   const dx = e.clientX - touchStartX, dy = e.clientY - touchStartY;
-  if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+  if (Math.abs(dy) > SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx) && dy < 0) {
+    // Swipe up ("pull up"): open the grid view of every photo currently
+    // loaded in the bar — capture the list before close() clears it.
+    const list = photos;
+    close();
+    openGridFromPhotos(list);
+  } else if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
     navigate(dx < 0 ? 1 : -1);
   } else if (dx * dx + dy * dy < 100) {
     // Plain tap: hand off to the full-screen slideshow at the same photo —

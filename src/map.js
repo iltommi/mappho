@@ -491,6 +491,21 @@ export function browsePinsInView() {
   openPinBar(visible, 0);
 }
 
+// Entry point for pinbar.js's swipe-up gesture: same grid the map's own
+// cluster long-press already opens (see openClusterGrid inside initMap),
+// just populated from the pin-bar's already-loaded photo list instead of
+// a cluster layer's current children.
+export function openGridFromPhotos(photos) {
+  if (!photos.length) return;
+  setGeotagHandler(markerGeotagHandler);
+  setFixDateHandler(markerFixDateHandler);
+  setFixTimeHandler(markerFixTimeHandler);
+  setIgnoreHandler(markerIgnoreHandler);
+  setBulkIgnoreHandler(markerBulkIgnoreHandler);
+  openGrid((offset, limit) => Promise.resolve(photos.slice(offset, offset + limit)), photos.length,
+    { sameDayFetch: sameDayFromList(photos), reopen: () => openGridFromPhotos(photos) });
+}
+
 // Returns { min, max } timestamps across all dated markers, or null if none.
 export function getDateRange() {
   const dated = markerIndex.map(m => m.ts).filter(t => t != null);
