@@ -115,7 +115,8 @@ body:not(.map-fabs-open) #people-fab,
 body:not(.map-fabs-open) #heatmap-btn,
 body:not(.map-fabs-open) #media-type-btn,
 body:not(.map-fabs-open) #pin-browse-btn,
-body:not(.map-fabs-open) #location-search-fab { display: none !important; }
+body:not(.map-fabs-open) #location-search-fab,
+body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
 
 
 /* Folder picker overlay */
@@ -212,7 +213,7 @@ body:not(.map-fabs-open) #location-search-fab { display: none !important; }
 
 /* Overflow menu */
 
-#heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab {
+#heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn {
   position: fixed;
   right: 16px;
   width: 48px;
@@ -227,13 +228,18 @@ body:not(.map-fabs-open) #location-search-fab { display: none !important; }
   box-shadow: 0 2px 8px rgba(0,0,0,.5);
   transition: opacity .15s, background .15s;
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 #heatmap-btn { bottom: 24px; }
-#media-type-btn { bottom: 80px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#media-type-btn { bottom: 80px; overflow: hidden; }
 #pin-browse-btn { bottom: 136px; }
 #location-search-fab { bottom: 192px; }
+#filter-menu-btn { bottom: 248px; }
+#filter-menu-btn .date-range-icon { height: 26px; }
 .mf-all { line-height: 1; white-space: nowrap; }
-#heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover, #location-search-fab:hover { opacity: 1; }
+#heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover, #location-search-fab:hover, #filter-menu-btn:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 
 /* Map-anchored photo bar — browse pin photos without leaving the map (map
@@ -324,7 +330,6 @@ body:not(.map-fabs-open) #location-search-fab { display: none !important; }
   pointer-events: none;
 }
 #retry-info-btn { color: #fbbf24; }
-#filter-menu-btn { display: flex; align-items: center; }
 
 #map {
   position: fixed;
@@ -1971,4 +1976,5 @@ body.action-bar-open #heatmap-btn,
 body.action-bar-open #media-type-btn,
 body.action-bar-open #pin-browse-btn,
 body.action-bar-open #location-search-fab,
+body.action-bar-open #filter-menu-btn,
 body.action-bar-open #map-fabs-toggle { display: none !important; }

@@ -160,7 +160,7 @@ peopleFab.addEventListener('click', () => {
   openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
-// Single toggle that reveals the 6 map FABs (see the body.map-fabs-open
+// Single toggle that reveals the 7 map FABs (see the body.map-fabs-open
 // CSS rule) instead of showing them all permanently.
 const mapFabsToggle = document.getElementById('map-fabs-toggle');
 mapFabsToggle.addEventListener('click', () => {
@@ -174,7 +174,7 @@ mapFabsToggle.addEventListener('click', () => {
 // delegated listener from ever seeing that particular click.
 document.addEventListener('click', e => {
   if (!document.body.classList.contains('map-fabs-open')) return;
-  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab')) return;
+  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn')) return;
   document.body.classList.remove('map-fabs-open');
   mapFabsToggle.textContent = '+';
 }, { capture: true });
@@ -705,10 +705,7 @@ function enqueueBulkFixDate(list, mode, params, cb) {
 fixDateCancelBtn.addEventListener('click', cancelFixDate);
 
 
-document.getElementById('filter-menu-btn').addEventListener('click', () => {
-  closeInfoPopup();
-  toggleFilter();
-});
+document.getElementById('filter-menu-btn').addEventListener('click', () => toggleFilter());
 
 
 document.getElementById('check-update-btn').addEventListener('click', async () => {
@@ -1730,6 +1727,7 @@ function showApp() {
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   pinBrowseBtn.style.display = '';
   locationSearchFab.style.display = '';
+  document.getElementById('filter-menu-btn').style.display = '';
   mapFabsToggle.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }
