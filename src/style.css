@@ -78,7 +78,7 @@ html, body {
 #people-fab:disabled { opacity: .35; cursor: default; }
 #people-fab:disabled:hover { background: #1e293b; }
 
-/* Single toggle that reveals the 6 buttons above — see the
+/* Single toggle that reveals the 8 buttons above — see the
    body:not(.map-fabs-open) rule further down for how they're hidden by
    default. */
 #map-fabs-toggle {
@@ -105,7 +105,7 @@ html, body {
 }
 #map-fabs-toggle:hover { opacity: 1; background: #334155; }
 
-/* Collapsed by default: hides the same 6 buttons regardless of whatever
+/* Collapsed by default: hides the same 8 buttons regardless of whatever
    each one's own logic has set (e.g. #people-fab before the index is
    ready) — this is an additional gate on top of that, not a replacement
    for it, so a button that shouldn't show yet still won't once expanded. */
@@ -236,7 +236,10 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
 #media-type-btn { bottom: 80px; overflow: hidden; }
 #pin-browse-btn { bottom: 136px; }
 #location-search-fab { bottom: 192px; }
-#filter-menu-btn { bottom: 248px; }
+/* Balances the left column (menu-fab/people-fab/fix-position-only-btn)
+   out to 4 buttons too, so both columns reach the same height instead of
+   the right side stacking noticeably taller than the left. */
+#filter-menu-btn { left: 16px; right: auto; bottom: 192px; }
 #filter-menu-btn .date-range-icon { height: 26px; }
 .mf-all { line-height: 1; white-space: nowrap; }
 #heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover, #location-search-fab:hover, #filter-menu-btn:hover { opacity: 1; }
@@ -1521,7 +1524,6 @@ body.filter-open #map { top: 48px; }
   display: flex;
   gap: 6px;
   width: 100%;
-  min-width: min(80vw, 300px);
 }
 #location-search-input {
   flex: 1;

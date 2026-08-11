@@ -12,7 +12,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, t
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, setMapBackgroundClickHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
 import { searchLocation } from './geocode.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
@@ -160,7 +160,7 @@ peopleFab.addEventListener('click', () => {
   openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
-// Single toggle that reveals the 7 map FABs (see the body.map-fabs-open
+// Single toggle that reveals the 8 map FABs (see the body.map-fabs-open
 // CSS rule) instead of showing them all permanently.
 const mapFabsToggle = document.getElementById('map-fabs-toggle');
 mapFabsToggle.addEventListener('click', () => {
@@ -2371,6 +2371,9 @@ async function main() {
   setMarkerFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setMarkerIgnoreHandler(ignoreOnePhoto);
   setMarkerBulkIgnoreHandler(bulkIgnorePhotos);
+  setMapBackgroundClickHandler(() => {
+    if (locationSearchPanel.style.display !== 'none') closeLocationSearch();
+  });
 
   const token = getToken();
   setupAuthBtn(!!token);

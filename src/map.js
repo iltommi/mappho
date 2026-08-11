@@ -79,6 +79,9 @@ export function setMarkerIgnoreHandler(fn) { markerIgnoreHandler = fn; }
 let markerBulkIgnoreHandler = null;
 export function setMarkerBulkIgnoreHandler(fn) { markerBulkIgnoreHandler = fn; }
 
+let mapBackgroundClickHandler = null;
+export function setMapBackgroundClickHandler(fn) { mapBackgroundClickHandler = fn; }
+
 const PIN_ICON = L.icon({
   iconUrl: 'data:image/svg+xml,' + encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
@@ -268,8 +271,10 @@ export function initMap() {
   // marker popup already dismisses on an outside tap — makes the bar's own
   // explicit close button unnecessary. Leaflet doesn't bubble a marker or
   // cluster click into the underlying map's own 'click' event, so this
-  // only fires for genuine taps on empty map area.
-  map.on('click', () => closePinBar());
+  // only fires for genuine taps on empty map area. Other overlays anchored
+  // over the map (e.g. the location-search panel) register their own close
+  // via setMapBackgroundClickHandler to get the same outside-tap dismissal.
+  map.on('click', () => { closePinBar(); mapBackgroundClickHandler?.(); });
 }
 
 function _buildMarker(fileid, name, lat, lng, ts, rotation) {
