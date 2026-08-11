@@ -12,7 +12,8 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, t
 import { listImages, listFolders, folderExists, fetchFileHead, downloadFullFile, overwriteFile, copyFile, uploadFile, deleteFile, getFileStat, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename, injectExif, heicToJpeg, fetchHeicExifForPreserve } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
+import { searchLocation } from './geocode.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
 import { checkPendingShare, listenForShares } from './import.js';
@@ -173,7 +174,7 @@ mapFabsToggle.addEventListener('click', () => {
 // delegated listener from ever seeing that particular click.
 document.addEventListener('click', e => {
   if (!document.body.classList.contains('map-fabs-open')) return;
-  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn')) return;
+  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab')) return;
   document.body.classList.remove('map-fabs-open');
   mapFabsToggle.textContent = '+';
 }, { capture: true });
@@ -1075,6 +1076,64 @@ mediaTypeBtn.addEventListener('click', () => {
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
+// Search a place by name to fly the map there — unrelated to the geotag
+// pin-drop flow's own location search (which sets a photo's location);
+// this only ever navigates the map view itself.
+const locationSearchFab     = document.getElementById('location-search-fab');
+const locationSearchPanel   = document.getElementById('location-search-panel');
+const locationSearchInput   = document.getElementById('location-search-input');
+const locationSearchBtn     = document.getElementById('location-search-btn');
+const locationSearchClose   = document.getElementById('location-search-close');
+const locationSearchResults = document.getElementById('location-search-results');
+
+function closeLocationSearch() {
+  locationSearchPanel.style.display = 'none';
+  locationSearchResults.innerHTML = '';
+  locationSearchInput.value = '';
+  viewClosed('location-search');
+}
+
+function openLocationSearch() {
+  locationSearchPanel.style.display = 'flex';
+  viewOpened('location-search', { close: closeLocationSearch });
+  locationSearchInput.focus();
+}
+
+async function doLocationSearch() {
+  const q = locationSearchInput.value.trim();
+  if (!q) return;
+  locationSearchBtn.disabled = true;
+  locationSearchBtn.textContent = '⏳';
+  locationSearchResults.innerHTML = '';
+  try {
+    const results = await searchLocation(q);
+    if (!results.length) {
+      locationSearchResults.textContent = 'No results found.';
+    } else {
+      for (const r of results) {
+        const btn = document.createElement('button');
+        btn.className = 'pin-drop-result-btn';
+        btn.textContent = r.label;
+        btn.addEventListener('click', () => {
+          flyToSearchResult(r);
+          closeLocationSearch();
+        });
+        locationSearchResults.appendChild(btn);
+      }
+    }
+  } catch (e) {
+    locationSearchResults.textContent = `Error: ${e.message}`;
+  } finally {
+    locationSearchBtn.disabled = false;
+    locationSearchBtn.textContent = '🔍';
+  }
+}
+
+locationSearchFab.addEventListener('click', openLocationSearch);
+locationSearchClose.addEventListener('click', closeLocationSearch);
+locationSearchBtn.addEventListener('click', doLocationSearch);
+locationSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLocationSearch(); } });
+
 const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 
@@ -1670,6 +1729,7 @@ function showApp() {
   mediaTypeBtn.style.display = '';
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   pinBrowseBtn.style.display = '';
+  locationSearchFab.style.display = '';
   mapFabsToggle.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }

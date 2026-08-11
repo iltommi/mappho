@@ -114,7 +114,8 @@ body:not(.map-fabs-open) #fix-position-only-btn,
 body:not(.map-fabs-open) #people-fab,
 body:not(.map-fabs-open) #heatmap-btn,
 body:not(.map-fabs-open) #media-type-btn,
-body:not(.map-fabs-open) #pin-browse-btn { display: none !important; }
+body:not(.map-fabs-open) #pin-browse-btn,
+body:not(.map-fabs-open) #location-search-fab { display: none !important; }
 
 
 /* Folder picker overlay */
@@ -211,7 +212,7 @@ body:not(.map-fabs-open) #pin-browse-btn { display: none !important; }
 
 /* Overflow menu */
 
-#heatmap-btn, #media-type-btn, #pin-browse-btn {
+#heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab {
   position: fixed;
   right: 16px;
   width: 48px;
@@ -230,8 +231,9 @@ body:not(.map-fabs-open) #pin-browse-btn { display: none !important; }
 #heatmap-btn { bottom: 24px; }
 #media-type-btn { bottom: 80px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
 #pin-browse-btn { bottom: 136px; }
+#location-search-fab { bottom: 192px; }
 .mf-all { line-height: 1; white-space: nowrap; }
-#heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover { opacity: 1; }
+#heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover, #location-search-fab:hover { opacity: 1; }
 #heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
 
 /* Map-anchored photo bar — browse pin photos without leaving the map (map
@@ -1488,6 +1490,65 @@ body.filter-open #map { top: 48px; }
 }
 .pin-drop-result-btn:hover { background: #334155; }
 
+/* Search a place by name to fly the map there — deliberately just the
+   search row + results list from #pin-drop-bar's shape (same look, reuses
+   .pin-drop-result-btn as-is), without any of that bar's save/cancel/
+   pin-placement machinery, since this only ever navigates the map. */
+#location-search-panel {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  background: #16213e;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(90vw, 480px);
+  width: max-content;
+}
+#location-search-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  min-width: min(80vw, 300px);
+}
+#location-search-input {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: .88rem;
+  padding: 7px 10px;
+  outline: none;
+}
+#location-search-input:focus { border-color: #3b82f6; }
+#location-search-btn, #location-search-close {
+  background: #334155;
+  border: none;
+  border-radius: 8px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 7px 10px;
+}
+#location-search-btn:disabled { opacity: .5; cursor: default; }
+#location-search-results {
+  width: 100%;
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#location-search-results:empty { display: none; }
+
 /* Fix date panel */
 #fix-date-bar {
   position: fixed;
@@ -1909,4 +1970,5 @@ body.action-bar-open #people-fab,
 body.action-bar-open #heatmap-btn,
 body.action-bar-open #media-type-btn,
 body.action-bar-open #pin-browse-btn,
+body.action-bar-open #location-search-fab,
 body.action-bar-open #map-fabs-toggle { display: none !important; }
