@@ -766,7 +766,9 @@ body.filter-open #map { top: 48px; }
      compute the column *count* from the max instead of the min, collapsing a
      full grid of photos down to just 1-2 huge columns. Per-tile growth is
      capped separately below via max-width. */
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  /* --grid-min is set live by grid.js's pinch-to-zoom handling (falls back
+     to today's 90px default before the first layout pass sets it). */
+  grid-template-columns: repeat(auto-fit, minmax(var(--grid-min, 90px), 1fr));
   justify-content: center;
   gap: 2px;
   padding: 2px;
@@ -774,7 +776,7 @@ body.filter-open #map { top: 48px; }
 .grid-tile {
   position: relative;
   width: 100%;
-  max-width: 200px;
+  max-width: calc(var(--grid-min, 90px) * 2.2);
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: #1e293b;

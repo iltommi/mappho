@@ -133,6 +133,69 @@ export function setAfterBulkGeotagCallback(fn) { afterBulkGeotagCb = fn; }
 const PAGE_SIZE  = 60;
 const THUMB_SIZE = '256x256';
 
+// ── Pinch-to-zoom column count ──────────────────────────────────────────────
+// Tile size is driven by a CSS var (--grid-min, see #grid-track/.grid-tile in
+// style.css) instead of a hardcoded minmax(). What's persisted is a
+// resolution-independent target column count, not a raw px size, so the same
+// preference makes sense again after a rotation or on a different device —
+// applyZoom() re-derives the actual px size from the current container width
+// every time. MIN_TILE_PX/MAX_TILE_PX are the real "not ridiculously
+// small/large" guarantee; MIN_COLS/MAX_COLS just bound the pinch gesture
+// itself.
+const MIN_TILE_PX  = 70;
+const MAX_TILE_PX  = 220;
+const GRID_GAP     = 2; // must match #grid-track's CSS gap
+const MIN_COLS     = 2;
+const MAX_COLS     = 10;
+const ZOOM_KEY     = 'mappho-grid-zoom-cols';
+
+function loadZoomCols() {
+  const saved = parseFloat(localStorage.getItem(ZOOM_KEY));
+  return Number.isFinite(saved) ? Math.min(MAX_COLS, Math.max(MIN_COLS, saved)) : 4;
+}
+
+let zoomCols = loadZoomCols();
+
+function applyZoom() {
+  const width = scrollEl.clientWidth;
+  if (!width) return;
+  const rawMinPx = (width - (zoomCols - 1) * GRID_GAP) / zoomCols;
+  const minPx = Math.min(MAX_TILE_PX, Math.max(MIN_TILE_PX, rawMinPx));
+  track.style.setProperty('--grid-min', minPx + 'px');
+}
+
+new ResizeObserver(applyZoom).observe(scrollEl);
+
+let pinchActive = false;
+let pinchStartDist = 0, pinchStartCols = 4;
+
+scrollEl.addEventListener('touchstart', e => {
+  if (e.touches.length !== 2) return;
+  pinchActive     = true;
+  pinchStartCols  = zoomCols;
+  const [t0, t1]  = e.touches;
+  pinchStartDist  = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+}, { passive: true });
+
+scrollEl.addEventListener('touchmove', e => {
+  if (!pinchActive || e.touches.length < 2) return;
+  e.preventDefault(); // stop the browser's own page-zoom gesture
+  const [t0, t1] = e.touches;
+  const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  if (!pinchStartDist) return;
+  const cols = pinchStartCols / (dist / pinchStartDist);
+  zoomCols = Math.min(MAX_COLS, Math.max(MIN_COLS, cols));
+  applyZoom();
+}, { passive: false });
+
+function endPinch() {
+  if (!pinchActive) return;
+  pinchActive = false;
+  localStorage.setItem(ZOOM_KEY, String(zoomCols));
+}
+scrollEl.addEventListener('touchend', e => { if (e.touches.length < 2) endPinch(); });
+scrollEl.addEventListener('touchcancel', endPinch);
+
 let items        = [];
 let fetchPageFn  = null;
 let total        = null;
@@ -521,6 +584,7 @@ function makeTile(item) {
   tile._img  = img;
   let pressTimer = null, didLongPress = false, pressOrigin = null;
   tile.addEventListener('pointerdown', e => {
+    if (pinchActive) return; // a second finger landing on a tile during a pinch shouldn't start a long-press
     didLongPress = false;
     pressOrigin = { x: e.clientX, y: e.clientY };
     pressTimer = setTimeout(() => {
@@ -541,7 +605,7 @@ function makeTile(item) {
   tile.addEventListener('pointercancel', cancelPress);
 
   tile.addEventListener('click', () => {
-    if (didLongPress) { didLongPress = false; return; }
+    if (pinchActive || didLongPress) { didLongPress = false; return; }
     const idx = tileIndex(tile);
     if (idx === -1) return;
     if (selectMode) { toggleTileSelected(tile, idx); return; }
