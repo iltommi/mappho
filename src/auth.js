@@ -98,7 +98,9 @@ export async function loginWithTFA(tfaToken, code, trustDevice = false) {
   url.searchParams.set('code', code.replace(/\D/g, ''));
   url.searchParams.set('trustdevice', trustDevice ? 'true' : 'false');
 
-  log('tfa_login request', { token: tfaToken.slice(0, 8) + '…', code });
+  // Never log the actual 2FA code — same reasoning as not logging the auth
+  // token below: the debug log is user-shareable.
+  log('tfa_login request', { token: tfaToken.slice(0, 8) + '…' });
   const data = await pcloudFetch(url);
   log('tfa_login response', { result: data.result, error: data.error });
 
