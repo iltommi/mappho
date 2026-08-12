@@ -46,12 +46,18 @@ export async function extractEXIF(buffer, fileid = null, name = '') {
 }
 
 // Range-checked date builder: new Date() would silently roll over invalid
-// months/days (2025-99-01 → mid-2033), turning random digit runs into dates.
-function tsFromParts(y, mo, d, h = 0, mi = 0, s = 0) {
+// months/days (2025-99-01 → mid-2033, but also less obviously Feb 30 → Mar
+// 1/2 — the day-of-month bound above is a fixed 31 since it can't know each
+// month's actual length), turning random digit runs into dates. The
+// round-trip check below catches that: an impossible calendar date never
+// reads back as what was asked for.
+export function tsFromParts(y, mo, d, h = 0, mi = 0, s = 0) {
   if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   if (h > 23 || mi > 59 || s > 59) return null;
   const dt = new Date(y, mo - 1, d, h, mi, s);
-  return isNaN(dt) ? null : dt.getTime();
+  if (isNaN(dt)) return null;
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt.getTime();
 }
 
 // Try to extract a Unix timestamp from filenames like:
@@ -223,7 +229,7 @@ export function injectGPS(buffer, lat, lng) {
   return injectExif(buffer, { lat, lng });
 }
 
-function toDMS(decimal) {
+export function toDMS(decimal) {
   const deg = Math.floor(decimal);
   const minF = (decimal - deg) * 60;
   const min  = Math.floor(minF);
