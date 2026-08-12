@@ -289,12 +289,14 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: none;
 }
 #pin-bar-thumb {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   cursor: zoom-in;
+  touch-action: none;
 }
 #pin-bar-prev, #pin-bar-next {
   position: absolute;
@@ -1538,7 +1540,7 @@ body.filter-open #map { top: 48px; }
   outline: none;
 }
 #location-search-input:focus { border-color: #3b82f6; }
-#location-search-btn, #location-search-close {
+#location-search-btn {
   background: #334155;
   border: none;
   border-radius: 8px;

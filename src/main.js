@@ -1080,7 +1080,6 @@ const locationSearchFab     = document.getElementById('location-search-fab');
 const locationSearchPanel   = document.getElementById('location-search-panel');
 const locationSearchInput   = document.getElementById('location-search-input');
 const locationSearchBtn     = document.getElementById('location-search-btn');
-const locationSearchClose   = document.getElementById('location-search-close');
 const locationSearchResults = document.getElementById('location-search-results');
 
 function closeLocationSearch() {
@@ -1127,7 +1126,6 @@ async function doLocationSearch() {
 }
 
 locationSearchFab.addEventListener('click', openLocationSearch);
-locationSearchClose.addEventListener('click', closeLocationSearch);
 locationSearchBtn.addEventListener('click', doLocationSearch);
 locationSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLocationSearch(); } });
 
