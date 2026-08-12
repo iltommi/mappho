@@ -52,6 +52,25 @@ export function createStepProgress(getProgressFn) {
 // which would make a quick single-photo edit wait behind an unrelated
 // 50-photo bulk job.
 //
+// Recovery granularity: what persist() below guarantees is "which fileids in
+// this batch haven't been marked done yet" — an item killed before its
+// apply() call returns just gets retried from scratch on resume, which is
+// safe as long as apply() hasn't made a remote write yet (it hasn't, for
+// most of a typical edit: download, convert, and EXIF-inject are all local).
+// The narrow gap this does NOT cover is a kill in the brief window *inside*
+// apply() after its new file has already been uploaded but before the old
+// one is deleted and the local cache updated to point at it (see
+// applyFixDateToPhoto/geotag.js's equivalent) — resume re-runs the whole
+// edit against the still-intact original, leaving the first attempt's
+// upload as an orphaned, untracked duplicate on pCloud rather than either
+// finishing or rolling it back. True step-level transactional recovery
+// (tracking exactly which remote side effect happened, detecting and
+// cleaning up an orphan on resume) would close this, but is real added
+// complexity for a narrow, low-probability window — "Rebuild from Photos"
+// already re-derives the local index straight from pCloud's actual folder
+// contents, so an orphan like this gets rediscovered rather than staying
+// permanently invisible. Documented here rather than silently implicit.
+//
 // config:
 //   storageKey       — localStorage key for this queue's own resume state
 //   resumeLabel       — e.g. 'bulk geotag', fed to askResume(count, label)
