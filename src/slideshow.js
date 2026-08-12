@@ -359,8 +359,6 @@ function close({ handoff = false } = {}) {
   viewClosed('slideshow', { restoreParent: !handoff });
 }
 
-export function closeSlideshow() { close(); }
-
 geotagBtn.addEventListener('click', () => {
   const photo = photos[current];
   if (!photo || !geotagHandler) return;

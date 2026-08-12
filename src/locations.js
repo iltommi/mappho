@@ -20,7 +20,6 @@ const DIRTY_KEY       = 'mappho_locations_dirty';      // survives restarts so p
 
 let _loaded  = false;
 let _loading = null;
-let _stats   = null; // cached getLocationStats() result; null after any mutation
 
 function readMeta() {
   try { return JSON.parse(localStorage.getItem(META_KEY)); } catch { return null; }
@@ -38,7 +37,6 @@ async function replaceFromRemote(stat) {
   localStorage.setItem(FILEID_KEY, String(stat.fileid));
   localStorage.setItem(REMOTE_HASH_KEY, String(stat.hash ?? ''));
   localStorage.removeItem(DIRTY_KEY);
-  _stats = null;
   log('Locations', `loaded ${data.entries.length} entries, ${data.categories?.length ?? 0} categories`);
 }
 
@@ -99,7 +97,6 @@ export async function refreshLocations() {
 
 function markDirty() {
   localStorage.setItem(DIRTY_KEY, '1');
-  _stats = null;
   flushLocations();
 }
 
@@ -172,52 +169,4 @@ export async function removeLocationsEntry(hash) {
   await deleteLocationsEntry(key);
   markDirty();
   log('Locations', `removed entry for deleted ${entry.name}`);
-}
-
-export async function getLocationsForHash(hash) {
-  await load();
-  const key = normPcloudHash(hash);
-  const entry = key ? ((await getLocationsEntry(key)) ?? null) : null;
-  log('Locations', entry
-    ? `lookup ${key}: ${entry.name} — ${(entry.tags ?? []).map(t => t.category).join(', ')}`
-    : `lookup ${key ?? '(no hash)'}: no entry`);
-  return entry;
-}
-
-// Returns the locations entries of every photo tagged with ALL given
-// categories (AND across categories) — a single category is the plain
-// "photos tagged with this place" case.
-export async function getEntriesForLocations(categories) {
-  await load();
-  const cats = categories.map(String);
-  if (!cats.length) return [];
-  const all = await getAllLocations();
-  const matched = all.filter(e => {
-    const present = new Set((e.tags ?? []).map(t => String(t.category)));
-    return cats.every(c => present.has(c));
-  });
-  log('Locations', `categories [${cats.join(',')}]: ${matched.length} photos in mirror (AND)`);
-  return matched;
-}
-
-// Aggregates classified categories with their photo counts. Sorted by count,
-// then name. Cached until a mutation or remote refresh invalidates it.
-export async function getLocationStats() {
-  await load();
-  if (_stats) { log('Locations', `stats from cache — ${_stats.categoryCount} categories`); return _stats; }
-  const t0 = Date.now();
-  const entries = await getAllLocations();
-  const counts = new Map(); // category → photo count
-  for (const e of entries) {
-    for (const t of e.tags ?? []) {
-      const cat = String(t.category);
-      counts.set(cat, (counts.get(cat) ?? 0) + 1);
-    }
-  }
-  const list = [...counts.entries()]
-    .map(([id, count]) => ({ id, name: id, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  _stats = { categoryCount: list.length, list };
-  log('Locations', `stats computed in ${Date.now() - t0}ms — ${list.length} categories across ${entries.length} photos`);
-  return _stats;
 }

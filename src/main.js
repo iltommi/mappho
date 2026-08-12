@@ -24,12 +24,12 @@ import { findMapphoRootIfExists, getMapphoRoot, loadOrganizeIndex, flushOrganize
 import { applyVideoMeta } from './videometa.js';
 import { setIgnoredEntry, removeIgnoredEntry, applyIgnored } from './ignoremeta.js';
 import { refreshFaces, getPeopleStats, getEntriesForPeople } from './faces.js';
-import { refreshLocations, getLocationStats, getEntriesForLocations } from './locations.js';
+import { refreshLocations } from './locations.js';
 import { refreshFlags } from './flags.js';
 import { flushPhotoIndex, loadPhotoIndex } from './photoindex.js';
 import { startSyncTimer, flushAll } from './syncmanager.js';
 import { askResume, waitForVisible } from './confirm.js';
-import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, countAllNonIgnored, getAllNonIgnoredPage, getPositionAndDatePage, countGeotaggedInRange, ignorePhoto, deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
+import { getCached, putCached, bulkPutCached, getAllCached, clearAll, clearNonIgnored, putOrphan, bulkPutOrphans, countOrphans, countCached, countIgnored, getIgnoredPage, getAllIgnored, unignorePhoto, clearOrphans, getOrphansPage, getOrphansInRange, countOrphansInRange, countLocatedUndated, getLocatedUndatedPage, countAllNonIgnored, getAllNonIgnoredPage, getPositionAndDatePage, countGeotaggedInRange, ignorePhoto, deleteRecord, deleteOrphan, clearTextModelFiles, UNDATED_TS } from './db.js';
 import { distinctDayRanges, sameDayFromList } from './dayrange.js';
 import './style.css';
 
@@ -484,7 +484,14 @@ eraseCacheBtn.addEventListener('click', async () => {
   eraseCacheConfirmPending = false;
   eraseCacheBtn.textContent = '🗑 Erase cache';
   closeInfoPopup();
-  await Promise.all([clearAll(), clearOrphans()]);
+  // embeddings.js is loaded dynamically (not statically imported here) the
+  // same way search itself is — it doesn't pull in the heavy ML bundle on
+  // its own (that's textembed.js), but there's no reason to eagerly import
+  // it just for the rare "erase cache" tap either.
+  await Promise.all([
+    clearAll(), clearOrphans(), clearTextModelFiles(),
+    import('./embeddings.js').then(({ clearEmbeddings }) => clearEmbeddings()),
+  ]);
   clearMarkers();
   heatmapBtn.classList.remove('active');
   mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
@@ -638,7 +645,6 @@ const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
 
 let _peopleCount   = null; // people recognised in faces.json; null = unknown/none
-let _locationCount = null; // categories recognised in locations.json; null = unknown/none
 
 function renderInfoRows() {
   const X = (e) => `<span class="icon-x">${e}</span>`;
@@ -711,8 +717,6 @@ const peopleSceneInput   = document.getElementById('people-scene-input');
 const peopleSelectBar    = document.getElementById('people-select-bar');
 const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
-const peopleTabPeople    = document.getElementById('people-tab-people');
-const peopleTabLocations = document.getElementById('people-tab-locations');
 const mediaTypePhotos    = document.getElementById('people-mediatype-photos');
 const mediaTypeVideos    = document.getElementById('people-mediatype-videos');
 const viewportCheck      = document.getElementById('people-viewport-check');
@@ -735,13 +739,12 @@ function currentSearchFiltersQuery() {
 // blank slate. Stores ids only (not the {id,name,count} objects themselves,
 // which can go stale — a person's name or photo count changes over time) —
 // resolved back against the freshly-loaded list on the next open, so a
-// since-deleted person/place is silently dropped instead of restored broken.
+// since-deleted person is silently dropped instead of restored broken.
 const LAST_SEARCH_KEY = 'mappho_last_search';
 function saveLastSearch(query) {
   try {
     localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({
       peopleIds: (query.people ?? []).map(p => p.id),
-      locationIds: (query.locations ?? []).map(l => l.id),
       searchText: query.searchText ?? '',
       includePhotos: query.includePhotos ?? true,
       includeVideos: query.includeVideos ?? true,
@@ -762,16 +765,11 @@ function closePeoplePopup() {
 document.getElementById('people-popup-close').addEventListener('click', closePeoplePopup);
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) closePeoplePopup(); });
 
-const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-let _peopleList        = []; // full list from the last openPeoplePopup() — filtered locally as the user types
-let _locationsList     = [];
-let _peopleSelected    = new Map(); // id -> {id, name, count} — persists across tab switches and search filtering
-let _locationsSelected = new Map(); // category -> {id, name, count}
-let _peopleTab         = 'people'; // 'people' | 'locations' — which list is currently shown
+let _peopleList     = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+let _peopleSelected = new Map(); // id -> {id, name, count} — persists across search filtering
 
 function updatePeopleSelectBar() {
-  const n = _peopleSelected.size + _locationsSelected.size;
+  const n = _peopleSelected.size;
   const hasSearch = peopleSceneInput.value.trim().length > 0;
   const viewportOnly = viewportCheck.checked;
   const parts = [];
@@ -783,28 +781,14 @@ function updatePeopleSelectBar() {
 }
 viewportCheck.addEventListener('change', updatePeopleSelectBar);
 
-function setPeopleTab(tab) {
-  _peopleTab = tab;
-  peopleTabPeople.classList.toggle('active', tab === 'people');
-  peopleTabLocations.classList.toggle('active', tab === 'locations');
-  peopleSearchInput.placeholder = tab === 'people' ? 'Search people…' : 'Search places…';
-  renderPeopleRows(peopleSearchInput.value);
-}
-peopleTabPeople.addEventListener('click', () => setPeopleTab('people'));
-peopleTabLocations.addEventListener('click', () => setPeopleTab('locations'));
-
 function renderPeopleRows(filterText) {
-  const isPeople = _peopleTab === 'people';
-  const list     = isPeople ? _peopleList : _locationsList;
-  const selected = isPeople ? _peopleSelected : _locationsSelected;
-  const icon     = isPeople ? '👤' : '📍';
   const q = filterText.trim().toLowerCase();
-  const filtered = q ? list.filter(p => p.name.toLowerCase().includes(q)) : list;
+  const filtered = q ? _peopleList.filter(p => p.name.toLowerCase().includes(q)) : _peopleList;
   peopleRowsEl.innerHTML = '';
   if (!filtered.length) {
     const empty = document.createElement('p');
     empty.className = 'people-empty';
-    empty.textContent = list.length ? 'No matches.' : (isPeople ? 'No people recognised.' : 'No places recognised.');
+    empty.textContent = _peopleList.length ? 'No matches.' : 'No people recognised.';
     peopleRowsEl.appendChild(empty);
     return;
   }
@@ -818,10 +802,10 @@ function renderPeopleRows(filterText) {
     const check = document.createElement('input');
     check.type = 'checkbox';
     check.className = 'people-row-check';
-    check.checked = selected.has(p.id);
+    check.checked = _peopleSelected.has(p.id);
     const name = document.createElement('span');
     name.className = 'people-row-name';
-    name.textContent = `${icon} ${p.name}`;
+    name.textContent = `👤 ${p.name}`;
     label.append(check, name);
 
     const value = document.createElement('span');
@@ -832,8 +816,8 @@ function renderPeopleRows(filterText) {
 
     check.addEventListener('click', e => {
       e.stopPropagation(); // don't also trigger the row's "open this item's grid" tap
-      if (check.checked) selected.set(p.id, p);
-      else selected.delete(p.id);
+      if (check.checked) _peopleSelected.set(p.id, p);
+      else _peopleSelected.delete(p.id);
       updatePeopleSelectBar();
     });
 
@@ -842,7 +826,7 @@ function renderPeopleRows(filterText) {
       // grid restores it with the query and selections intact. If the grid
       // never opens (no matches, error), re-show it right away.
       peoplePopup.style.display = 'none';
-      const query = { searchText: peopleSceneInput.value, ...currentSearchFiltersQuery(), ...(isPeople ? { people: [p] } : { locations: [p] }) };
+      const query = { searchText: peopleSceneInput.value, ...currentSearchFiltersQuery(), people: [p] };
       saveLastSearch(query);
       openTaggedGrid(query)
         .then(opened => { if (!opened) restoreTop(); })
@@ -859,10 +843,9 @@ function runTaggedSearch() {
   // "Only in current map view" checked with nothing else selected is a
   // valid, standalone search (everything currently on screen) — the empty
   // guard below only blocks a totally criteria-less tap/Enter.
-  if (!_peopleSelected.size && !_locationsSelected.size && !peopleSceneInput.value.trim() && !viewportCheck.checked) return;
+  if (!_peopleSelected.size && !peopleSceneInput.value.trim() && !viewportCheck.checked) return;
   const query = {
     people: [..._peopleSelected.values()],
-    locations: [..._locationsSelected.values()],
     searchText: peopleSceneInput.value,
     ...currentSearchFiltersQuery(),
   };
@@ -878,35 +861,30 @@ peopleSceneInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.p
 peopleSelectOkBtn.addEventListener('click', runTaggedSearch);
 
 async function openPeoplePopup() {
-  const [{ list: people }, { list: locations }] = await Promise.all([getPeopleStats(), getLocationStats()]);
-  // Note: no early return when both are empty — the scene-search box is a
-  // standalone capability that doesn't depend on either mirror having data.
+  const { list: people } = await getPeopleStats();
+  // Note: no early return when empty — the scene-search box is a standalone
+  // capability that doesn't depend on the faces mirror having data.
   infoPopup.style.display = 'none';
-  _peopleList        = people;
-  _locationsList      = locations;
+  _peopleList = people;
 
   // Restores the last search actually run, rather than always starting
-  // blank — ids are resolved against the freshly-loaded lists so a
-  // since-deleted person/place is silently dropped instead of restored
-  // broken. peopleSearchInput (the row-filter box) is deliberately not
-  // part of this — it's a transient way to find a row in a long list, not
-  // part of "the search that was run".
+  // blank — ids are resolved against the freshly-loaded list so a
+  // since-deleted person is silently dropped instead of restored broken.
+  // peopleSearchInput (the row-filter box) is deliberately not part of
+  // this — it's a transient way to find a row in a long list, not part of
+  // "the search that was run".
   const last = loadLastSearch();
-  _peopleSelected    = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
-  _locationsSelected = new Map((last?.locationIds ?? []).map(id => locations.find(l => l.id === id)).filter(Boolean).map(l => [l.id, l]));
+  _peopleSelected = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
   peopleSearchInput.value = '';
   peopleSceneInput.value  = last?.searchText ?? '';
   mediaTypePhotos.checked = last?.includePhotos ?? true;
   mediaTypeVideos.checked = last?.includeVideos ?? true;
   viewportCheck.checked   = last?.inViewport ?? false;
   updatePeopleSelectBar();
-  // Land on whichever tab actually shows the restored selection, rather
-  // than always defaulting to People, so it's visible without an extra tap.
-  const startTab = (_locationsSelected.size > 0 && _peopleSelected.size === 0) ? 'locations' : (people.length ? 'people' : 'locations');
-  setPeopleTab(startTab);
+  renderPeopleRows('');
   peoplePopup.style.display = 'flex';
   // Restore just re-shows the popup as it was — the query text and selected
-  // people/places survive, so a returning user can refine and re-run.
+  // people survive, so a returning user can refine and re-run.
   viewOpened('search', { close: closePeoplePopup, restore: () => { peoplePopup.style.display = 'flex'; } });
   // Kick off the (large, one-time) text-encoder model and embeddings corpus
   // downloads now rather than waiting for the user to actually submit a
@@ -942,15 +920,14 @@ function intersectHashSets(a, b) {
   return out;
 }
 
-// Grid of all photos matching every selected person AND every selected
-// location AND the free-text scene query together (a single-item selection
-// is the plain "this person's"/"this place's photos" case; combining
-// narrows to the intersection, e.g. one person + "mountains" + "snow").
-// Faces/locations/embeddings entries are all joined to cached photo records
-// by content hash — the grid needs fileids for thumbnails, so matches with
-// no cached record are silently dropped.
+// Grid of all photos matching every selected person AND the free-text scene
+// query together (a single-item selection is the plain "this person's
+// photos" case; combining narrows to the intersection, e.g. one person +
+// "mountains" + "snow"). Faces/embeddings entries are all joined to cached
+// photo records by content hash — the grid needs fileids for thumbnails, so
+// matches with no cached record are silently dropped.
 async function openTaggedGrid(query = {}) {
-  const { people = [], locations = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false } = query;
+  const { people = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -959,11 +936,6 @@ async function openTaggedGrid(query = {}) {
     const entries = await getEntriesForPeople(people.map(p => p.id));
     hashSet = intersectHashSets(hashSet, new Set(entries.map(e => e.hash)));
     labelParts.push(`👤 ${people.map(p => p.name).join(' + ')}`);
-  }
-  if (locations.length) {
-    const entries = await getEntriesForLocations(locations.map(l => l.id));
-    hashSet = intersectHashSets(hashSet, new Set(entries.map(e => e.hash)));
-    labelParts.push(`📍 ${locations.map(l => l.name).join(' + ')}`);
   }
   if (searchText.trim()) {
     // The first search after install/erase-cache downloads the text-encoder
@@ -988,10 +960,10 @@ async function openTaggedGrid(query = {}) {
   const bounds = inViewport ? getViewportBounds() : null;
   if (bounds) labelParts.push('🗺️ in view');
   const label = labelParts.join(' · ');
-  // hashSet stays null when people/locations/searchText were all empty —
-  // normally unreachable (callers require at least one of those or
-  // inViewport before calling this), but a bare "everything in view" search
-  // is a real case: fall through to every cached record instead of bailing.
+  // hashSet stays null when people/searchText were both empty — normally
+  // unreachable (callers require at least one of those or inViewport before
+  // calling this), but a bare "everything in view" search is a real case:
+  // fall through to every cached record instead of bailing.
   if (!hashSet && !bounds) { showBriefStatus(`No photos found for ${label}.`); return false; }
   if (hashSet && !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 
@@ -1067,7 +1039,6 @@ function openInfoPopup() {
   // have changed while a child view (grid, log, folder picker) was open.
   viewOpened('settings', { close: closeInfoPopup, restore: openInfoPopup });
   refreshPeopleCount();
-  refreshLocationCount();
 }
 
 function closeInfoPopup() {
@@ -1094,16 +1065,6 @@ function refreshPeopleCount() {
     updatePeopleFabState();
     if (changed && infoPopup.style.display !== 'none') renderInfoRows();
   }).catch(e => log('People stats error', e.message));
-}
-
-// Same as refreshPeopleCount but for locations.json's categories — the FAB
-// stays enabled if either mirror has data, since either tab is reachable
-// from it.
-function refreshLocationCount() {
-  getLocationStats().then(({ categoryCount }) => {
-    _locationCount = categoryCount || null;
-    updatePeopleFabState();
-  }).catch(e => log('Location stats error', e.message));
 }
 
 async function openDatedOrphanGrid() {
@@ -1344,7 +1305,6 @@ async function startScan() {
     .then(refreshPeopleCount) // enables/grays the Persons FAB once resolved, without waiting for Settings to be opened
     .catch(e => log('Faces refresh error', e.message));
   refreshLocations()
-    .then(refreshLocationCount)
     .catch(e => log('Locations refresh error', e.message));
   refreshFlags().catch(e => log('Flags refresh error', e.message));
 
@@ -1913,7 +1873,6 @@ function setupFacesResumeSync() {
       .then(refreshPeopleCount)
       .catch(e => log('Faces refresh error', e.message));
     refreshLocations()
-      .then(refreshLocationCount)
       .catch(e => log('Locations refresh error', e.message));
     refreshFlags().catch(e => log('Flags refresh error', e.message));
   });
