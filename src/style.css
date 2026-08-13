@@ -1860,10 +1860,22 @@ body.filter-open #map { top: 48px; }
   color: #e2e8f0;
   font-size: .88rem;
   font-weight: 400;
-  padding: 7px 10px 7px 30px;
+  padding: 7px 28px 7px 30px;
   outline: none;
 }
 #people-search-input:focus { border-color: #3b82f6; }
+#people-search-clear {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: .8rem;
+  line-height: 1;
+  padding: 5px;
+  cursor: pointer;
+}
+#people-search-clear:hover { color: #e2e8f0; }
 
 #people-scene-row {
   padding: 10px 16px 0;

@@ -713,6 +713,7 @@ function loadSearchModules() {
 const peoplePopup        = document.getElementById('people-popup');
 const peopleRowsEl       = document.getElementById('people-rows');
 const peopleSearchInput  = document.getElementById('people-search-input');
+const peopleSearchClear  = document.getElementById('people-search-clear');
 const peopleSceneInput   = document.getElementById('people-scene-input');
 const peopleSelectBar    = document.getElementById('people-select-bar');
 const peopleSelectCount  = document.getElementById('people-select-count');
@@ -836,7 +837,19 @@ function renderPeopleRows(filterText) {
   peopleRowsEl.appendChild(frag);
 }
 
-peopleSearchInput.addEventListener('input', () => renderPeopleRows(peopleSearchInput.value));
+function updatePeopleSearchClear() {
+  peopleSearchClear.style.display = peopleSearchInput.value ? '' : 'none';
+}
+peopleSearchInput.addEventListener('input', () => {
+  renderPeopleRows(peopleSearchInput.value);
+  updatePeopleSearchClear();
+});
+peopleSearchClear.addEventListener('click', () => {
+  peopleSearchInput.value = '';
+  renderPeopleRows('');
+  updatePeopleSearchClear();
+  peopleSearchInput.focus();
+});
 
 function runTaggedSearch() {
   // "Only in current map view" checked with nothing else selected is a
@@ -875,6 +888,7 @@ async function openPeoplePopup() {
   const last = loadLastSearch();
   _peopleSelected = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
   peopleSearchInput.value = '';
+  updatePeopleSearchClear();
   peopleSceneInput.value  = last?.searchText ?? '';
   mediaTypePhotos.checked = last?.includePhotos ?? true;
   mediaTypeVideos.checked = last?.includeVideos ?? true;
