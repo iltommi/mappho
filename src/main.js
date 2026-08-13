@@ -762,7 +762,6 @@ function closePeoplePopup() {
   peoplePopup.style.display = 'none';
   viewClosed('search');
 }
-document.getElementById('people-popup-close').addEventListener('click', closePeoplePopup);
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) closePeoplePopup(); });
 
 let _peopleList     = []; // full list from the last openPeoplePopup() — filtered locally as the user types
