@@ -784,6 +784,14 @@ viewportCheck.addEventListener('change', updatePeopleSelectBar);
 function renderPeopleRows(filterText) {
   const q = filterText.trim().toLowerCase();
   const filtered = q ? _peopleList.filter(p => p.name.toLowerCase().includes(q)) : _peopleList;
+  // Selected rows float to the top so a multi-selection stays visible above
+  // the fold; each group otherwise keeps _peopleList's own order (by count,
+  // then name — see getPeopleStats), so unchecking a row returns it to
+  // exactly where it'd naturally sort rather than wherever it last was.
+  const sorted = [
+    ...filtered.filter(p => _peopleSelected.has(p.id)),
+    ...filtered.filter(p => !_peopleSelected.has(p.id)),
+  ];
   peopleRowsEl.innerHTML = '';
   if (!filtered.length) {
     const empty = document.createElement('p');
@@ -793,7 +801,7 @@ function renderPeopleRows(filterText) {
     return;
   }
   const frag = document.createDocumentFragment();
-  for (const p of filtered) {
+  for (const p of sorted) {
     const row = document.createElement('div');
     row.className = 'info-row people-row info-row-btn';
 
@@ -818,6 +826,7 @@ function renderPeopleRows(filterText) {
       e.stopPropagation(); // don't also trigger the row's "open this item's grid" tap
       if (check.checked) _peopleSelected.set(p.id, p);
       else _peopleSelected.delete(p.id);
+      renderPeopleRows(peopleSearchInput.value); // re-sort: move this row to/from the top
       updatePeopleSelectBar();
     });
 
