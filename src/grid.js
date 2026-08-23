@@ -155,12 +155,21 @@ function loadZoomCols() {
 }
 
 let zoomCols = loadZoomCols();
+let lastMinPx = null;
 
+// Skips the write when the computed value hasn't actually changed — the
+// ResizeObserver below can fire for incidental size fluctuations (mobile
+// browser chrome hiding/showing during a scroll gesture, not anything the
+// user asked to resize), and re-writing the same custom property value on
+// every one of those needlessly adds to whatever's already touching layout
+// during that scroll.
 function applyZoom() {
   const width = scrollEl.clientWidth;
   if (!width) return;
   const rawMinPx = (width - (zoomCols - 1) * GRID_GAP) / zoomCols;
   const minPx = Math.min(MAX_TILE_PX, Math.max(MIN_TILE_PX, rawMinPx));
+  if (minPx === lastMinPx) return;
+  lastMinPx = minPx;
   track.style.setProperty('--grid-min', minPx + 'px');
 }
 
@@ -638,6 +647,19 @@ async function loadNextPage() {
     updateScrubber();
   }
 }
+
+// Belt-and-suspenders alongside pageObserver below: some WebView builds miss
+// (or badly delay) an IntersectionObserver callback on the sentinel once the
+// grid's own CSS custom property (--grid-min, from the pinch-zoom handling
+// above) gets rewritten mid-scroll by its ResizeObserver — the resulting
+// layout churn can apparently starve the sentinel's own callback on lower-
+// end devices, which reads as "scrolling to the bottom does nothing" even
+// though the underlying pagination logic (loadNextPage/offset/done) is
+// fine. A plain scroll-position check doesn't depend on that machinery at
+// all, so it keeps paging even if the observer-based path stalls.
+scrollEl.addEventListener('scroll', () => {
+  if (scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 600) loadNextPage();
+}, { passive: true });
 
 // `reopen`, if given, is called after a bulk action completes (success or
 // cancel) to refresh and reopen the grid with fresh data — the underlying
