@@ -388,24 +388,12 @@ export function filterMarkers(fromTs, toTs) {
   _applyVisibility();
 }
 
-const MEDIA_CYCLES = ['all', 'photos', 'videos'];
+const MEDIA_TYPES = ['all', 'photos', 'videos'];
 
-// Two emoji at 2rem side-by-side overflow the 48px button width slightly;
-// overflow:hidden on the button clips them to the circle, giving each emoji its own half.
-export const MEDIA_ALL_ICON = '<span class="mf-all">📷🎬</span>';
-
-const MEDIA_LABELS = { all: MEDIA_ALL_ICON, photos: '📷', videos: '🎬' };
-
-export function cycleMediaTypeFilter() {
-  _mediaType = MEDIA_CYCLES[(MEDIA_CYCLES.indexOf(_mediaType) + 1) % MEDIA_CYCLES.length];
-  _applyVisibility();
-  return { type: _mediaType, label: MEDIA_LABELS[_mediaType], active: _mediaType !== 'all' };
-}
-
-// Direct setter for the Layers-sheet segmented control (Photos|Videos|Both),
-// where the current choice is shown explicitly rather than cycled through.
+// Setter for the Layers-sheet segmented control (Both|Photos|Videos), where
+// the current choice is shown explicitly rather than cycled through.
 export function setMediaTypeFilter(type) {
-  if (!MEDIA_CYCLES.includes(type)) return;
+  if (!MEDIA_TYPES.includes(type)) return;
   _mediaType = type;
   _applyVisibility();
 }
