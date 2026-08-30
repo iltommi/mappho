@@ -30,28 +30,6 @@ html, body {
 }
 #menu-fab:hover { opacity: 1; background: #334155; }
 
-#fix-position-only-btn {
-  position: fixed;
-  bottom: 136px;
-  left: 16px;
-  width: 48px;
-  height: 48px;
-  border: none;
-  border-radius: 50%;
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: .85;
-  box-shadow: 0 2px 8px rgba(0,0,0,.5);
-  transition: opacity .15s, background .15s;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#fix-position-only-btn:hover { opacity: 1; background: #334155; }
 
 #people-fab {
   position: fixed;
@@ -105,12 +83,10 @@ html, body {
 }
 #map-fabs-toggle:hover { opacity: 1; background: #334155; }
 
-/* Collapsed by default: hides the same 8 buttons regardless of whatever
+/* Collapsed by default: hides the cluster buttons regardless of whatever
    each one's own logic has set (e.g. #people-fab before the index is
    ready) — this is an additional gate on top of that, not a replacement
    for it, so a button that shouldn't show yet still won't once expanded. */
-body:not(.map-fabs-open) #menu-fab,
-body:not(.map-fabs-open) #fix-position-only-btn,
 body:not(.map-fabs-open) #people-fab,
 body:not(.map-fabs-open) #heatmap-btn,
 body:not(.map-fabs-open) #media-type-btn,
@@ -236,9 +212,7 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
 #media-type-btn { bottom: 80px; overflow: hidden; }
 #pin-browse-btn { bottom: 136px; }
 #location-search-fab { bottom: 192px; }
-/* Balances the left column (menu-fab/people-fab/fix-position-only-btn)
-   out to 4 buttons too, so both columns reach the same height instead of
-   the right side stacking noticeably taller than the left. */
+/* Sits in the left column of the expand cluster (removed in a later phase). */
 #filter-menu-btn { left: 16px; right: auto; bottom: 192px; }
 #filter-menu-btn .date-range-icon { height: 26px; }
 .mf-all { line-height: 1; white-space: nowrap; }
@@ -334,7 +308,6 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
   line-height: 1;
   pointer-events: none;
 }
-#retry-info-btn { color: #fbbf24; }
 
 #map {
   position: fixed;
@@ -1806,8 +1779,31 @@ body.filter-open #map { top: 48px; }
   padding-top: 8px;
 }
 #info-rows {
-  padding: 12px 0 8px;
+  padding: 4px 0 8px;
 }
+/* Section heading inside the Menu / Organize+Settings sheet. */
+.sheet-section-title {
+  padding: 10px 20px 2px;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+/* "N files failed — Retry" — a prominent scan-failure prompt at the top of
+   the Menu sheet; full-width like the Settings action rows below it. */
+#retry-info-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 12px 20px;
+  font-size: .9rem;
+  color: #fbbf24;
+  cursor: pointer;
+}
+#retry-info-btn:hover { background: #334155; }
 #people-rows {
   padding: 12px 0 8px;
   max-height: min(65vh, 480px);
@@ -1966,7 +1962,6 @@ body.filter-open #map { top: 48px; }
 
 /* Hide FABs while action bars are active */
 body.action-bar-open #menu-fab,
-body.action-bar-open #fix-position-only-btn,
 body.action-bar-open #people-fab,
 body.action-bar-open #heatmap-btn,
 body.action-bar-open #media-type-btn,

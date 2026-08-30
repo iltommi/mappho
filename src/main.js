@@ -174,7 +174,7 @@ mapFabsToggle.addEventListener('click', () => {
 // delegated listener from ever seeing that particular click.
 document.addEventListener('click', e => {
   if (!document.body.classList.contains('map-fabs-open')) return;
-  if (!e.target.closest('#menu-fab, #fix-position-only-btn, #people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn')) return;
+  if (!e.target.closest('#people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn')) return;
   document.body.classList.remove('map-fabs-open');
   mapFabsToggle.textContent = '+';
 }, { capture: true });
@@ -1131,10 +1131,6 @@ async function openDatedOrphanGrid() {
 
 infoPopup.addEventListener('click', e => { if (e.target === infoPopup) closeInfoPopup(); });
 
-document.getElementById('fix-position-only-btn').addEventListener('click', () => {
-  openDatedOrphanGrid().catch(e => { log('Fix position error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
-
 async function openLocatedUndatedGrid() {
   const total = await countLocatedUndated();
   if (!total) { showBriefStatus('No located photos without a date.'); return false; }
@@ -1206,7 +1202,6 @@ async function openPositionAndDateGrid() {
 function showApp() {
   loginOverlay.style.display = 'none';
   menuFab.style.display = '';
-  document.getElementById('fix-position-only-btn').style.display = '';
   peopleFab.style.display = '';
   heatmapBtn.style.display = '';
   mediaTypeBtn.style.display = '';

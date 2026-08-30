@@ -7,10 +7,9 @@
 <meta name="theme-color" content="#16213e" />
 </head>
 <body>
-  <button id="map-fabs-toggle" style="display:none" title="Menu">+</button>
-  <button id="fix-position-only-btn" style="display:none" title="Fix position">📍</button>
+  <button id="map-fabs-toggle" style="display:none" title="More">+</button>
   <button id="people-fab" style="display:none" title="Search">🔍</button>
-  <button id="menu-fab" style="display:none">⋮</button>
+  <button id="menu-fab" style="display:none" title="Menu">☰</button>
 
   <div id="login-overlay">
     <form id="login-form">
@@ -282,9 +281,11 @@
   </div>
   <div id="info-popup" style="display:none">
     <div id="info-popup-inner">
+      <button id="retry-info-btn" style="display:none"></button>
+      <div class="sheet-section-title">Organize</div>
       <div id="info-rows"></div>
+      <div class="sheet-section-title">Settings</div>
       <div id="info-actions">
-        <button id="retry-info-btn" style="display:none"></button>
         <button id="folder-btn">📁 Folders</button>
         <button id="erase-cache-btn">🗑 Erase cache</button>
         <button id="rebuild-btn">🔄 Rebuild from Photos</button>
