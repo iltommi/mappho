@@ -10,6 +10,7 @@
   <button id="map-fabs-toggle" style="display:none" title="More">+</button>
   <button id="people-fab" style="display:none" title="Search">🔍</button>
   <button id="menu-fab" style="display:none" title="Menu">☰</button>
+  <button id="layers-btn" style="display:none" title="Map options"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.6" fill="#1e293b"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.6" fill="#1e293b"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="8" cy="17" r="2.6" fill="#1e293b"/></svg></button>
 
   <div id="login-overlay">
     <form id="login-form">
@@ -62,11 +63,8 @@
     <button id="filter-close-btn" title="Close">✕</button>
   </div>
   <div id="map"></div>
-  <button id="media-type-btn" style="display:none" title="Filter by media type"></button>
-  <button id="heatmap-btn" style="display:none">🔥</button>
   <button id="pin-browse-btn" style="display:none" title="Browse photos in view">🖼️</button>
   <button id="location-search-fab" style="display:none" title="Go to place">🌍</button>
-  <button id="filter-menu-btn" style="display:none" title="Date filter"><svg class="date-range-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 28"><g transform="translate(13,15) rotate(-8)"><rect x="-9" y="-11" width="18" height="18" rx="2.5" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.2"/><rect x="-9" y="-11" width="18" height="6" rx="2.5" fill="#2563eb"/><rect x="-9" y="-6" width="18" height="1" fill="#2563eb"/><text x="0" y="5" text-anchor="middle" font-size="9" font-family="system-ui,sans-serif" font-weight="bold" fill="#e2e8f0">1</text></g><g transform="translate(27,14) rotate(12)"><rect x="-9" y="-11" width="18" height="18" rx="2.5" fill="#1e293b" stroke="#64748b" stroke-width="1.2"/><rect x="-9" y="-11" width="18" height="6" rx="2.5" fill="#475569"/><rect x="-9" y="-6" width="18" height="1" fill="#475569"/><text x="0" y="5" text-anchor="middle" font-size="8" font-family="system-ui,sans-serif" font-weight="bold" fill="#e2e8f0">30</text></g></svg></button>
   <div id="location-search-panel" style="display:none">
     <div id="location-search-row">
       <input id="location-search-input" type="text" placeholder="Search city, country…" autocomplete="off">
@@ -277,6 +275,24 @@
         <span id="people-select-count"></span>
         <button id="people-select-ok">OK ✓</button>
       </div>
+    </div>
+  </div>
+  <div id="layers-sheet" style="display:none">
+    <div id="layers-sheet-inner">
+      <div class="sheet-section-title">Show on map</div>
+      <div id="layers-mediatype" class="seg-control">
+        <button class="seg-btn" data-type="all">📷🎬 Both</button>
+        <button class="seg-btn" data-type="photos">📷 Photos</button>
+        <button class="seg-btn" data-type="videos">🎬 Videos</button>
+      </div>
+      <label class="layers-toggle-row">
+        <span>🔥 Heatmap</span>
+        <input type="checkbox" id="layers-heatmap-check" />
+      </label>
+      <button id="layers-daterange-row" class="layers-nav-row">
+        <span><svg class="date-range-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 28"><g transform="translate(13,15) rotate(-8)"><rect x="-9" y="-11" width="18" height="18" rx="2.5" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.2"/><rect x="-9" y="-11" width="18" height="6" rx="2.5" fill="#2563eb"/><rect x="-9" y="-6" width="18" height="1" fill="#2563eb"/><text x="0" y="5" text-anchor="middle" font-size="9" font-family="system-ui,sans-serif" font-weight="bold" fill="#e2e8f0">1</text></g><g transform="translate(27,14) rotate(12)"><rect x="-9" y="-11" width="18" height="18" rx="2.5" fill="#1e293b" stroke="#64748b" stroke-width="1.2"/><rect x="-9" y="-11" width="18" height="6" rx="2.5" fill="#475569"/><rect x="-9" y="-6" width="18" height="1" fill="#475569"/><text x="0" y="5" text-anchor="middle" font-size="8" font-family="system-ui,sans-serif" font-weight="bold" fill="#e2e8f0">30</text></g></svg> Date range</span>
+        <span id="layers-daterange-val" class="layers-nav-chevron">›</span>
+      </button>
     </div>
   </div>
   <div id="info-popup" style="display:none">

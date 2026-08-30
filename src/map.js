@@ -407,6 +407,15 @@ export function cycleMediaTypeFilter() {
   return { type: _mediaType, label: MEDIA_LABELS[_mediaType], active: _mediaType !== 'all' };
 }
 
+// Direct setter for the Layers-sheet segmented control (Photos|Videos|Both),
+// where the current choice is shown explicitly rather than cycled through.
+export function setMediaTypeFilter(type) {
+  if (!MEDIA_CYCLES.includes(type)) return;
+  _mediaType = type;
+  _applyVisibility();
+}
+export function getMediaTypeFilter() { return _mediaType; }
+
 export function removeMarker(fileid) {
   for (const [marker, data] of markerData) {
     if (data.fileid !== fileid) continue;
@@ -465,6 +474,7 @@ export function toggleHeatmap() {
   }
   return heatmapActive;
 }
+export function getHeatmapActive() { return heatmapActive; }
 
 // Returns the current map viewport as a Leaflet LatLngBounds (with its own
 // .contains([lat,lng])), or null if the map hasn't been initialized yet —

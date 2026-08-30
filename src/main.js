@@ -12,7 +12,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, cycleMediaTypeFilter, MEDIA_ALL_ICON, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, setMapBackgroundClickHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, setMapBackgroundClickHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
 import { searchLocation } from './geocode.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
@@ -174,7 +174,7 @@ mapFabsToggle.addEventListener('click', () => {
 // delegated listener from ever seeing that particular click.
 document.addEventListener('click', e => {
   if (!document.body.classList.contains('map-fabs-open')) return;
-  if (!e.target.closest('#people-fab, #heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn')) return;
+  if (!e.target.closest('#people-fab, #pin-browse-btn, #location-search-fab')) return;
   document.body.classList.remove('map-fabs-open');
   mapFabsToggle.textContent = '+';
 }, { capture: true });
@@ -209,8 +209,6 @@ async function openNodatetimeGrid() {
   return true;
 }
 
-
-document.getElementById('filter-menu-btn').addEventListener('click', () => toggleFilter());
 
 
 document.getElementById('check-update-btn').addEventListener('click', async () => {
@@ -492,10 +490,7 @@ eraseCacheBtn.addEventListener('click', async () => {
     clearAll(), clearOrphans(), clearTextModelFiles(),
     import('./embeddings.js').then(({ clearEmbeddings }) => clearEmbeddings()),
   ]);
-  clearMarkers();
-  heatmapBtn.classList.remove('active');
-  mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
-  mediaTypeBtn.classList.remove('active');
+  clearMarkers(); // also resets the map's heatmap + media-type filter state
   closeFilter();
   topbarGeotagged      = 0;
   topbarDated          = 0;
@@ -569,17 +564,44 @@ function _stopStartupAnimation() {
   _startupTimer = null;
 }
 
-const heatmapBtn = document.getElementById('heatmap-btn');
-heatmapBtn.addEventListener('click', () => {
-  const active = toggleHeatmap();
-  heatmapBtn.classList.toggle('active', active);
-});
+// ── Layers sheet: media-type, heatmap, date-range ─────────────────────────────
+const layersBtn        = document.getElementById('layers-btn');
+const layersSheet      = document.getElementById('layers-sheet');
+const layersMediaType  = document.getElementById('layers-mediatype');
+const layersHeatmap    = document.getElementById('layers-heatmap-check');
 
-const mediaTypeBtn = document.getElementById('media-type-btn');
-mediaTypeBtn.addEventListener('click', () => {
-  const { label, active } = cycleMediaTypeFilter();
-  mediaTypeBtn.innerHTML = label;
-  mediaTypeBtn.classList.toggle('active', active);
+function closeLayersSheet() {
+  layersSheet.style.display = 'none';
+  viewClosed('layers');
+}
+
+function openLayersSheet() {
+  // Reflect live map state each open — media-type is a settable filter, and
+  // the heatmap/date-range can also be reset elsewhere (e.g. erase cache).
+  const type = getMediaTypeFilter();
+  layersMediaType.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  layersHeatmap.checked = getHeatmapActive();
+  layersSheet.style.display = 'flex';
+  viewOpened('layers', { close: closeLayersSheet });
+}
+
+layersBtn.addEventListener('click', openLayersSheet);
+layersSheet.addEventListener('click', e => { if (e.target === layersSheet) closeLayersSheet(); });
+
+layersMediaType.addEventListener('click', e => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  setMediaTypeFilter(btn.dataset.type);
+  layersMediaType.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+});
+layersHeatmap.addEventListener('change', () => {
+  // toggleHeatmap flips and returns the new state; keep the checkbox in sync
+  // with what actually happened rather than assuming.
+  layersHeatmap.checked = toggleHeatmap();
+});
+document.getElementById('layers-daterange-row').addEventListener('click', () => {
+  closeLayersSheet();
+  toggleFilter();
 });
 
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
@@ -1202,13 +1224,10 @@ async function openPositionAndDateGrid() {
 function showApp() {
   loginOverlay.style.display = 'none';
   menuFab.style.display = '';
+  layersBtn.style.display = '';
   peopleFab.style.display = '';
-  heatmapBtn.style.display = '';
-  mediaTypeBtn.style.display = '';
-  mediaTypeBtn.innerHTML = MEDIA_ALL_ICON;
   pinBrowseBtn.style.display = '';
   locationSearchFab.style.display = '';
-  document.getElementById('filter-menu-btn').style.display = '';
   mapFabsToggle.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }

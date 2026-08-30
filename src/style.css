@@ -7,10 +7,9 @@ html, body {
   color: #e2e8f0;
 }
 
-#menu-fab {
+#menu-fab, #layers-btn {
   position: fixed;
   bottom: 24px;
-  left: 16px;
   width: 48px;
   height: 48px;
   border: none;
@@ -28,7 +27,9 @@ html, body {
   align-items: center;
   justify-content: center;
 }
-#menu-fab:hover { opacity: 1; background: #334155; }
+#menu-fab { left: 16px; }
+#layers-btn { right: 16px; }
+#menu-fab:hover, #layers-btn:hover { opacity: 1; background: #334155; }
 
 
 #people-fab {
@@ -88,11 +89,8 @@ html, body {
    ready) — this is an additional gate on top of that, not a replacement
    for it, so a button that shouldn't show yet still won't once expanded. */
 body:not(.map-fabs-open) #people-fab,
-body:not(.map-fabs-open) #heatmap-btn,
-body:not(.map-fabs-open) #media-type-btn,
 body:not(.map-fabs-open) #pin-browse-btn,
-body:not(.map-fabs-open) #location-search-fab,
-body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
+body:not(.map-fabs-open) #location-search-fab { display: none !important; }
 
 
 /* Folder picker overlay */
@@ -187,9 +185,9 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
 #scan-btn:hover:not(:disabled) { background: #15803d; }
 #scan-btn:disabled { opacity: .5; cursor: default; }
 
-/* Overflow menu */
+/* Overflow-cluster buttons (revealed by the + toggle; removed in a later phase) */
 
-#heatmap-btn, #media-type-btn, #pin-browse-btn, #location-search-fab, #filter-menu-btn {
+#pin-browse-btn, #location-search-fab {
   position: fixed;
   right: 16px;
   width: 48px;
@@ -208,16 +206,10 @@ body:not(.map-fabs-open) #filter-menu-btn { display: none !important; }
   align-items: center;
   justify-content: center;
 }
-#heatmap-btn { bottom: 24px; }
-#media-type-btn { bottom: 80px; overflow: hidden; }
-#pin-browse-btn { bottom: 136px; }
-#location-search-fab { bottom: 192px; }
-/* Sits in the left column of the expand cluster (removed in a later phase). */
-#filter-menu-btn { left: 16px; right: auto; bottom: 192px; }
-#filter-menu-btn .date-range-icon { height: 26px; }
+#pin-browse-btn { bottom: 80px; }
+#location-search-fab { bottom: 136px; }
 .mf-all { line-height: 1; white-space: nowrap; }
-#heatmap-btn:hover, #media-type-btn:hover, #pin-browse-btn:hover, #location-search-fab:hover, #filter-menu-btn:hover { opacity: 1; }
-#heatmap-btn.active, #media-type-btn.active { background: #1e3a5f; opacity: 1; }
+#pin-browse-btn:hover, #location-search-fab:hover { opacity: 1; }
 
 /* Map-anchored photo bar — browse pin photos without leaving the map (map
    itself never pans/zooms; see showSelectionMarker in map.js for the
@@ -1758,7 +1750,7 @@ body.filter-open #map { top: 48px; }
   padding: 8px 0;
 }
 
-#info-popup, #people-popup {
+#info-popup, #people-popup, #layers-sheet {
   position: fixed;
   inset: 0;
   z-index: 5000;
@@ -1767,10 +1759,10 @@ body.filter-open #map { top: 48px; }
   align-items: center;
   justify-content: center;
 }
-/* padding-top: no header/close button on either popup — outside-tap (or
-   back) closes them instead — so give each one's first row some breathing
-   room from the rounded top corner. */
-#info-popup-inner, #people-popup-inner {
+/* padding-top: no header/close button on these — outside-tap (or back)
+   closes them instead — so give each one's first row some breathing room
+   from the rounded top corner. */
+#info-popup-inner, #people-popup-inner, #layers-sheet-inner {
   background: #1e293b;
   border-radius: 14px;
   width: min(320px, 90vw);
@@ -1778,6 +1770,58 @@ body.filter-open #map { top: 48px; }
   box-shadow: 0 8px 32px rgba(0,0,0,.6);
   padding-top: 8px;
 }
+#layers-sheet-inner { padding-bottom: 8px; }
+
+/* Segmented control (Photos | Videos | Both) — replaces the old cycling
+   media-type FAB, showing the current choice explicitly. */
+.seg-control {
+  display: flex;
+  gap: 4px;
+  margin: 4px 16px 12px;
+  padding: 3px;
+  background: #0f172a;
+  border-radius: 10px;
+}
+.seg-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: .8rem;
+  font-weight: 600;
+  padding: 8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn.active { background: #1e3a5f; color: #e2e8f0; }
+
+.layers-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  font-size: .9rem;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+#layers-heatmap-check { width: 18px; height: 18px; accent-color: #0ea5e9; cursor: pointer; }
+
+.layers-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: none;
+  color: #cbd5e1;
+  font-size: .9rem;
+  text-align: left;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+.layers-nav-row:hover { background: #334155; }
+.layers-nav-chevron { color: #64748b; }
 #info-rows {
   padding: 4px 0 8px;
 }
@@ -1962,10 +2006,8 @@ body.filter-open #map { top: 48px; }
 
 /* Hide FABs while action bars are active */
 body.action-bar-open #menu-fab,
+body.action-bar-open #layers-btn,
 body.action-bar-open #people-fab,
-body.action-bar-open #heatmap-btn,
-body.action-bar-open #media-type-btn,
 body.action-bar-open #pin-browse-btn,
 body.action-bar-open #location-search-fab,
-body.action-bar-open #filter-menu-btn,
 body.action-bar-open #map-fabs-toggle { display: none !important; }
