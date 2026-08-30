@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#16213e" />
 </head>
 <body>
+  <button id="map-search-bar" style="display:none"><span class="msb-ico">🔍</span>Search places &amp; photos</button>
   <button id="map-fabs-toggle" style="display:none" title="More">+</button>
-  <button id="people-fab" style="display:none" title="Search">🔍</button>
   <button id="menu-fab" style="display:none" title="Menu">☰</button>
   <button id="layers-btn" style="display:none" title="Map options"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.6" fill="#1e293b"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2.6" fill="#1e293b"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="8" cy="17" r="2.6" fill="#1e293b"/></svg></button>
 
@@ -64,14 +64,6 @@
   </div>
   <div id="map"></div>
   <button id="pin-browse-btn" style="display:none" title="Browse photos in view">🖼️</button>
-  <button id="location-search-fab" style="display:none" title="Go to place">🌍</button>
-  <div id="location-search-panel" style="display:none">
-    <div id="location-search-row">
-      <input id="location-search-input" type="text" placeholder="Search city, country…" autocomplete="off">
-      <button id="location-search-btn">🔍</button>
-    </div>
-    <div id="location-search-results"></div>
-  </div>
   <div id="pin-bar">
     <div id="pin-bar-counter"></div>
     <div id="pin-bar-thumb-wrap">
@@ -257,23 +249,36 @@
   </div>
   <div id="people-popup" style="display:none">
     <div id="people-popup-inner">
-      <div id="people-scene-row">
-        <input id="people-scene-input" type="text" placeholder="Describe a scene… (e.g. sunset, snow, birthday)" autocomplete="off" />
+      <div id="search-seg" class="seg-control">
+        <button class="seg-btn active" data-seg="photos">📷 Photos</button>
+        <button class="seg-btn" data-seg="places">🌍 Places</button>
       </div>
-      <div id="people-mediatype-row">
-        <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷</label>
-        <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬</label>
-        <label title="Only in current map view"><input id="people-viewport-check" type="checkbox" /> 🗺️</label>
+      <div id="search-photos">
+        <div id="people-scene-row">
+          <input id="people-scene-input" type="text" placeholder="Describe a scene… (e.g. sunset, snow, birthday)" autocomplete="off" />
+        </div>
+        <div id="people-mediatype-row">
+          <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷</label>
+          <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬</label>
+          <label title="Only in current map view"><input id="people-viewport-check" type="checkbox" /> 🗺️</label>
+        </div>
+        <div id="people-search-row">
+          <span id="people-search-icon">🔍</span>
+          <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
+          <button id="people-search-clear" type="button" style="display:none">✕</button>
+        </div>
+        <div id="people-rows"></div>
+        <div id="people-select-bar" style="display:none">
+          <span id="people-select-count"></span>
+          <button id="people-select-ok">OK ✓</button>
+        </div>
       </div>
-      <div id="people-search-row">
-        <span id="people-search-icon">🔍</span>
-        <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
-        <button id="people-search-clear" type="button" style="display:none">✕</button>
-      </div>
-      <div id="people-rows"></div>
-      <div id="people-select-bar" style="display:none">
-        <span id="people-select-count"></span>
-        <button id="people-select-ok">OK ✓</button>
+      <div id="search-places" style="display:none">
+        <div id="place-search-row">
+          <input id="place-search-input" type="text" placeholder="Search city, country…" autocomplete="off">
+          <button id="place-search-btn">🔍</button>
+        </div>
+        <div id="place-search-results"></div>
       </div>
     </div>
   </div>

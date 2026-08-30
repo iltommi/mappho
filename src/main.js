@@ -12,7 +12,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, setMapBackgroundClickHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
 import { searchLocation } from './geocode.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
@@ -155,9 +155,9 @@ stopScanBtn.addEventListener('click', () => {
   stopScanBtn.textContent = '…';
 });
 const menuFab = document.getElementById('menu-fab');
-const peopleFab = document.getElementById('people-fab');
-peopleFab.addEventListener('click', () => {
-  openPeoplePopup().catch(e => { log('People popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
+const mapSearchBar = document.getElementById('map-search-bar');
+mapSearchBar.addEventListener('click', () => {
+  openPeoplePopup().catch(e => { log('Search popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
 });
 
 // Single toggle that reveals the 8 map FABs (see the body.map-fabs-open
@@ -174,7 +174,7 @@ mapFabsToggle.addEventListener('click', () => {
 // delegated listener from ever seeing that particular click.
 document.addEventListener('click', e => {
   if (!document.body.classList.contains('map-fabs-open')) return;
-  if (!e.target.closest('#people-fab, #pin-browse-btn, #location-search-fab')) return;
+  if (!e.target.closest('#pin-browse-btn')) return;
   document.body.classList.remove('map-fabs-open');
   mapFabsToggle.textContent = '+';
 }, { capture: true });
@@ -607,38 +607,37 @@ document.getElementById('layers-daterange-row').addEventListener('click', () => 
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
-// Search a place by name to fly the map there — unrelated to the geotag
-// pin-drop flow's own location search (which sets a photo's location);
-// this only ever navigates the map view itself.
-const locationSearchFab     = document.getElementById('location-search-fab');
-const locationSearchPanel   = document.getElementById('location-search-panel');
-const locationSearchInput   = document.getElementById('location-search-input');
-const locationSearchBtn     = document.getElementById('location-search-btn');
-const locationSearchResults = document.getElementById('location-search-results');
+// The search popup's two segments: Photos (people/scene — the default) and
+// Places (type a city/country to fly the map there). setSearchSeg toggles
+// which section shows; the Places search is otherwise self-contained here.
+const searchSeg          = document.getElementById('search-seg');
+const searchPhotos       = document.getElementById('search-photos');
+const searchPlaces       = document.getElementById('search-places');
+const placeSearchInput   = document.getElementById('place-search-input');
+const placeSearchBtn     = document.getElementById('place-search-btn');
+const placeSearchResults = document.getElementById('place-search-results');
 
-function closeLocationSearch() {
-  locationSearchPanel.style.display = 'none';
-  locationSearchResults.innerHTML = '';
-  locationSearchInput.value = '';
-  viewClosed('location-search');
+function setSearchSeg(seg) {
+  searchPhotos.style.display = seg === 'places' ? 'none' : '';
+  searchPlaces.style.display = seg === 'places' ? '' : 'none';
+  searchSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.seg === seg));
+  if (seg === 'places') placeSearchInput.focus();
 }
+searchSeg.addEventListener('click', e => {
+  const b = e.target.closest('.seg-btn');
+  if (b) setSearchSeg(b.dataset.seg);
+});
 
-function openLocationSearch() {
-  locationSearchPanel.style.display = 'flex';
-  viewOpened('location-search', { close: closeLocationSearch });
-  locationSearchInput.focus();
-}
-
-async function doLocationSearch() {
-  const q = locationSearchInput.value.trim();
+async function doPlaceSearch() {
+  const q = placeSearchInput.value.trim();
   if (!q) return;
-  locationSearchBtn.disabled = true;
-  locationSearchBtn.textContent = '⏳';
-  locationSearchResults.innerHTML = '';
+  placeSearchBtn.disabled = true;
+  placeSearchBtn.textContent = '⏳';
+  placeSearchResults.innerHTML = '';
   try {
     const results = await searchLocation(q);
     if (!results.length) {
-      locationSearchResults.textContent = 'No results found.';
+      placeSearchResults.textContent = 'No results found.';
     } else {
       for (const r of results) {
         const btn = document.createElement('button');
@@ -646,22 +645,21 @@ async function doLocationSearch() {
         btn.textContent = r.label;
         btn.addEventListener('click', () => {
           flyToSearchResult(r);
-          closeLocationSearch();
+          closePeoplePopup(); // tapping a place flies the map and dismisses search
         });
-        locationSearchResults.appendChild(btn);
+        placeSearchResults.appendChild(btn);
       }
     }
   } catch (e) {
-    locationSearchResults.textContent = `Error: ${e.message}`;
+    placeSearchResults.textContent = `Error: ${e.message}`;
   } finally {
-    locationSearchBtn.disabled = false;
-    locationSearchBtn.textContent = '🔍';
+    placeSearchBtn.disabled = false;
+    placeSearchBtn.textContent = '🔍';
   }
 }
 
-locationSearchFab.addEventListener('click', openLocationSearch);
-locationSearchBtn.addEventListener('click', doLocationSearch);
-locationSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLocationSearch(); } });
+placeSearchBtn.addEventListener('click', doPlaceSearch);
+placeSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doPlaceSearch(); } });
 
 const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
@@ -783,6 +781,8 @@ function loadLastSearch() {
 }
 function closePeoplePopup() {
   peoplePopup.style.display = 'none';
+  placeSearchResults.innerHTML = '';
+  placeSearchInput.value = '';
   viewClosed('search');
 }
 peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) closePeoplePopup(); });
@@ -926,6 +926,7 @@ async function openPeoplePopup() {
   viewportCheck.checked   = last?.inViewport ?? false;
   updatePeopleSelectBar();
   renderPeopleRows('');
+  setSearchSeg('photos'); // always open on the richer Photos segment
   peoplePopup.style.display = 'flex';
   // Restore just re-shows the popup as it was — the query text and selected
   // people survive, so a returning user can refine and re-run.
@@ -1090,23 +1091,15 @@ function closeInfoPopup() {
   viewClosed('settings');
 }
 
-// Always enabled — even with zero recognised people/places, the popup's
-// scene-search box is a standalone capability that doesn't depend on either
-// mirror having data. This just re-renders Settings if it's open and the
-// count changed.
-function updatePeopleFabState() {
-  peopleFab.disabled = false;
-}
-
-// Re-derives the cached people count, updates the Persons FAB, and re-renders
-// Settings if it's open and the count actually changed (e.g. after a
-// background faces.json refresh).
+// Re-derives the cached people count and re-renders the Menu sheet's
+// Organize section if it's open and the count actually changed (e.g. after a
+// background faces.json refresh). Search itself is always reachable from the
+// top bar, so there's no FAB state to keep in sync any more.
 function refreshPeopleCount() {
   getPeopleStats().then(({ peopleCount }) => {
     const n = peopleCount || null;
     const changed = n !== _peopleCount;
     _peopleCount = n;
-    updatePeopleFabState();
     if (changed && infoPopup.style.display !== 'none') renderInfoRows();
   }).catch(e => log('People stats error', e.message));
 }
@@ -1223,11 +1216,10 @@ async function openPositionAndDateGrid() {
 
 function showApp() {
   loginOverlay.style.display = 'none';
+  mapSearchBar.style.display = '';
   menuFab.style.display = '';
   layersBtn.style.display = '';
-  peopleFab.style.display = '';
   pinBrowseBtn.style.display = '';
-  locationSearchFab.style.display = '';
   mapFabsToggle.style.display = '';
   authBtn.onclick = () => { closeInfoPopup(); logout(); location.reload(); };
 }
@@ -1879,9 +1871,6 @@ async function main() {
   setMarkerFixTimeHandler(photo => startFixTime(photo, r => handleEditResult(r, () => resumeAfterHandoff({ success: r.success, fileid: r.newFileid, name: r.newName, ts: r.ts }))));
   setMarkerIgnoreHandler(ignoreOnePhoto);
   setMarkerBulkIgnoreHandler(bulkIgnorePhotos);
-  setMapBackgroundClickHandler(() => {
-    if (locationSearchPanel.style.display !== 'none') closeLocationSearch();
-  });
 
   const token = getToken();
   setupAuthBtn(!!token);
