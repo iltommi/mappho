@@ -135,12 +135,28 @@ export function bufToBase64(buf) {
   return btoa(bin);
 }
 
+// Shared by every raw-bytes CDN fetch below. CapacitorHttp resolves even for
+// a non-2xx response (it doesn't reject like fetch()'s network-error cases
+// do) — without this check, an edge/CDN hiccup (a transient 5xx, a rate
+// limit) hands back its error body (HTML/JSON, a handful of bytes) as if it
+// were the file, which then only surfaces much later and far more
+// confusingly: e.g. piexifjs's "Given data isn't JPEG." when that garbage
+// reaches injectExif, for a file that's perfectly valid on pCloud. Failing
+// here instead gives callers (fix-date/geotag's existing retry prompts) a
+// clear, correctly-classified network error to act on.
+function assertOkCdnResponse(resp, label) {
+  if (resp.status != null && (resp.status < 200 || resp.status >= 300)) {
+    throw new Error(`${label}: CDN returned HTTP ${resp.status}`);
+  }
+}
+
 export async function fetchFileHead(fileid, bytes = 131072) {
   const cdnUrl = await getCdnUrl(fileid);
   const dlResp = await withTimeout(
     CapacitorHttp.request({ method: 'GET', url: cdnUrl, headers: { Range: `bytes=0-${bytes - 1}` }, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
     CDN_TIMEOUT,
   );
+  assertOkCdnResponse(dlResp, 'fetchFileHead');
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty CDN response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
@@ -152,6 +168,7 @@ export async function fetchFileRange(fileid, from, to) {
     CapacitorHttp.request({ method: 'GET', url: cdnUrl, headers: { Range: `bytes=${from}-${to}` }, responseType: 'arraybuffer', connectTimeout: CDN_TIMEOUT, readTimeout: CDN_TIMEOUT }),
     CDN_TIMEOUT,
   );
+  assertOkCdnResponse(dlResp, 'fetchFileRange');
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty CDN response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;
@@ -167,6 +184,7 @@ export async function downloadFullFile(fileid, timeoutMs = CDN_TIMEOUT) {
     CapacitorHttp.request({ method: 'GET', url: cdnUrl, responseType: 'arraybuffer', connectTimeout: timeoutMs, readTimeout: timeoutMs }),
     timeoutMs,
   );
+  assertOkCdnResponse(dlResp, 'downloadFullFile');
   const raw = dlResp.data;
   if (!raw) throw new Error('Empty file response');
   return typeof raw === 'string' ? base64ToArrayBuffer(raw) : raw;

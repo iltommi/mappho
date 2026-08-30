@@ -156,6 +156,20 @@ function bufferToBinary(buffer) {
 export function injectExif(jpegBuffer, { lat, lng, ts, make, model, resetOrientation = false, preserveFrom = null } = {}) {
   const binary = bufferToBinary(jpegBuffer);
 
+  // Fails here with a clear, correctly-classified message instead of
+  // reaching piexif.insert() below for its own generic "Given data isn't
+  // JPEG." — this has been observed for a file that's a perfectly valid
+  // JPEG on pCloud, caused by a transient CDN hiccup upstream (see
+  // pcloud.js's assertOkCdnResponse) handing back an error body in place of
+  // the actual bytes. Checking the SOI marker up front, before any of the
+  // EXIF work, makes that distinction obvious in the log rather than
+  // looking like file corruption.
+  if (binary.slice(0, 2) !== '\xff\xd8') {
+    const head = new Uint8Array(jpegBuffer.slice(0, 8));
+    const hex = Array.from(head, b => b.toString(16).padStart(2, '0')).join(' ');
+    throw new Error(`injectExif: input isn't a JPEG (no FFD8 marker, got bytes: ${hex || '(empty)'}) — likely a corrupted/incomplete download rather than a bad file`);
+  }
+
   let exifObj = null;
   if (preserveFrom) {
     try { exifObj = piexif.load(bufferToBinary(preserveFrom)); } catch { /* fall through */ }

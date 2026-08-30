@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDateFromFilename, tsFromParts, toDMS } from './exif.js';
+import { parseDateFromFilename, tsFromParts, toDMS, injectExif } from './exif.js';
 
 describe('tsFromParts', () => {
   it('builds a local timestamp from valid parts', () => {
@@ -122,5 +122,39 @@ describe('toDMS', () => {
     expect(degN).toBe(10);
     expect(minN).toBe(0);
     expect(secN).toBe(0);
+  });
+});
+
+describe('injectExif', () => {
+  // A real (if minimal, 1x1 grayscale) JPEG — piexifjs needs actual JPEG
+  // segment structure to parse/insert into, a hand-rolled byte sequence
+  // starting with FFD8 wouldn't be enough.
+  const MINIMAL_JPEG_B64 =
+    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=';
+
+  function minimalJpegBuffer() {
+    const bin = atob(MINIMAL_JPEG_B64);
+    const buf = new ArrayBuffer(bin.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+    return buf;
+  }
+
+  it('injects GPS into a genuine JPEG without throwing', () => {
+    const out = injectExif(minimalJpegBuffer(), { lat: 45.0, lng: 9.0 });
+    expect(out).toBeInstanceOf(ArrayBuffer);
+    const bytes = new Uint8Array(out);
+    expect(bytes[0]).toBe(0xff);
+    expect(bytes[1]).toBe(0xd8); // still starts with the JPEG SOI marker
+  });
+
+  it('rejects input that is not a JPEG with a clear, correctly-classified error', () => {
+    // Simulates the real-world failure this guards against: a CDN error
+    // body (e.g. from a transient 5xx) landing in place of the actual file
+    // bytes — piexifjs's own error for this ("Given data isn't JPEG.")
+    // reads as if the source file itself were corrupt, which it isn't.
+    const errorBody = new TextEncoder().encode('{"error":"internal server error"}').buffer;
+    expect(() => injectExif(errorBody, { lat: 45.0, lng: 9.0 }))
+      .toThrow(/isn't a JPEG/);
   });
 });
