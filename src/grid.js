@@ -2,7 +2,7 @@ import { fetchThumbSrc, deleteFile, downloadFullFile, getFileStat, getPublicLink
 import { isVideo } from './mp4.js';
 import { openLazySlideshow, setCloseHandler, confirmVideoShare, SMALL_VIDEO_THRESHOLD } from './slideshow.js';
 import { startBulkGeotagging } from './geotag.js';
-import { deleteRecord, deleteOrphan } from './db.js';
+import { deleteRecord, deleteOrphan, UNDATED_TS } from './db.js';
 import { removeMarker } from './map.js';
 import { removeVideoMetaEntry } from './videometa.js';
 import { removeOrganizedEntry } from './organize.js';
@@ -30,6 +30,7 @@ const bulkDeleteBtn   = document.getElementById('grid-bulk-delete');
 const bulkCancelBtn   = document.getElementById('grid-bulk-cancel');
 const scrubberEl = document.getElementById('grid-scrubber');
 const scrubThumb = document.getElementById('grid-scrubber-thumb');
+const scrubLabel = document.getElementById('grid-scrub-label');
 
 // ── Scroll scrubber ───────────────────────────────────────────────────────────
 
@@ -56,6 +57,27 @@ function updateScrubber() {
   }
 }
 
+const monthYearFmt = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' });
+
+// Month/year of the loaded item at scrub fraction `frac` (0 = top, 1 = bottom).
+// Tiles are uniform and fill row-by-row top to bottom, so the scroll fraction
+// maps linearly onto the loaded `items` array — precise enough for a "which
+// month am I in" hint without any per-tile geometry. Undated photos (orphans
+// carrying the UNDATED_TS sentinel, or no ts) sort to the end and read as such.
+function scrubDateLabel(frac) {
+  if (!items.length) return '';
+  const idx = Math.min(items.length - 1, Math.max(0, Math.round(frac * (items.length - 1))));
+  const ts = items[idx]?.ts;
+  if (ts == null || ts <= 0 || ts >= UNDATED_TS) return 'No date';
+  return monthYearFmt.format(new Date(ts));
+}
+
+// Centres the date bubble on the thumb and fills in the date for the position.
+function updateScrubLabel(thumbTop, thumbH, frac) {
+  scrubLabel.textContent = scrubDateLabel(frac);
+  scrubLabel.style.top = (thumbTop + thumbH / 2) + 'px';
+}
+
 {
   let dragStartY = 0, dragStartThumbTop = 0;
 
@@ -78,14 +100,18 @@ function updateScrubber() {
       dragStartThumbTop = thumbTop;
     }
     dragStartY = e.clientY;
+    const denom = scrubberEl.clientHeight - thumbH;
+    updateScrubLabel(dragStartThumbTop, thumbH, denom > 0 ? dragStartThumbTop / denom : 0);
   });
 
   scrubberEl.addEventListener('pointermove', e => {
     if (!scrubDragging) return;
     const thumbH = parseFloat(scrubThumb.style.height) || 32;
-    const newTop = Math.max(0, Math.min(scrubberEl.clientHeight - thumbH, dragStartThumbTop + e.clientY - dragStartY));
+    const denom = scrubberEl.clientHeight - thumbH;
+    const newTop = Math.max(0, Math.min(denom, dragStartThumbTop + e.clientY - dragStartY));
     scrubThumb.style.top  = newTop + 'px';
-    scrollEl.scrollTop    = (newTop / (scrubberEl.clientHeight - thumbH)) * (scrollEl.scrollHeight - scrollEl.clientHeight);
+    scrollEl.scrollTop    = (newTop / denom) * (scrollEl.scrollHeight - scrollEl.clientHeight);
+    updateScrubLabel(newTop, thumbH, denom > 0 ? newTop / denom : 0);
   });
 
   scrubberEl.addEventListener('pointerup', () => {

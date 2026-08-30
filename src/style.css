@@ -866,6 +866,27 @@ body.filter-open #map { top: 48px; }
   width: 6px;
   background: rgba(148, 163, 184, 0.9);
 }
+/* Month/year of the photos at the current scrub position — a temporal
+   anchor while dragging through a library that spans years. `top` is set
+   live by grid.js to track the thumb; only shown mid-drag. */
+#grid-scrub-label {
+  position: absolute;
+  right: 18px;
+  transform: translateY(-50%);
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: .8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+#grid-scrubber.scrub-dragging #grid-scrub-label { opacity: 1; }
 
 #grid-bulk-bar {
   flex-shrink: 0;
