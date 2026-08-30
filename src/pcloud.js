@@ -423,7 +423,15 @@ export async function downloadJsonFile(fileid, timeoutMs = CDN_TIMEOUT) {
     url: `https://${host}${link.path}`,
     connectTimeout: timeoutMs, readTimeout: timeoutMs,
   });
-  return typeof resp.data === 'string' ? JSON.parse(resp.data) : resp.data;
+  assertOkCdnResponse(resp, 'downloadJsonFile');
+  const raw = resp.data;
+  if (typeof raw !== 'string') return raw;
+  // A 200 with a non-JSON body still happens (a CDN error page served with a
+  // 200) — turn JSON.parse's cryptic "Unexpected token" into something that
+  // names the actual cause, since these are the critical sync files
+  // (index.json / faces.json / locations.json / embeddings-manifest.json).
+  try { return JSON.parse(raw); }
+  catch { throw new Error(`downloadJsonFile: CDN returned a non-JSON body (${raw.length} bytes) — likely a transient error page, not the file`); }
 }
 
 
@@ -465,6 +473,15 @@ export async function fetchThumbSrc(fileid, size = '512x512', rotation = 0) {
       method: 'GET', url: url.toString(), responseType: 'arraybuffer',
       connectTimeout: API_TIMEOUT, readTimeout: API_TIMEOUT,
     });
+    // A non-2xx here (transient gateway 5xx, rate limit) otherwise hands back
+    // an error body that becomes a `data:image/jpeg;base64,<garbage>` URL —
+    // rendered as a broken tile rather than recognised as a soft failure.
+    // Returning null instead keeps it a transient miss the caller can retry
+    // (grid.js/loadThumb's retry schedule), same as an empty response.
+    if (resp.status != null && (resp.status < 200 || resp.status >= 300)) {
+      log('fetchThumb', `HTTP ${resp.status}`);
+      return null;
+    }
     const raw = resp.data;
     if (!raw) { log('fetchThumb', 'empty response'); return null; }
     if (typeof raw === 'object' && raw.result !== undefined) {

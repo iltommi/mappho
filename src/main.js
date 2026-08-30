@@ -1672,45 +1672,50 @@ async function processFiles(files, total, stats, pool, inFlight, failedFiles) {
       log('in-flight', `${inFlight.size} pending: ${[...inFlight.values()].join(', ')}`);
   }, 15000);
 
-  // Pause while the app is backgrounded. Android throttles the WebView JS
-  // thread and may abort CapacitorHttp requests when backgrounded, so wait for
-  // visibility before dispatching each new file; in-flight requests (already on
-  // native threads) can finish cleanly without new ones piling up behind them.
-  for (const file of files) {
-    await waitForVisible();
-    if (scanCancelled) break;
-    stats.scanned++;
-    setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
-
-    const p = processFile(file, stats).then(ok => {
-      if (!ok) failedFiles.push(file);
-
-      recentOutcomes.push(ok);
-      if (recentOutcomes.length >= CONCURRENCY_WINDOW) {
-        const failureRate = recentOutcomes.filter(o => !o).length / recentOutcomes.length;
-        if (failureRate > HIGH_FAILURE_RATE && concurrency > MIN_CONCURRENCY) {
-          concurrency = Math.max(MIN_CONCURRENCY, Math.floor(concurrency / 2));
-          log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — lowering to ${concurrency}`);
-        } else if (failureRate < LOW_FAILURE_RATE && concurrency < MAX_CONCURRENCY) {
-          concurrency++;
-          log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — raising to ${concurrency}`);
-        }
-        recentOutcomes.length = 0;
-      }
-    }).finally(() => {
-      pool.delete(p);
-      inFlight.delete(p);
-      stats.completed++;
-      setProgress((stats.completed / total) * 100);
+  // try/finally so the diagnostic interval is always cleared — otherwise a
+  // throw out of the loop (e.g. waitForVisible rejecting) would leave it
+  // firing every 15s for the rest of the app's life.
+  try {
+    // Pause while the app is backgrounded. Android throttles the WebView JS
+    // thread and may abort CapacitorHttp requests when backgrounded, so wait for
+    // visibility before dispatching each new file; in-flight requests (already on
+    // native threads) can finish cleanly without new ones piling up behind them.
+    for (const file of files) {
+      await waitForVisible();
+      if (scanCancelled) break;
+      stats.scanned++;
       setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
-    });
-    pool.add(p);
-    inFlight.set(p, file.name);
 
-    if (pool.size >= concurrency) await Promise.race(pool);
+      const p = processFile(file, stats).then(ok => {
+        if (!ok) failedFiles.push(file);
+
+        recentOutcomes.push(ok);
+        if (recentOutcomes.length >= CONCURRENCY_WINDOW) {
+          const failureRate = recentOutcomes.filter(o => !o).length / recentOutcomes.length;
+          if (failureRate > HIGH_FAILURE_RATE && concurrency > MIN_CONCURRENCY) {
+            concurrency = Math.max(MIN_CONCURRENCY, Math.floor(concurrency / 2));
+            log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — lowering to ${concurrency}`);
+          } else if (failureRate < LOW_FAILURE_RATE && concurrency < MAX_CONCURRENCY) {
+            concurrency++;
+            log('Adaptive concurrency', `failure rate ${Math.round(failureRate * 100)}% — raising to ${concurrency}`);
+          }
+          recentOutcomes.length = 0;
+        }
+      }).finally(() => {
+        pool.delete(p);
+        inFlight.delete(p);
+        stats.completed++;
+        setProgress((stats.completed / total) * 100);
+        setScanStatus(stats.scanned, stats.geotagged, stats.dated, total, stats.cached);
+      });
+      pool.add(p);
+      inFlight.set(p, file.name);
+
+      if (pool.size >= concurrency) await Promise.race(pool);
+    }
+  } finally {
+    clearInterval(diagTimer);
   }
-
-  clearInterval(diagTimer);
 }
 
 function updateRetryBtn() {
