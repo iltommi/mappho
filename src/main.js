@@ -155,10 +155,6 @@ stopScanBtn.addEventListener('click', () => {
   stopScanBtn.textContent = '…';
 });
 const menuFab = document.getElementById('menu-fab');
-const mapSearchBar = document.getElementById('map-search-bar');
-mapSearchBar.addEventListener('click', () => {
-  openPeoplePopup().catch(e => { log('Search popup error', e.message); showBriefStatus(`Error: ${e.message}`); });
-});
 
 
 async function openNodatetimeGrid() {
@@ -588,35 +584,71 @@ document.getElementById('layers-daterange-row').addEventListener('click', () => 
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
-// The search popup's two segments: Photos (people/scene — the default) and
-// Places (type a city/country to fly the map there). setSearchSeg toggles
-// which section shows; the Places search is otherwise self-contained here.
+// The map's search UI: a real input pill pinned at the top that drops an
+// attached panel (Photos + Places segments) directly beneath it. The pill's
+// input IS the query field — what you type drives whichever segment is active
+// (a scene in Photos, a city in Places) — so the bar's "type here" affordance
+// is honest, unlike the old fake-bar-opens-a-modal design.
+const mapSearch          = document.getElementById('map-search');
+const searchBackdrop     = document.getElementById('search-backdrop');
+const searchInput        = document.getElementById('search-input');
+const searchClear        = document.getElementById('search-clear');
+const searchPanel        = document.getElementById('search-panel');
 const searchSeg          = document.getElementById('search-seg');
 const searchPhotos       = document.getElementById('search-photos');
 const searchPlaces       = document.getElementById('search-places');
-const placeSearchInput   = document.getElementById('place-search-input');
-const placeSearchBtn     = document.getElementById('place-search-btn');
 const placeSearchResults = document.getElementById('place-search-results');
 
+let _seg = 'photos';
+
+function openSearchPanel() {
+  searchPanel.style.display    = '';
+  searchBackdrop.style.display = '';
+}
+// Hides the panel but leaves 'search' on the nav stack, so returning from a
+// results grid restores it (see openSearch's restore handler). Used when
+// handing off to a grid, vs closeSearch which pops the stack entry.
+function hideSearchForHandoff() {
+  searchPanel.style.display    = 'none';
+  searchBackdrop.style.display = 'none';
+  searchInput.blur();
+}
+function closeSearch() {
+  hideSearchForHandoff();
+  placeSearchResults.innerHTML = '';
+  viewClosed('search');
+}
+
+function updateSearchClear() {
+  searchClear.style.display = searchInput.value ? '' : 'none';
+}
+
+const SEG_PLACEHOLDER = { photos: 'Describe a scene… (e.g. sunset, snow)', places: 'Search city, country…' };
 function setSearchSeg(seg) {
+  _seg = seg;
   searchPhotos.style.display = seg === 'places' ? 'none' : '';
   searchPlaces.style.display = seg === 'places' ? '' : 'none';
   searchSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.seg === seg));
-  if (seg === 'places') placeSearchInput.focus();
+  searchInput.placeholder = SEG_PLACEHOLDER[seg];
+  // A scene query and a place query mean different things — don't carry one
+  // into the other; clear and refocus so the field always matches the segment.
+  searchInput.value = '';
+  placeSearchResults.innerHTML = '';
+  updateSearchClear();
+  searchInput.focus();
 }
 searchSeg.addEventListener('click', e => {
   const b = e.target.closest('.seg-btn');
-  if (b) setSearchSeg(b.dataset.seg);
+  if (b && b.dataset.seg !== _seg) setSearchSeg(b.dataset.seg);
 });
 
 async function doPlaceSearch() {
-  const q = placeSearchInput.value.trim();
+  const q = searchInput.value.trim();
   if (!q) return;
-  placeSearchBtn.disabled = true;
-  placeSearchBtn.textContent = '⏳';
-  placeSearchResults.innerHTML = '';
+  placeSearchResults.textContent = 'Searching…';
   try {
     const results = await searchLocation(q);
+    placeSearchResults.innerHTML = '';
     if (!results.length) {
       placeSearchResults.textContent = 'No results found.';
     } else {
@@ -624,23 +656,39 @@ async function doPlaceSearch() {
         const btn = document.createElement('button');
         btn.className = 'pin-drop-result-btn';
         btn.textContent = r.label;
-        btn.addEventListener('click', () => {
-          flyToSearchResult(r);
-          closePeoplePopup(); // tapping a place flies the map and dismisses search
-        });
+        btn.addEventListener('click', () => { flyToSearchResult(r); closeSearch(); });
         placeSearchResults.appendChild(btn);
       }
     }
   } catch (e) {
     placeSearchResults.textContent = `Error: ${e.message}`;
-  } finally {
-    placeSearchBtn.disabled = false;
-    placeSearchBtn.textContent = '🔍';
   }
 }
 
-placeSearchBtn.addEventListener('click', doPlaceSearch);
-placeSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doPlaceSearch(); } });
+// Focus opens the panel; Enter runs whichever segment is active. The people
+// list has its own "Search people…" filter box below — a different axis from
+// the scene/place query, so it stays separate.
+searchInput.addEventListener('focus', () => {
+  if (searchPanel.style.display === 'none') openSearch().catch(err => log('Search open error', err.message));
+});
+searchInput.addEventListener('input', () => {
+  updateSearchClear();
+  if (_seg === 'photos') updatePeopleSelectBar();
+});
+searchInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (_seg === 'places') doPlaceSearch();
+  else runTaggedSearch();
+});
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  placeSearchResults.innerHTML = '';
+  updateSearchClear();
+  if (_seg === 'photos') updatePeopleSelectBar();
+  searchInput.focus();
+});
+searchBackdrop.addEventListener('click', closeSearch);
 
 const infoPopup      = document.getElementById('info-popup');
 const infoRowsEl     = document.getElementById('info-rows');
@@ -690,7 +738,7 @@ function renderInfoRows() {
       } else if (el.dataset.action === 'ignored') {
         openIgnoredGrid().then(reshowIfNotOpened).catch(reshowOnError('Ignored grid error'));
       } else if (el.dataset.action === 'people') {
-        openPeoplePopup().catch(reshowOnError('People popup error'));
+        openSearch().catch(reshowOnError('Search open error'));
       }
     });
   });
@@ -711,11 +759,9 @@ function loadSearchModules() {
   return _searchModulesPromise;
 }
 
-const peoplePopup        = document.getElementById('people-popup');
 const peopleRowsEl       = document.getElementById('people-rows');
 const peopleSearchInput  = document.getElementById('people-search-input');
 const peopleSearchClear  = document.getElementById('people-search-clear');
-const peopleSceneInput   = document.getElementById('people-scene-input');
 const peopleSelectBar    = document.getElementById('people-select-bar');
 const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
@@ -760,20 +806,12 @@ function loadLastSearch() {
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
-function closePeoplePopup() {
-  peoplePopup.style.display = 'none';
-  placeSearchResults.innerHTML = '';
-  placeSearchInput.value = '';
-  viewClosed('search');
-}
-peoplePopup.addEventListener('click', e => { if (e.target === peoplePopup) closePeoplePopup(); });
-
-let _peopleList     = []; // full list from the last openPeoplePopup() — filtered locally as the user types
+let _peopleList     = []; // full list from the last search open — filtered locally as the user types
 let _peopleSelected = new Map(); // id -> {id, name, count} — persists across search filtering
 
 function updatePeopleSelectBar() {
   const n = _peopleSelected.size;
-  const hasSearch = peopleSceneInput.value.trim().length > 0;
+  const hasSearch = _seg === 'photos' && searchInput.value.trim().length > 0;
   const viewportOnly = viewportCheck.checked;
   const parts = [];
   if (n) parts.push(`${n} selected`);
@@ -834,11 +872,11 @@ function renderPeopleRows(filterText) {
     });
 
     row.addEventListener('click', () => {
-      // Hide the popup but leave it on the nav stack — closing the results
+      // Hide the panel but leave it on the nav stack — closing the results
       // grid restores it with the query and selections intact. If the grid
       // never opens (no matches, error), re-show it right away.
-      peoplePopup.style.display = 'none';
-      const query = { searchText: peopleSceneInput.value, ...currentSearchFiltersQuery(), people: [p] };
+      hideSearchForHandoff();
+      const query = { searchText: searchInput.value, ...currentSearchFiltersQuery(), people: [p] };
       saveLastSearch(query);
       openTaggedGrid(query)
         .then(opened => { if (!opened) restoreTop(); })
@@ -867,51 +905,51 @@ function runTaggedSearch() {
   // "Only in current map view" checked with nothing else selected is a
   // valid, standalone search (everything currently on screen) — the empty
   // guard below only blocks a totally criteria-less tap/Enter.
-  if (!_peopleSelected.size && !peopleSceneInput.value.trim() && !viewportCheck.checked) return;
+  if (!_peopleSelected.size && !searchInput.value.trim() && !viewportCheck.checked) return;
   const query = {
     people: [..._peopleSelected.values()],
-    searchText: peopleSceneInput.value,
+    searchText: searchInput.value,
     ...currentSearchFiltersQuery(),
   };
   saveLastSearch(query);
   // Same hide-don't-close dance as the per-row tap above.
-  peoplePopup.style.display = 'none';
+  hideSearchForHandoff();
   openTaggedGrid(query)
     .then(opened => { if (!opened) restoreTop(); })
     .catch(e => { log('Tagged grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
 }
-peopleSceneInput.addEventListener('input', updatePeopleSelectBar);
-peopleSceneInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runTaggedSearch(); } });
 peopleSelectOkBtn.addEventListener('click', runTaggedSearch);
 
-async function openPeoplePopup() {
-  const { list: people } = await getPeopleStats();
-  // Note: no early return when empty — the scene-search box is a standalone
-  // capability that doesn't depend on the faces mirror having data.
+async function openSearch() {
+  if (searchPanel.style.display !== 'none') return; // already open
   infoPopup.style.display = 'none';
-  _peopleList = people;
+  // Show the panel + backdrop immediately (before the async people load) so
+  // tapping the pill feels instant; restore just re-shows it after returning
+  // from a results grid, query and selections intact.
+  openSearchPanel();
+  viewOpened('search', { close: closeSearch, restore: openSearchPanel });
 
-  // Restores the last search actually run, rather than always starting
-  // blank — ids are resolved against the freshly-loaded list so a
-  // since-deleted person is silently dropped instead of restored broken.
-  // peopleSearchInput (the row-filter box) is deliberately not part of
-  // this — it's a transient way to find a row in a long list, not part of
-  // "the search that was run".
+  // Restores the last search actually run, rather than always starting blank.
   const last = loadLastSearch();
-  _peopleSelected = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
-  peopleSearchInput.value = '';
-  updatePeopleSearchClear();
-  peopleSceneInput.value  = last?.searchText ?? '';
   mediaTypePhotos.checked = last?.includePhotos ?? true;
   mediaTypeVideos.checked = last?.includeVideos ?? true;
   viewportCheck.checked   = last?.inViewport ?? false;
-  updatePeopleSelectBar();
-  renderPeopleRows('');
-  setSearchSeg('photos'); // always open on the richer Photos segment
-  peoplePopup.style.display = 'flex';
-  // Restore just re-shows the popup as it was — the query text and selected
-  // people survive, so a returning user can refine and re-run.
-  viewOpened('search', { close: closePeoplePopup, restore: () => { peoplePopup.style.display = 'flex'; } });
+  peopleSearchInput.value = '';
+  updatePeopleSearchClear();
+  setSearchSeg('photos');                    // clears the input, sets placeholder, focuses
+  searchInput.value = last?.searchText ?? ''; // restore scene text after setSearchSeg's clear
+  updateSearchClear();
+
+  // People list loads async — ids are resolved against the freshly-loaded list
+  // so a since-deleted person is silently dropped instead of restored broken.
+  try {
+    const { list: people } = await getPeopleStats();
+    _peopleList = people;
+    _peopleSelected = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
+    updatePeopleSelectBar();
+    renderPeopleRows('');
+  } catch (e) { log('People stats error', e.message); }
+
   // Kick off the (large, one-time) text-encoder model and embeddings corpus
   // downloads now rather than waiting for the user to actually submit a
   // scene search — and only re-check the embeddings corpus for staleness
@@ -1197,7 +1235,7 @@ async function openPositionAndDateGrid() {
 
 function showApp() {
   loginOverlay.style.display = 'none';
-  mapSearchBar.style.display = '';
+  mapSearch.style.display = '';
   menuFab.style.display = '';
   layersBtn.style.display = '';
   pinBrowseBtn.style.display = '';
