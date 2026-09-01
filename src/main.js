@@ -209,6 +209,19 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       ? releaseSha === APP_SHA
       : new Date(release.published_at) <= BUILD_TIME;
     if (!upToDate) {
+      // Checked before downloading, not just before installing — see
+      // DownloadPlugin.java's checkInstallPermission for why: without this,
+      // a missing "install unknown apps" grant doesn't surface until after
+      // the full download, silently swapping the real install prompt for an
+      // OS interstitial and forcing a second full download once the user
+      // works out what happened. Bails out here (before any download starts)
+      // if it's not granted — the native side has already sent the user
+      // straight to the right settings screen.
+      const { granted } = await Capacitor.Plugins.Downloader.checkInstallPermission();
+      if (!granted) {
+        showBriefStatus('Enable "Install unknown apps" for Mappho in the screen that just opened, then check for updates again.', 12000);
+        return;
+      }
       const apkUrl = 'https://github.com/iltommi/mappho/releases/download/latest/Mappho.apk';
       showBriefStatus('Update available — downloading…', 60000);
       let listener = null;
