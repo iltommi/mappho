@@ -597,16 +597,17 @@ document.getElementById('layers-daterange-row').addEventListener('click', () => 
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
-// The map's search UI: a real input pill pinned at the top that drops an
-// attached panel directly beneath it. The pill's input is always the scene
-// description field; Kind, Location and Date all live as peer filters inside
-// the panel, combined together with People into one query — none of them is
-// a separate destination (picking a place used to immediately open its own
-// grid; now it just sets the Location filter alongside everything else).
+// The map's search UI: a plain button pinned at the top that opens the
+// attached panel directly beneath it. Nothing on the button can take focus,
+// so opening the panel never pops the keyboard by itself — Kind, Date,
+// Description, Location and People all live as five peer filter chips
+// inside the panel, combined together into one query (none of them is a
+// separate destination — picking a place just sets the Location filter
+// alongside everything else).
 const mapSearch          = document.getElementById('map-search');
 const searchBackdrop     = document.getElementById('search-backdrop');
+const searchOpenBtn      = document.getElementById('search-open-btn');
 const searchInput        = document.getElementById('search-input');
-const searchClear        = document.getElementById('search-clear');
 const searchPanel        = document.getElementById('search-panel');
 const placeSearchResults = document.getElementById('place-search-results');
 
@@ -620,16 +621,43 @@ function openSearchPanel() {
 function hideSearchForHandoff() {
   searchPanel.style.display    = 'none';
   searchBackdrop.style.display = 'none';
-  searchInput.blur();
+  // Focus can land in any of several nested inputs now (description,
+  // location place search, people search) — blur whichever one has it so
+  // the keyboard actually goes away, not just searchInput.
+  if (searchPanel.contains(document.activeElement)) document.activeElement.blur();
 }
 function closeSearch() {
   hideSearchForHandoff();
   viewClosed('search');
 }
+searchOpenBtn.addEventListener('click', () => {
+  openSearch().catch(err => log('Search open error', err.message));
+});
 
-function updateSearchClear() {
-  searchClear.style.display = searchInput.value ? '' : 'none';
+// ── Description filter: same chip+expand pattern as Location/Date below —
+// a peer filter, not the panel's trigger. Expanding it is the one place we
+// deliberately autofocus the text input, since that only happens after an
+// explicit tap on a chip whose whole purpose is typing.
+const descriptionChip      = document.getElementById('description-chip');
+const descriptionChipLabel = document.getElementById('description-chip-label');
+const descriptionChipClear = document.getElementById('description-chip-clear');
+const descriptionExpand    = document.getElementById('description-expand');
+
+function updateDescriptionChip() {
+  const v = searchInput.value.trim();
+  descriptionChipLabel.textContent = v ? `💬 “${v}”` : '💬 Any description';
+  descriptionChipClear.style.display = v ? '' : 'none';
 }
+descriptionChip.addEventListener('click', () => {
+  const opening = descriptionExpand.style.display === 'none';
+  descriptionExpand.style.display = opening ? '' : 'none';
+  if (opening) searchInput.focus();
+});
+descriptionChipClear.addEventListener('click', () => {
+  searchInput.value = '';
+  updateDescriptionChip();
+  updateSearchState();
+});
 
 // ── Location filter: Anywhere (no constraint) / the live map viewport / a
 // named place searched via Nominatim. One of the peer filters below the
@@ -655,7 +683,7 @@ function setLocationMode(mode, region = null) {
   _locationMode = mode;
   _locationRegion = region;
   updateLocationChip();
-  updatePeopleSelectBar();
+  updateSearchState();
 }
 locationChip.addEventListener('click', () => {
   locationExpand.style.display = locationExpand.style.display === 'none' ? '' : 'none';
@@ -734,33 +762,20 @@ dateChipClear.addEventListener('click', () => {
   dateFromInput.value = '';
   dateToInput.value = '';
   updateDateChip();
-  updatePeopleSelectBar();
+  updateSearchState();
 });
-dateFromInput.addEventListener('change', () => { updateDateChip(); updatePeopleSelectBar(); });
-dateToInput.addEventListener('change', () => { updateDateChip(); updatePeopleSelectBar(); });
+dateFromInput.addEventListener('change', () => { updateDateChip(); updateSearchState(); });
+dateToInput.addEventListener('change', () => { updateDateChip(); updateSearchState(); });
 
-// Focus opens the panel; Enter always runs the combined search — the top
-// input is the description field only now (Location has its own place-search
-// input inside its own expand section). The people list has its own
-// "Search people…" filter box below — a different axis from the description,
-// so it stays separate.
-searchInput.addEventListener('focus', () => {
-  if (searchPanel.style.display === 'none') openSearch().catch(err => log('Search open error', err.message));
-});
+// Enter (from the description input) always runs the combined search.
 searchInput.addEventListener('input', () => {
-  updateSearchClear();
-  updatePeopleSelectBar();
+  updateDescriptionChip();
+  updateSearchState();
 });
 searchInput.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
   runTaggedSearch();
-});
-searchClear.addEventListener('click', () => {
-  searchInput.value = '';
-  updateSearchClear();
-  updatePeopleSelectBar();
-  searchInput.focus();
 });
 searchBackdrop.addEventListener('click', closeSearch);
 
@@ -836,11 +851,31 @@ function loadSearchModules() {
 const peopleRowsEl       = document.getElementById('people-rows');
 const peopleSearchInput  = document.getElementById('people-search-input');
 const peopleSearchClear  = document.getElementById('people-search-clear');
-const peopleSelectBar    = document.getElementById('people-select-bar');
+const searchResetBtn     = document.getElementById('search-reset-btn');
 const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
 const mediaTypePhotos    = document.getElementById('people-mediatype-photos');
 const mediaTypeVideos    = document.getElementById('people-mediatype-videos');
+mediaTypePhotos.addEventListener('change', () => updateSearchState());
+mediaTypeVideos.addEventListener('change', () => updateSearchState());
+
+// ── People filter: same chip+expand pattern as Location/Date/Description —
+// collapsed by default so the (often long) people list doesn't dominate the
+// panel's resting height, and so the actions bar below stays reachable.
+const peopleChip      = document.getElementById('people-chip');
+const peopleChipLabel = document.getElementById('people-chip-label');
+const peopleChipClear = document.getElementById('people-chip-clear');
+const peopleExpand    = document.getElementById('people-expand');
+peopleChip.addEventListener('click', () => {
+  const opening = peopleExpand.style.display === 'none';
+  peopleExpand.style.display = opening ? '' : 'none';
+  if (opening) peopleSearchInput.focus();
+});
+peopleChipClear.addEventListener('click', () => {
+  _peopleSelected = new Map();
+  renderPeopleRows(peopleSearchInput.value);
+  updateSearchState();
+});
 
 // Read at search time, not live-reactive (same as the scene text input and
 // people selections — nothing re-runs until the user taps a row, hits OK, or
@@ -890,18 +925,34 @@ function loadLastSearch() {
 let _peopleList     = []; // full list from the last search open — filtered locally as the user types
 let _peopleSelected = new Map(); // id -> {id, name, count} — persists across search filtering
 
-function updatePeopleSelectBar() {
+// Single source of truth for every piece of UI that reflects "what filters
+// are currently set": the actions-bar summary/visibility, the People chip's
+// own label, and the closed search button's "has-filters" dot. Called from
+// every filter's change handler rather than each maintaining its own bit of
+// derived UI, so nothing can drift out of sync.
+function updateSearchState() {
   const n = _peopleSelected.size;
+  const hasKind = !(mediaTypePhotos.checked && mediaTypeVideos.checked);
   const hasSearch = searchInput.value.trim().length > 0;
   const hasLocation = _locationMode !== 'anywhere';
   const hasDate = !!(dateFromInput.value || dateToInput.value);
+  const hasPeople = n > 0;
+  const anyFilter = hasKind || hasSearch || hasLocation || hasDate || hasPeople;
+
+  // The actions bar itself always stays visible — Reset/OK need to be
+  // reachable regardless of filter state, not just once something is set.
   const parts = [];
-  if (n) parts.push(`${n} selected`);
+  if (hasKind) parts.push(mediaTypePhotos.checked ? 'photos only' : 'videos only');
+  if (hasDate) parts.push('date range');
   if (hasSearch) parts.push('scene search');
   if (hasLocation) parts.push(_locationMode === 'viewport' ? 'current map view' : _locationRegion.label);
-  if (hasDate) parts.push('date range');
-  peopleSelectCount.textContent = parts.join(' + ');
-  peopleSelectBar.style.display = (n || hasSearch || hasLocation || hasDate) ? 'flex' : 'none';
+  if (hasPeople) parts.push(`${n} selected`);
+  peopleSelectCount.textContent = parts.join(' + ') || 'No filters set';
+
+  peopleChipLabel.textContent = hasPeople ? `👤 ${n} selected` : '👤 Anyone';
+  peopleChipClear.style.display = hasPeople ? '' : 'none';
+
+  searchOpenBtn.classList.toggle('has-filters', anyFilter);
 }
 
 function renderPeopleRows(filterText) {
@@ -950,7 +1001,7 @@ function renderPeopleRows(filterText) {
       if (check.checked) _peopleSelected.set(p.id, p);
       else _peopleSelected.delete(p.id);
       renderPeopleRows(peopleSearchInput.value); // re-sort: move this row to/from the top
-      updatePeopleSelectBar();
+      updateSearchState();
     });
 
     row.addEventListener('click', () => {
@@ -984,12 +1035,13 @@ peopleSearchClear.addEventListener('click', () => {
 });
 
 function runTaggedSearch() {
-  // A location or date filter alone (nothing else selected) is a valid,
-  // standalone search — the empty guard below only blocks a totally
+  // A location, date or kind filter alone (nothing else selected) is a
+  // valid, standalone search — the empty guard below only blocks a totally
   // criteria-less tap/Enter.
+  const hasKind = !(mediaTypePhotos.checked && mediaTypeVideos.checked);
   const hasLocation = _locationMode !== 'anywhere';
   const hasDate = !!(dateFromInput.value || dateToInput.value);
-  if (!_peopleSelected.size && !searchInput.value.trim() && !hasLocation && !hasDate) return;
+  if (!_peopleSelected.size && !searchInput.value.trim() && !hasLocation && !hasDate && !hasKind) return;
   const query = {
     people: [..._peopleSelected.values()],
     searchText: searchInput.value,
@@ -1004,12 +1056,43 @@ function runTaggedSearch() {
 }
 peopleSelectOkBtn.addEventListener('click', runTaggedSearch);
 
+// Clears every filter back to its default and persists that cleared state
+// (via saveLastSearch({})) so reopening search afterward doesn't resurrect
+// what was just cleared. Leaves the panel open so new filters can be set
+// right away.
+function resetSearchFilters() {
+  searchInput.value = '';
+  updateDescriptionChip();
+  descriptionExpand.style.display = 'none';
+
+  mediaTypePhotos.checked = true;
+  mediaTypeVideos.checked = true;
+
+  setLocationMode('anywhere');
+  locationSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  locationPlaceSearch.style.display = 'none';
+  locationExpand.style.display = 'none';
+
+  dateFromInput.value = '';
+  dateToInput.value = '';
+  updateDateChip();
+  dateExpand.style.display = 'none';
+
+  _peopleSelected = new Map();
+  renderPeopleRows(peopleSearchInput.value);
+  peopleExpand.style.display = 'none';
+
+  updateSearchState();
+  saveLastSearch({});
+}
+searchResetBtn.addEventListener('click', resetSearchFilters);
+
 async function openSearch() {
   if (searchPanel.style.display !== 'none') return; // already open
   infoPopup.style.display = 'none';
   // Show the panel + backdrop immediately (before the async people load) so
-  // tapping the pill feels instant; restore just re-shows it after returning
-  // from a results grid, query and selections intact.
+  // tapping the button feels instant; restore just re-shows it after
+  // returning from a results grid, query and selections intact.
   openSearchPanel();
   viewOpened('search', { close: closeSearch, restore: openSearchPanel });
 
@@ -1020,7 +1103,8 @@ async function openSearch() {
   peopleSearchInput.value = '';
   updatePeopleSearchClear();
   searchInput.value = last?.searchText ?? '';
-  updateSearchClear();
+  updateDescriptionChip();
+  descriptionExpand.style.display = 'none';
 
   if (last?.regionBounds) {
     setLocationMode('place', { bounds: last.regionBounds, label: last.regionLabel });
@@ -1038,6 +1122,7 @@ async function openSearch() {
   dateToInput.value   = last?.toTs   ? toDateStr(last.toTs)   : '';
   updateDateChip();
   dateExpand.style.display = 'none';
+  peopleExpand.style.display = 'none';
 
   // People list loads async — ids are resolved against the freshly-loaded list
   // so a since-deleted person is silently dropped instead of restored broken.
@@ -1045,7 +1130,7 @@ async function openSearch() {
     const { list: people } = await getPeopleStats();
     _peopleList = people;
     _peopleSelected = new Map((last?.peopleIds ?? []).map(id => people.find(p => p.id === id)).filter(Boolean).map(p => [p.id, p]));
-    updatePeopleSelectBar();
+    updateSearchState();
     renderPeopleRows('');
   } catch (e) { log('People stats error', e.message); }
 
