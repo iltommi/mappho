@@ -1,5 +1,7 @@
 # Mappho
 
+**Version:** 0.2.0
+
 An Android app (Capacitor 8) that plots your pCloud photo and video library on an interactive map using GPS EXIF/metadata, with grid and slideshow browsing, in-place editing, and tools for filling in missing location/date data.
 
 ## Features
