@@ -152,7 +152,7 @@ export function initMap() {
     maxNativeZoom: 19,
     maxZoom: 21,
   }).addTo(map);
-  L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'topright' }).addTo(map);
 
   cluster = L.markerClusterGroup({
     chunkedLoading: true,
