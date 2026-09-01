@@ -1,6 +1,6 @@
 # Mappho
 
-**Version:** 0.2.0
+**Version:** 0.2.2
 
 An Android app (Capacitor 8) that plots your pCloud photo and video library on an interactive map using GPS EXIF/metadata, with grid and slideshow browsing, in-place editing, and tools for filling in missing location/date data.
 
@@ -19,7 +19,7 @@ An Android app (Capacitor 8) that plots your pCloud photo and video library on a
 - **Photo editing** — rotate, flip horizontal, auto-enhance, saved back to pCloud with the original EXIF (make/model, exposure, lens, ...) preserved, not just GPS/date
 - **HEIC support** — reads EXIF from HEIC files directly; converts to JPEG on edit or date/location fix (via the WebView's native HEIC decoder), carrying the original EXIF over
 - **Video support** — playback, thumbnail generation with rotation correction (from the MP4 `tkhd` matrix), and GPS/date tagging (stored as sidecar metadata, since MP4 containers don't carry EXIF)
-- **People** — mirrors a companion face-recognition project's `faces.json`; search and multi-select people (AND filter) to browse their photos together, with face boxes overlaid in the slideshow
+- **Search** — one panel combining five independent, AND-combined filters: photo/video kind, date range, scene description (on-device CLIP text-embedding search, e.g. "sunset" or "snow"), location (current map view, or a searched place's boundary), and people. People search mirrors a companion face-recognition project's `faces.json`, supports multi-select, and overlays face boxes in the slideshow
 - **Flagging** — flag a photo in the slideshow as "has people, not tagged" for the face-recognition project to pick up later
 - **Ignored photos** — hide photos from normal browsing without deleting them, with a dedicated view to review and restore
 - **pCloud backup / restore** — the local photo index is mirrored to `Photos/index.json`; a fresh install restores from it without a full rescan
@@ -38,7 +38,8 @@ An Android app (Capacitor 8) that plots your pCloud photo and video library on a
 | [piexifjs](https://github.com/hMatoba/piexifjs) | GPS/date EXIF read+write for JPEG |
 | [idb](https://github.com/jakearchibald/idb) | IndexedDB wrapper |
 | [@panzoom/panzoom](https://github.com/timmywil/panzoom) | lightbox pinch-to-zoom |
-| [Nominatim](https://nominatim.org/) | place-name search for the pin-drop map |
+| [Nominatim](https://nominatim.org/) | place-name search for the pin-drop map and search's location filter |
+| [@huggingface/transformers](https://github.com/huggingface/transformers.js) | on-device CLIP text embeddings (ONNX runtime + WASM) for scene description search |
 
 `tools/` holds standalone Python maintenance scripts (rclone + pCloud API, ffmpeg) for library-wide cleanup jobs — see below.
 
