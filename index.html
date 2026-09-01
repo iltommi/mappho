@@ -245,86 +245,84 @@
       <button id="fix-date-cancel">✕ Cancel</button>
     </div>
   </div>
+  <button id="search-open-btn" style="display:none" type="button" title="Search">🔍</button>
   <div id="search-backdrop" style="display:none"></div>
-  <div id="map-search" style="display:none">
-    <button id="search-open-btn" type="button" title="Search">🔍</button>
-    <div id="search-panel" style="display:none">
-      <div id="search-panel-scroll">
-        <div class="filter-chip-row filter-chip-static">
-          <div id="people-mediatype-row">
-            <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷 Photos</label>
-            <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬 Videos</label>
-          </div>
-        </div>
-
-        <div class="filter-chip-row">
-          <button id="date-chip" class="filter-chip-main">
-            <span id="date-chip-label">📅 Any date</span>
-            <span class="filter-chip-chevron">›</span>
-          </button>
-          <button id="date-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear date range">✕</button>
-        </div>
-        <div id="date-expand" class="filter-expand" style="display:none">
-          <div id="date-range-row">
-            <input type="date" id="date-from-input" lang="en-GB" />
-            <span>–</span>
-            <input type="date" id="date-to-input" lang="en-GB" />
-          </div>
-        </div>
-
-        <div class="filter-chip-row">
-          <button id="description-chip" class="filter-chip-main">
-            <span id="description-chip-label">💬 Any description</span>
-            <span class="filter-chip-chevron">›</span>
-          </button>
-          <button id="description-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear description">✕</button>
-        </div>
-        <div id="description-expand" class="filter-expand" style="display:none">
-          <div id="description-input-row">
-            <input id="search-input" type="text" placeholder="e.g. sunset, snow" autocomplete="off" />
-          </div>
-        </div>
-
-        <div class="filter-chip-row">
-          <button id="location-chip" class="filter-chip-main">
-            <span id="location-chip-label">📍 Anywhere</span>
-            <span class="filter-chip-chevron">›</span>
-          </button>
-          <button id="location-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear location">✕</button>
-        </div>
-        <div id="location-expand" class="filter-expand" style="display:none">
-          <div id="location-seg" class="seg-control">
-            <button class="seg-btn" data-loc="viewport">🗺️ Current map view</button>
-            <button class="seg-btn" data-loc="place">🔍 Search a place</button>
-          </div>
-          <div id="location-place-search" style="display:none">
-            <input id="location-place-input" type="text" placeholder="Search city, country…" autocomplete="off" />
-            <div id="place-search-results"></div>
-          </div>
-        </div>
-
-        <div class="filter-chip-row">
-          <button id="people-chip" class="filter-chip-main">
-            <span id="people-chip-label">👤 Anyone</span>
-            <span class="filter-chip-chevron">›</span>
-          </button>
-          <button id="people-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear people">✕</button>
-        </div>
-        <div id="people-expand" class="filter-expand" style="display:none">
-          <div id="people-search-row">
-            <span id="people-search-icon">🔍</span>
-            <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
-            <button id="people-search-clear" type="button" style="display:none">✕</button>
-          </div>
-          <div id="people-rows"></div>
+  <div id="search-panel" style="display:none">
+    <div id="search-panel-scroll">
+      <div class="filter-chip-row filter-chip-static">
+        <div id="people-mediatype-row">
+          <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷 Photos</label>
+          <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬 Videos</label>
         </div>
       </div>
 
-      <div id="search-actions-bar">
-        <button id="search-reset-btn" type="button">Reset</button>
-        <span id="people-select-count"></span>
-        <button id="people-select-ok">OK ✓</button>
+      <div class="filter-chip-row">
+        <button id="date-chip" class="filter-chip-main">
+          <span id="date-chip-label">📅 Any date</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="date-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear date range">✕</button>
       </div>
+      <div id="date-expand" class="filter-expand" style="display:none">
+        <div id="date-range-row">
+          <input type="date" id="date-from-input" lang="en-GB" />
+          <span>–</span>
+          <input type="date" id="date-to-input" lang="en-GB" />
+        </div>
+      </div>
+
+      <div class="filter-chip-row">
+        <button id="description-chip" class="filter-chip-main">
+          <span id="description-chip-label">💬 Any description</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="description-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear description">✕</button>
+      </div>
+      <div id="description-expand" class="filter-expand" style="display:none">
+        <div id="description-input-row">
+          <input id="search-input" type="text" placeholder="e.g. sunset, snow" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="filter-chip-row">
+        <button id="location-chip" class="filter-chip-main">
+          <span id="location-chip-label">📍 Anywhere</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="location-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear location">✕</button>
+      </div>
+      <div id="location-expand" class="filter-expand" style="display:none">
+        <div id="location-seg" class="seg-control">
+          <button class="seg-btn" data-loc="viewport">🗺️ Current map view</button>
+          <button class="seg-btn" data-loc="place">🔍 Search a place</button>
+        </div>
+        <div id="location-place-search" style="display:none">
+          <input id="location-place-input" type="text" placeholder="Search city, country…" autocomplete="off" />
+          <div id="place-search-results"></div>
+        </div>
+      </div>
+
+      <div class="filter-chip-row">
+        <button id="people-chip" class="filter-chip-main">
+          <span id="people-chip-label">👤 Anyone</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="people-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear people">✕</button>
+      </div>
+      <div id="people-expand" class="filter-expand" style="display:none">
+        <div id="people-search-row">
+          <span id="people-search-icon">🔍</span>
+          <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
+          <button id="people-search-clear" type="button" style="display:none">✕</button>
+        </div>
+        <div id="people-rows"></div>
+      </div>
+    </div>
+
+    <div id="search-actions-bar">
+      <button id="search-reset-btn" type="button">Reset</button>
+      <span id="people-select-count"></span>
+      <button id="people-select-ok">OK ✓</button>
     </div>
   </div>
   <div id="layers-sheet" style="display:none">

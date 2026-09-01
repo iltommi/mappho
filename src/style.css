@@ -7,7 +7,7 @@ html, body {
   color: #e2e8f0;
 }
 
-#menu-fab, #layers-btn, #pin-browse-btn {
+#menu-fab, #layers-btn, #pin-browse-btn, #search-open-btn {
   position: fixed;
   width: 48px;
   height: 48px;
@@ -29,51 +29,8 @@ html, body {
 #menu-fab   { left: 16px;  bottom: 24px; }
 #layers-btn { right: 16px; bottom: 24px; }
 #pin-browse-btn { right: 16px; bottom: 80px; } /* stacked above Layers */
-#menu-fab:hover, #layers-btn:hover, #pin-browse-btn:hover { opacity: 1; background: #334155; }
-
-
-/* Top search: a plain button pinned at the top that opens the attached
-   #search-panel directly beneath it (over a dim backdrop). Deliberately not
-   a live input — nothing here can take focus, so opening the panel never
-   pops the keyboard on its own; Description lives inside the panel as one
-   of five peer filter chips instead. */
-#map-search {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 24px));
-  z-index: 3000;
-}
-#search-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.45);
-  z-index: 2900;
-}
-/* Round icon button, matching #menu-fab/#layers-btn/#pin-browse-btn's look
-   exactly — sits centered at the top of the (wider) #map-search wrapper,
-   which still needs its full width for #search-panel below it. */
-#search-open-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  margin: 0 auto;
-  border: none;
-  border-radius: 50%;
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 1.4rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: .85;
-  box-shadow: 0 2px 8px rgba(0,0,0,.5);
-  transition: opacity .15s, background .15s;
-}
-#search-open-btn:hover { opacity: 1; background: #334155; }
+#search-open-btn { left: 16px; bottom: 80px; } /* stacked above Menu — mirrors pin-browse/layers on the right */
+#menu-fab:hover, #layers-btn:hover, #pin-browse-btn:hover, #search-open-btn:hover { opacity: 1; background: #334155; }
 /* Small badge confirming a filter is active while the panel is closed,
    since the button no longer shows the live query text like the old input
    did — positioned like a notification dot on the circle's corner. */
@@ -88,8 +45,28 @@ html, body {
   background: #0ea5e9;
   border: 2px solid #16213e;
 }
+
+
+/* Search panel: opens as a centered overlay (like #layers-sheet/#info-popup)
+   over a dim backdrop, independent of the trigger button's position —
+   needed now that the button lives at the bottom-left with the other FABs
+   rather than pinned above the panel. Deliberately not a live input on the
+   button itself — nothing there can take focus, so opening the panel never
+   pops the keyboard on its own; Description lives inside the panel as one
+   of five peer filter chips instead. */
+#search-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 2900;
+}
 #search-panel {
-  margin-top: 6px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, calc(100vw - 24px));
+  z-index: 3000;
   background: #1e293b;
   border-radius: 14px;
   overflow: hidden;
@@ -2050,5 +2027,5 @@ body.filter-open #map { top: 48px; }
 /* Hide FABs while action bars are active */
 body.action-bar-open #menu-fab,
 body.action-bar-open #layers-btn,
-body.action-bar-open #map-search,
+body.action-bar-open #search-open-btn,
 body.action-bar-open #pin-browse-btn { display: none !important; }

@@ -597,14 +597,13 @@ document.getElementById('layers-daterange-row').addEventListener('click', () => 
 const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
-// The map's search UI: a plain button pinned at the top that opens the
-// attached panel directly beneath it. Nothing on the button can take focus,
-// so opening the panel never pops the keyboard by itself — Kind, Date,
-// Description, Location and People all live as five peer filter chips
-// inside the panel, combined together into one query (none of them is a
-// separate destination — picking a place just sets the Location filter
-// alongside everything else).
-const mapSearch          = document.getElementById('map-search');
+// The map's search UI: a round FAB (bottom-left, stacked above Menu) that
+// opens a centered panel over a dim backdrop. Nothing on the button can
+// take focus, so opening the panel never pops the keyboard by itself —
+// Kind, Date, Description, Location and People all live as five peer
+// filter chips inside the panel, combined together into one query (none
+// of them is a separate destination — picking a place just sets the
+// Location filter alongside everything else).
 const searchBackdrop     = document.getElementById('search-backdrop');
 const searchOpenBtn      = document.getElementById('search-open-btn');
 const searchInput        = document.getElementById('search-input');
@@ -1434,7 +1433,7 @@ async function openPositionAndDateGrid() {
 
 function showApp() {
   loginOverlay.style.display = 'none';
-  mapSearch.style.display = '';
+  searchOpenBtn.style.display = '';
   menuFab.style.display = '';
   layersBtn.style.display = '';
   pinBrowseBtn.style.display = '';
