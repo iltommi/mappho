@@ -249,33 +249,57 @@
   <div id="map-search" style="display:none">
     <div id="search-input-row">
       <span class="msb-ico">🔍</span>
-      <input id="search-input" type="text" placeholder="Search places &amp; photos" autocomplete="off" />
+      <input id="search-input" type="text" placeholder="Describe a scene… (e.g. sunset, snow)" autocomplete="off" />
       <button id="search-clear" type="button" style="display:none">✕</button>
     </div>
     <div id="search-panel" style="display:none">
-      <div id="search-seg" class="seg-control">
-        <button class="seg-btn active" data-seg="photos">📷 Photos</button>
-        <button class="seg-btn" data-seg="places">🌍 Places</button>
+      <div id="people-mediatype-row">
+        <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷</label>
+        <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬</label>
       </div>
-      <div id="search-photos">
-        <div id="people-mediatype-row">
-          <label title="Photos"><input id="people-mediatype-photos" type="checkbox" checked /> 📷</label>
-          <label title="Videos"><input id="people-mediatype-videos" type="checkbox" checked /> 🎬</label>
-          <label title="Only in current map view"><input id="people-viewport-check" type="checkbox" /> 🗺️</label>
+
+      <div class="filter-chip-row">
+        <button id="location-chip" class="filter-chip-main">
+          <span id="location-chip-label">📍 Anywhere</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="location-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear location">✕</button>
+      </div>
+      <div id="location-expand" class="filter-expand" style="display:none">
+        <div id="location-seg" class="seg-control">
+          <button class="seg-btn" data-loc="viewport">🗺️ Current map view</button>
+          <button class="seg-btn" data-loc="place">🔍 Search a place</button>
         </div>
-        <div id="people-search-row">
-          <span id="people-search-icon">🔍</span>
-          <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
-          <button id="people-search-clear" type="button" style="display:none">✕</button>
-        </div>
-        <div id="people-rows"></div>
-        <div id="people-select-bar" style="display:none">
-          <span id="people-select-count"></span>
-          <button id="people-select-ok">OK ✓</button>
+        <div id="location-place-search" style="display:none">
+          <input id="location-place-input" type="text" placeholder="Search city, country…" autocomplete="off" />
+          <div id="place-search-results"></div>
         </div>
       </div>
-      <div id="search-places" style="display:none">
-        <div id="place-search-results"></div>
+
+      <div class="filter-chip-row">
+        <button id="date-chip" class="filter-chip-main">
+          <span id="date-chip-label">📅 Any date</span>
+          <span class="filter-chip-chevron">›</span>
+        </button>
+        <button id="date-chip-clear" class="filter-chip-clear" type="button" style="display:none" title="Clear date range">✕</button>
+      </div>
+      <div id="date-expand" class="filter-expand" style="display:none">
+        <div id="date-range-row">
+          <input type="date" id="date-from-input" lang="en-GB" />
+          <span>–</span>
+          <input type="date" id="date-to-input" lang="en-GB" />
+        </div>
+      </div>
+
+      <div id="people-search-row">
+        <span id="people-search-icon">🔍</span>
+        <input id="people-search-input" type="text" placeholder="Search people…" autocomplete="off" />
+        <button id="people-search-clear" type="button" style="display:none">✕</button>
+      </div>
+      <div id="people-rows"></div>
+      <div id="people-select-bar" style="display:none">
+        <span id="people-select-count"></span>
+        <button id="people-select-ok">OK ✓</button>
       </div>
     </div>
   </div>

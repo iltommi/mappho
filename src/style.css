@@ -1459,15 +1459,96 @@ body.filter-open #map { top: 48px; }
 }
 .pin-drop-result-btn:hover { background: #334155; }
 
-/* Places segment of the search panel — the query is the top search input;
-   this just lists the geocoded results (reusing .pin-drop-result-btn). */
-#search-places { padding: 4px 16px 12px; }
+/* Location/Date "chip" rows inside the search panel — a compact summary
+   (label + chevron) that expands into its own picker when tapped, so Kind/
+   Location/Date/People all sit as peer filters in one form instead of behind
+   separate tabs. The chevron/clear-✕ live in a sibling button, not nested
+   inside the main chip button, to keep this valid markup (no button-in-
+   button) while still looking like one row. */
+.filter-chip-row {
+  display: flex;
+  align-items: stretch;
+}
+.filter-chip-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: #cbd5e1;
+  font-size: .9rem;
+  text-align: left;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.filter-chip-main:hover { background: #334155; }
+.filter-chip-main span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filter-chip-chevron { color: #64748b; flex-shrink: 0; margin-left: 8px; }
+.filter-chip-clear {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: #64748b;
+  font-size: .8rem;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.filter-chip-clear:hover { color: #e2e8f0; }
+
+.filter-expand { padding: 4px 16px 10px; }
+/* .seg-control's own 16px horizontal margin is meant for sitting directly in
+   a paddingless container (e.g. the Layers sheet) — inside .filter-expand,
+   which already provides that 16px via padding, it would double up. */
+.filter-expand .seg-control { margin: 0 0 8px; }
+
+/* Location's own place-search sub-flow — same look/behaviour as the old
+   Places segment's, just nested inside the expand section instead of its
+   own tab (reuses .pin-drop-result-btn for results, unchanged). */
+#location-place-search { margin-top: 8px; }
+#location-place-input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: .85rem;
+  padding: 8px 10px;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+#location-place-input:focus { border-color: #3b82f6; }
 #place-search-results {
   display: flex;
   flex-direction: column;
   gap: 4px;
   color: #94a3b8;
   font-size: .85rem;
+}
+
+#date-range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: .85rem;
+}
+#date-from-input, #date-to-input {
+  flex: 1;
+  min-width: 0;
+  background: #0f3460;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: .85rem;
+  color-scheme: dark;
 }
 
 /* Fix date panel */

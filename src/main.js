@@ -8,7 +8,7 @@ import { viewOpened, viewClosed, navBack, restoreTop } from './nav.js';
 const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
-import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } from './filter.js';
+import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
 import { listImages, listFolders, folderExists, fetchFileHead, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
@@ -598,21 +598,17 @@ const pinBrowseBtn = document.getElementById('pin-browse-btn');
 pinBrowseBtn.addEventListener('click', () => browsePinsInView());
 
 // The map's search UI: a real input pill pinned at the top that drops an
-// attached panel (Photos + Places segments) directly beneath it. The pill's
-// input IS the query field — what you type drives whichever segment is active
-// (a scene in Photos, a city in Places) — so the bar's "type here" affordance
-// is honest, unlike the old fake-bar-opens-a-modal design.
+// attached panel directly beneath it. The pill's input is always the scene
+// description field; Kind, Location and Date all live as peer filters inside
+// the panel, combined together with People into one query — none of them is
+// a separate destination (picking a place used to immediately open its own
+// grid; now it just sets the Location filter alongside everything else).
 const mapSearch          = document.getElementById('map-search');
 const searchBackdrop     = document.getElementById('search-backdrop');
 const searchInput        = document.getElementById('search-input');
 const searchClear        = document.getElementById('search-clear');
 const searchPanel        = document.getElementById('search-panel');
-const searchSeg          = document.getElementById('search-seg');
-const searchPhotos       = document.getElementById('search-photos');
-const searchPlaces       = document.getElementById('search-places');
 const placeSearchResults = document.getElementById('place-search-results');
-
-let _seg = 'photos';
 
 function openSearchPanel() {
   searchPanel.style.display    = '';
@@ -628,7 +624,6 @@ function hideSearchForHandoff() {
 }
 function closeSearch() {
   hideSearchForHandoff();
-  placeSearchResults.innerHTML = '';
   viewClosed('search');
 }
 
@@ -636,23 +631,51 @@ function updateSearchClear() {
   searchClear.style.display = searchInput.value ? '' : 'none';
 }
 
-const SEG_PLACEHOLDER = { photos: 'Describe a scene… (e.g. sunset, snow)', places: 'Search city, country…' };
-function setSearchSeg(seg) {
-  _seg = seg;
-  searchPhotos.style.display = seg === 'places' ? 'none' : '';
-  searchPlaces.style.display = seg === 'places' ? '' : 'none';
-  searchSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.seg === seg));
-  searchInput.placeholder = SEG_PLACEHOLDER[seg];
-  // A scene query and a place query mean different things — don't carry one
-  // into the other; clear and refocus so the field always matches the segment.
-  searchInput.value = '';
-  placeSearchResults.innerHTML = '';
-  updateSearchClear();
-  searchInput.focus();
+// ── Location filter: Anywhere (no constraint) / the live map viewport / a
+// named place searched via Nominatim. One of the peer filters below the
+// panel combines into the same query as People and the description.
+const locationChip        = document.getElementById('location-chip');
+const locationChipLabel   = document.getElementById('location-chip-label');
+const locationChipClear   = document.getElementById('location-chip-clear');
+const locationExpand      = document.getElementById('location-expand');
+const locationSeg         = document.getElementById('location-seg');
+const locationPlaceSearch = document.getElementById('location-place-search');
+const locationPlaceInput  = document.getElementById('location-place-input');
+
+let _locationMode   = 'anywhere'; // 'anywhere' | 'viewport' | 'place'
+let _locationRegion = null;       // { bounds: {south,north,west,east}, label } when mode === 'place'
+
+function updateLocationChip() {
+  locationChipLabel.textContent = _locationMode === 'viewport' ? '🗺️ Current map view'
+    : _locationMode === 'place' ? `📍 ${_locationRegion.label}`
+    : '📍 Anywhere';
+  locationChipClear.style.display = _locationMode === 'anywhere' ? 'none' : '';
 }
-searchSeg.addEventListener('click', e => {
+function setLocationMode(mode, region = null) {
+  _locationMode = mode;
+  _locationRegion = region;
+  updateLocationChip();
+  updatePeopleSelectBar();
+}
+locationChip.addEventListener('click', () => {
+  locationExpand.style.display = locationExpand.style.display === 'none' ? '' : 'none';
+});
+locationChipClear.addEventListener('click', () => {
+  setLocationMode('anywhere');
+  locationSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  locationPlaceSearch.style.display = 'none';
+});
+locationSeg.addEventListener('click', e => {
   const b = e.target.closest('.seg-btn');
-  if (b && b.dataset.seg !== _seg) setSearchSeg(b.dataset.seg);
+  if (!b) return;
+  locationSeg.querySelectorAll('.seg-btn').forEach(x => x.classList.toggle('active', x === b));
+  if (b.dataset.loc === 'viewport') {
+    setLocationMode('viewport');
+    locationPlaceSearch.style.display = 'none';
+  } else {
+    locationPlaceSearch.style.display = '';
+    locationPlaceInput.focus();
+  }
 });
 
 // Nominatim doesn't always return a boundingbox (rare for the city/country/
@@ -660,8 +683,8 @@ searchSeg.addEventListener('click', e => {
 // box around the point rather than silently failing.
 const REGION_FALLBACK_DEG = 0.03; // ~3km
 
-async function doPlaceSearch() {
-  const q = searchInput.value.trim();
+async function doLocationPlaceSearch() {
+  const q = locationPlaceInput.value.trim();
   if (!q) return;
   placeSearchResults.textContent = 'Searching…';
   try {
@@ -675,16 +698,12 @@ async function doPlaceSearch() {
         btn.className = 'pin-drop-result-btn';
         btn.textContent = r.label;
         btn.addEventListener('click', () => {
-          // Same hide-not-close as the Photos row tap below, so returning
-          // from the grid restores the panel with this result list intact.
-          hideSearchForHandoff();
           const [south, north, west, east] = r.boundingBox ?? [
             r.lat - REGION_FALLBACK_DEG, r.lat + REGION_FALLBACK_DEG,
             r.lng - REGION_FALLBACK_DEG, r.lng + REGION_FALLBACK_DEG,
           ];
-          openTaggedGrid({ regionBounds: { south, north, west, east }, regionLabel: r.label })
-            .then(opened => { if (!opened) restoreTop(); })
-            .catch(e => { log('Region grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
+          setLocationMode('place', { bounds: { south, north, west, east }, label: r.label });
+          locationExpand.style.display = 'none'; // collapse back to the chip now that it's set
         });
         placeSearchResults.appendChild(btn);
       }
@@ -693,28 +712,54 @@ async function doPlaceSearch() {
     placeSearchResults.textContent = `Error: ${e.message}`;
   }
 }
+locationPlaceInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLocationPlaceSearch(); } });
 
-// Focus opens the panel; Enter runs whichever segment is active. The people
-// list has its own "Search people…" filter box below — a different axis from
-// the scene/place query, so it stays separate.
+// ── Date range filter ───────────────────────────────────────────────────────
+const dateChip      = document.getElementById('date-chip');
+const dateChipLabel = document.getElementById('date-chip-label');
+const dateChipClear = document.getElementById('date-chip-clear');
+const dateExpand    = document.getElementById('date-expand');
+const dateFromInput = document.getElementById('date-from-input');
+const dateToInput   = document.getElementById('date-to-input');
+
+function updateDateChip() {
+  const from = dateFromInput.value, to = dateToInput.value;
+  dateChipLabel.textContent = (from || to) ? `📅 ${from || '…'} → ${to || '…'}` : '📅 Any date';
+  dateChipClear.style.display = (from || to) ? '' : 'none';
+}
+dateChip.addEventListener('click', () => {
+  dateExpand.style.display = dateExpand.style.display === 'none' ? '' : 'none';
+});
+dateChipClear.addEventListener('click', () => {
+  dateFromInput.value = '';
+  dateToInput.value = '';
+  updateDateChip();
+  updatePeopleSelectBar();
+});
+dateFromInput.addEventListener('change', () => { updateDateChip(); updatePeopleSelectBar(); });
+dateToInput.addEventListener('change', () => { updateDateChip(); updatePeopleSelectBar(); });
+
+// Focus opens the panel; Enter always runs the combined search — the top
+// input is the description field only now (Location has its own place-search
+// input inside its own expand section). The people list has its own
+// "Search people…" filter box below — a different axis from the description,
+// so it stays separate.
 searchInput.addEventListener('focus', () => {
   if (searchPanel.style.display === 'none') openSearch().catch(err => log('Search open error', err.message));
 });
 searchInput.addEventListener('input', () => {
   updateSearchClear();
-  if (_seg === 'photos') updatePeopleSelectBar();
+  updatePeopleSelectBar();
 });
 searchInput.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
-  if (_seg === 'places') doPlaceSearch();
-  else runTaggedSearch();
+  runTaggedSearch();
 });
 searchClear.addEventListener('click', () => {
   searchInput.value = '';
-  placeSearchResults.innerHTML = '';
   updateSearchClear();
-  if (_seg === 'photos') updatePeopleSelectBar();
+  updatePeopleSelectBar();
   searchInput.focus();
 });
 searchBackdrop.addEventListener('click', closeSearch);
@@ -796,18 +841,21 @@ const peopleSelectCount  = document.getElementById('people-select-count');
 const peopleSelectOkBtn  = document.getElementById('people-select-ok');
 const mediaTypePhotos    = document.getElementById('people-mediatype-photos');
 const mediaTypeVideos    = document.getElementById('people-mediatype-videos');
-const viewportCheck      = document.getElementById('people-viewport-check');
 
 // Read at search time, not live-reactive (same as the scene text input and
-// people/location selections — nothing re-runs until the user taps a row,
-// hits OK, or presses Enter). Unchecking both media types is allowed but
-// treated as "no filter" rather than "match nothing" — see openTaggedGrid's
-// mediaType handling — so there's no invalid state to guard against here.
+// people selections — nothing re-runs until the user taps a row, hits OK, or
+// presses Enter). Unchecking both media types is allowed but treated as "no
+// filter" rather than "match nothing" — see openTaggedGrid's mediaType
+// handling — so there's no invalid state to guard against here.
 function currentSearchFiltersQuery() {
   return {
     includePhotos: mediaTypePhotos.checked,
     includeVideos: mediaTypeVideos.checked,
-    inViewport: viewportCheck.checked,
+    inViewport: _locationMode === 'viewport',
+    regionBounds: _locationMode === 'place' ? _locationRegion.bounds : null,
+    regionLabel: _locationMode === 'place' ? _locationRegion.label : '',
+    fromTs: dateFromInput.value ? new Date(`${dateFromInput.value}T00:00:00`).getTime() : null,
+    toTs: dateToInput.value ? new Date(`${dateToInput.value}T23:59:59.999`).getTime() : null,
   };
 }
 
@@ -826,6 +874,10 @@ function saveLastSearch(query) {
       includePhotos: query.includePhotos ?? true,
       includeVideos: query.includeVideos ?? true,
       inViewport: query.inViewport ?? false,
+      regionBounds: query.regionBounds ?? null,
+      regionLabel: query.regionLabel ?? '',
+      fromTs: query.fromTs ?? null,
+      toTs: query.toTs ?? null,
     }));
   } catch {}
 }
@@ -840,16 +892,17 @@ let _peopleSelected = new Map(); // id -> {id, name, count} — persists across 
 
 function updatePeopleSelectBar() {
   const n = _peopleSelected.size;
-  const hasSearch = _seg === 'photos' && searchInput.value.trim().length > 0;
-  const viewportOnly = viewportCheck.checked;
+  const hasSearch = searchInput.value.trim().length > 0;
+  const hasLocation = _locationMode !== 'anywhere';
+  const hasDate = !!(dateFromInput.value || dateToInput.value);
   const parts = [];
   if (n) parts.push(`${n} selected`);
   if (hasSearch) parts.push('scene search');
-  if (viewportOnly) parts.push('current map view');
+  if (hasLocation) parts.push(_locationMode === 'viewport' ? 'current map view' : _locationRegion.label);
+  if (hasDate) parts.push('date range');
   peopleSelectCount.textContent = parts.join(' + ');
-  peopleSelectBar.style.display = (n || hasSearch || viewportOnly) ? 'flex' : 'none';
+  peopleSelectBar.style.display = (n || hasSearch || hasLocation || hasDate) ? 'flex' : 'none';
 }
-viewportCheck.addEventListener('change', updatePeopleSelectBar);
 
 function renderPeopleRows(filterText) {
   const q = filterText.trim().toLowerCase();
@@ -931,10 +984,12 @@ peopleSearchClear.addEventListener('click', () => {
 });
 
 function runTaggedSearch() {
-  // "Only in current map view" checked with nothing else selected is a
-  // valid, standalone search (everything currently on screen) — the empty
-  // guard below only blocks a totally criteria-less tap/Enter.
-  if (!_peopleSelected.size && !searchInput.value.trim() && !viewportCheck.checked) return;
+  // A location or date filter alone (nothing else selected) is a valid,
+  // standalone search — the empty guard below only blocks a totally
+  // criteria-less tap/Enter.
+  const hasLocation = _locationMode !== 'anywhere';
+  const hasDate = !!(dateFromInput.value || dateToInput.value);
+  if (!_peopleSelected.size && !searchInput.value.trim() && !hasLocation && !hasDate) return;
   const query = {
     people: [..._peopleSelected.values()],
     searchText: searchInput.value,
@@ -962,12 +1017,27 @@ async function openSearch() {
   const last = loadLastSearch();
   mediaTypePhotos.checked = last?.includePhotos ?? true;
   mediaTypeVideos.checked = last?.includeVideos ?? true;
-  viewportCheck.checked   = last?.inViewport ?? false;
   peopleSearchInput.value = '';
   updatePeopleSearchClear();
-  setSearchSeg('photos');                    // clears the input, sets placeholder, focuses
-  searchInput.value = last?.searchText ?? ''; // restore scene text after setSearchSeg's clear
+  searchInput.value = last?.searchText ?? '';
   updateSearchClear();
+
+  if (last?.regionBounds) {
+    setLocationMode('place', { bounds: last.regionBounds, label: last.regionLabel });
+    locationSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.loc === 'place'));
+  } else if (last?.inViewport) {
+    setLocationMode('viewport');
+    locationSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.loc === 'viewport'));
+  } else {
+    setLocationMode('anywhere');
+    locationSeg.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  }
+  locationPlaceSearch.style.display = 'none';
+  locationExpand.style.display = 'none';
+  dateFromInput.value = last?.fromTs ? toDateStr(last.fromTs) : '';
+  dateToInput.value   = last?.toTs   ? toDateStr(last.toTs)   : '';
+  updateDateChip();
+  dateExpand.style.display = 'none';
 
   // People list loads async — ids are resolved against the freshly-loaded list
   // so a since-deleted person is silently dropped instead of restored broken.
@@ -1020,7 +1090,7 @@ function intersectHashSets(a, b) {
 // photo records by content hash — the grid needs fileids for thumbnails, so
 // matches with no cached record are silently dropped.
 async function openTaggedGrid(query = {}) {
-  const { people = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false, regionBounds = null, regionLabel = '' } = query;
+  const { people = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false, regionBounds = null, regionLabel = '', fromTs = null, toTs = null } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -1062,13 +1132,15 @@ async function openTaggedGrid(query = {}) {
     : null;
   if (inViewport) labelParts.push('🗺️ in view');
   else if (regionBounds) labelParts.push(`📍 ${regionLabel}`);
+  const hasDateFilter = fromTs != null || toTs != null;
+  if (hasDateFilter) labelParts.push(`📅 ${fromTs != null ? toDateStr(fromTs) : '…'} → ${toTs != null ? toDateStr(toTs) : '…'}`);
   const label = labelParts.join(' · ');
   // hashSet stays null when people/searchText were both empty — normally
-  // unreachable (callers require at least one of those, inViewport, or
-  // regionBounds before calling this), but a bare "everything in
-  // view/region" search is a real case: fall through to every cached record
-  // instead of bailing.
-  if (!hashSet && !bounds) { showBriefStatus(`No photos found for ${label}.`); return false; }
+  // unreachable (callers require at least one of those, inViewport,
+  // regionBounds, or a date range before calling this), but a bare
+  // "everything in view/region/date range" search is a real case: fall
+  // through to every cached record instead of bailing.
+  if (!hashSet && !bounds && !hasDateFilter) { showBriefStatus(`No photos found for ${label}.`); return false; }
   if (hashSet && !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 
   const byHash = new Map();
@@ -1088,6 +1160,8 @@ async function openTaggedGrid(query = {}) {
   }
   if (mediaTypeFilter) items = items.filter(r => isVideo(r.name) === (mediaTypeFilter === 'videos'));
   if (bounds) items = items.filter(r => r.lat != null && r.lng != null && bounds.contains([r.lat, r.lng]));
+  if (fromTs != null) items = items.filter(r => r.ts != null && r.ts >= fromTs);
+  if (toTs != null) items = items.filter(r => r.ts != null && r.ts <= toTs);
   if (!items.length) { showBriefStatus(`No cached photos for ${label} — run a scan or rebuild first.`); return false; }
   // Free-text search results are shown best-match-first; a plain people/
   // places selection stays chronological, matching every other grid in the app.
