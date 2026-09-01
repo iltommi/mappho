@@ -12,7 +12,7 @@ import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler } 
 import { listImages, listFolders, folderExists, fetchFileHead, LARGE_FILE_TIMEOUT } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
-import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView, flyToSearchResult } from './map.js';
+import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView } from './map.js';
 import { searchLocation } from './geocode.js';
 import { openLazySlideshow, setGeotagHandler, setFixDateHandler, setFixTimeHandler, setIgnoreHandler, setEditHandler, setAfterDeleteCallback, updateCurrentSlideshowItem, refreshSlideshowImage, getCurrentSlideshowIndex, resumeAfterHandoff } from './slideshow.js';
 import { openPhotoEdit, setPhotoEditProgressFn, setPhotoEditStatusFn, checkPendingPhotoEditResume } from './photoedit.js';
@@ -642,6 +642,11 @@ searchSeg.addEventListener('click', e => {
   if (b && b.dataset.seg !== _seg) setSearchSeg(b.dataset.seg);
 });
 
+// Nominatim doesn't always return a boundingbox (rare for the city/country/
+// region-scale results this feature targets) — falls back to a small fixed
+// box around the point rather than silently failing.
+const REGION_FALLBACK_DEG = 0.03; // ~3km
+
 async function doPlaceSearch() {
   const q = searchInput.value.trim();
   if (!q) return;
@@ -656,7 +661,18 @@ async function doPlaceSearch() {
         const btn = document.createElement('button');
         btn.className = 'pin-drop-result-btn';
         btn.textContent = r.label;
-        btn.addEventListener('click', () => { flyToSearchResult(r); closeSearch(); });
+        btn.addEventListener('click', () => {
+          // Same hide-not-close as the Photos row tap below, so returning
+          // from the grid restores the panel with this result list intact.
+          hideSearchForHandoff();
+          const [south, north, west, east] = r.boundingBox ?? [
+            r.lat - REGION_FALLBACK_DEG, r.lat + REGION_FALLBACK_DEG,
+            r.lng - REGION_FALLBACK_DEG, r.lng + REGION_FALLBACK_DEG,
+          ];
+          openTaggedGrid({ regionBounds: { south, north, west, east }, regionLabel: r.label })
+            .then(opened => { if (!opened) restoreTop(); })
+            .catch(e => { log('Region grid error', e.message); showBriefStatus(`Error: ${e.message}`); restoreTop(); });
+        });
         placeSearchResults.appendChild(btn);
       }
     }
@@ -991,7 +1007,7 @@ function intersectHashSets(a, b) {
 // photo records by content hash — the grid needs fileids for thumbnails, so
 // matches with no cached record are silently dropped.
 async function openTaggedGrid(query = {}) {
-  const { people = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false } = query;
+  const { people = [], searchText = '', includePhotos = true, includeVideos = true, inViewport = false, regionBounds = null, regionLabel = '' } = query;
   let hashSet = null; // null = no constraint applied yet
   let scoreByHash = null; // set only when searchText ranked results — drives sort order
   const labelParts = [];
@@ -1021,13 +1037,24 @@ async function openTaggedGrid(query = {}) {
   if (mediaTypeFilter) labelParts.push(mediaTypeFilter === 'videos' ? '🎬 Videos only' : '📷 Photos only');
   // Grabbed once up front (not re-read after the map might have moved) so
   // the results match what was actually on screen when the search ran.
-  const bounds = inViewport ? getViewportBounds() : null;
-  if (bounds) labelParts.push('🗺️ in view');
+  // regionBounds (a searched place's boundary) is the other bounds source —
+  // same rectangle-contains filter below, just against a fixed place instead
+  // of the live viewport. Plain lat/lng comparison, not a Leaflet bounds
+  // object — no antimeridian handling, consistent with how simple the
+  // viewport check already is.
+  const bounds = inViewport ? getViewportBounds()
+    : regionBounds ? { contains: ([lat, lng]) =>
+        lat >= regionBounds.south && lat <= regionBounds.north &&
+        lng >= regionBounds.west  && lng <= regionBounds.east }
+    : null;
+  if (inViewport) labelParts.push('🗺️ in view');
+  else if (regionBounds) labelParts.push(`📍 ${regionLabel}`);
   const label = labelParts.join(' · ');
   // hashSet stays null when people/searchText were both empty — normally
-  // unreachable (callers require at least one of those or inViewport before
-  // calling this), but a bare "everything in view" search is a real case:
-  // fall through to every cached record instead of bailing.
+  // unreachable (callers require at least one of those, inViewport, or
+  // regionBounds before calling this), but a bare "everything in
+  // view/region" search is a real case: fall through to every cached record
+  // instead of bailing.
   if (!hashSet && !bounds) { showBriefStatus(`No photos found for ${label}.`); return false; }
   if (hashSet && !hashSet.size) { showBriefStatus(`No photos found for ${label}.`); return false; }
 

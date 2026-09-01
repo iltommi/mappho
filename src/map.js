@@ -130,22 +130,6 @@ export function flyToAndPlacePin(lat, lng) {
   pinDropOnPlace?.({ lat, lng });
 }
 
-// For the "search a place to navigate the map" feature — deliberately
-// separate from flyToAndPlacePin, which is tied to pin-drop mode and
-// always places a pin; this only ever moves the view. Fits the result's
-// actual extent when geocode.js's searchLocation provided one (a country
-// needs a much wider view than a street address), maxZoom-capped so a
-// precise address doesn't zoom in absurdly far; falls back to the same
-// fixed zoom flyToAndPlacePin uses when no bounding box is available.
-export function flyToSearchResult({ lat, lng, boundingBox }) {
-  if (boundingBox) {
-    const [south, north, west, east] = boundingBox;
-    map.flyToBounds(L.latLngBounds([[south, west], [north, east]]), { maxZoom: 15 });
-  } else {
-    map.flyTo([lat, lng], 13);
-  }
-}
-
 // Non-draggable — reuses PIN_ICON's same red-pin visual as pin-drop mode,
 // but purely as a "here's the current photo" indicator for pinbar.js,
 // never moving the map's own pan/zoom. Needed specifically because the
