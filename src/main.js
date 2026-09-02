@@ -188,7 +188,20 @@ async function openNodatetimeGrid() {
 
 
 
-document.getElementById('check-update-btn').addEventListener('click', async () => {
+const checkUpdateBtn = document.getElementById('check-update-btn');
+// Guards against a second tap starting a second concurrent download while
+// the first is still in flight — both would write to the same fixed cache
+// path (see below), and whichever installApk call fired first could end up
+// pointed at a file the other was still overwriting mid-write. That race
+// reads exactly like "downloads and does nothing" (PackageInstaller rejects
+// a corrupt APK with an easy-to-miss toast, not a visible error) followed
+// by a clean, non-concurrent retry that works. The APK is tens of MB, so
+// there's a real window for an impatient second tap during the download.
+let _checkingUpdate = false;
+checkUpdateBtn.addEventListener('click', async () => {
+  if (_checkingUpdate) return;
+  _checkingUpdate = true;
+  checkUpdateBtn.disabled = true;
   closeInfoPopup();
   showBriefStatus('Checking for updates…', 15000);
   try {
@@ -225,10 +238,12 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
       const apkUrl = 'https://github.com/iltommi/mappho/releases/download/latest/Mappho.apk';
       showBriefStatus('Update available — downloading…', 60000);
       let listener = null;
+      let lastContentLength = null;
       try {
         const { uri: path } = await Filesystem.getUri({ path: 'Mappho.apk', directory: Directory.Cache });
         listener = await FileTransfer.addListener('progress', p => {
           if (p.url !== apkUrl || !p.contentLength) return;
+          lastContentLength = p.contentLength;
           showBriefStatus(`Downloading update… ${Math.round((p.bytes / p.contentLength) * 100)}%`, 60000);
         });
         const result = await FileTransfer.downloadFile({
@@ -236,6 +251,14 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
           connectTimeout: LARGE_FILE_TIMEOUT, readTimeout: LARGE_FILE_TIMEOUT,
         });
         if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
+        // Belt-and-braces against installing a truncated/corrupt file (which
+        // PackageInstaller would otherwise reject near-silently) — verify
+        // the file actually landed at the size the server reported before
+        // handing it to the installer.
+        const { size } = await Filesystem.stat({ path: 'Mappho.apk', directory: Directory.Cache });
+        if (lastContentLength != null && size !== lastContentLength) {
+          throw new Error(`Downloaded file size ${size} doesn't match expected ${lastContentLength}`);
+        }
         await Capacitor.Plugins.Downloader.installApk({ path: result.path });
       } catch (e) {
         log('Update download error', e.message);
@@ -249,6 +272,9 @@ document.getElementById('check-update-btn').addEventListener('click', async () =
   } catch (e) {
     log('Update check error', e.message);
     showBriefStatus(`Update check failed: ${e.message}`);
+  } finally {
+    _checkingUpdate = false;
+    checkUpdateBtn.disabled = false;
   }
 });
 
