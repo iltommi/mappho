@@ -463,6 +463,21 @@ export async function showExif(fileid, name) {
     frag.appendChild(pathRow);
 
     const data = exifData.status === 'fulfilled' ? exifData.value : null;
+    const { latitude, longitude } = data ?? {};
+    if (typeof latitude === 'number' && typeof longitude === 'number' &&
+        !isNaN(latitude) && !isNaN(longitude)) {
+      const mapRow = document.createElement('div');
+      mapRow.className = 'exif-row exif-map-row';
+      const mapLink = document.createElement('a');
+      mapLink.className = 'exif-map-link';
+      mapLink.href = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      mapLink.target = '_blank';
+      mapLink.rel = 'noopener noreferrer';
+      mapLink.textContent = 'Open in Google Maps';
+      mapRow.appendChild(mapLink);
+      frag.appendChild(mapRow);
+    }
+
     const entries = data ? Object.entries(data).filter(([k]) => k !== 'errors') : [];
 
     if (!entries.length) {

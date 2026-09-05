@@ -1284,6 +1284,23 @@ body.filter-open #map { top: 48px; }
   background: rgba(125, 211, 252, .07);
   border-bottom: 2px solid #1a3a5c;
 }
+.exif-map-row {
+  justify-content: center;
+  padding: 10px 16px;
+  border-bottom: 2px solid #1a3a5c;
+}
+.exif-map-link {
+  display: inline-block;
+  background: #0369a1;
+  color: #e2e8f0;
+  font-size: .8rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: background .15s;
+}
+.exif-map-link:hover { background: #0284c7; }
 .exif-empty {
   padding: 20px;
   color: #94a3b8;
