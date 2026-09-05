@@ -288,11 +288,8 @@ function _buildMarker(fileid, name, lat, lng, ts, rotation) {
         .map(({ marker: m }) => markerData.get(m))
         .sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
       const startIndex = Math.max(0, visible.findIndex(p => p.fileid === markerData.get(marker).fileid));
-      // The bottom bar is now the "current photo" UI while browsing from
-      // the map — showing both it and this small popup at once would be
-      // redundant.
       marker.closePopup();
-      openPinBar(visible, startIndex);
+      openSlideshow(visible, startIndex);
     }
 
     fetchThumbSrc(fileid, '512x512', rotation ?? 0).then(src => {
