@@ -9,7 +9,7 @@ const BUILD_TIME = new Date(__BUILD_TIME__);
 const APP_SHA    = __GIT_SHA__;
 import { log, toggleLog } from './log.js';
 import { toggleFilter, closeFilter, getActiveFilterRange, setRangeInfoHandler, toDateStr } from './filter.js';
-import { listImages, listFolders, folderExists, fetchFileHead, LARGE_FILE_TIMEOUT } from './pcloud.js';
+import { listImages, listFolders, folderExists, fetchFileHead } from './pcloud.js';
 import { extractEXIF, parseDateFromFilename } from './exif.js';
 import { extractMP4Meta, isVideo } from './mp4.js';
 import { initMap, addMarker, bulkAddMarkers, removeMarker, clearMarkers, toggleHeatmap, getHeatmapActive, setMediaTypeFilter, getMediaTypeFilter, updateMarkerName, setMarkerGeotagHandler, setMarkerFixDateHandler, setMarkerFixTimeHandler, setMarkerIgnoreHandler, setMarkerBulkIgnoreHandler, getViewportBounds, browsePinsInView } from './map.js';
@@ -189,6 +189,17 @@ async function openNodatetimeGrid() {
 
 
 const checkUpdateBtn = document.getElementById('check-update-btn');
+// The APK is tens of MB and finishes in a couple of seconds on any working
+// connection — deliberately much shorter than pcloud.js's LARGE_FILE_TIMEOUT
+// (meant for full media syncs). @capacitor/file-transfer's Android
+// implementation only detects end-of-download via a final read() call that
+// expects the connection to report EOF; on some connections that read can
+// stall indefinitely even though every byte already arrived (progress sits
+// at 100%), and with a 10-minute timeout that reads as the update check
+// hanging forever with the button still disabled and nothing else logged.
+// A short timeout here means a stalled download fails fast and visibly
+// (logged, then falls back to opening the release page) instead of that.
+const UPDATE_DOWNLOAD_TIMEOUT = 30000; // ms
 // Guards against a second tap starting a second concurrent download while
 // the first is still in flight — both would write to the same fixed cache
 // path (see below), and whichever installApk call fired first could end up
@@ -248,7 +259,7 @@ checkUpdateBtn.addEventListener('click', async () => {
         });
         const result = await FileTransfer.downloadFile({
           url: apkUrl, path, progress: true,
-          connectTimeout: LARGE_FILE_TIMEOUT, readTimeout: LARGE_FILE_TIMEOUT,
+          connectTimeout: UPDATE_DOWNLOAD_TIMEOUT, readTimeout: UPDATE_DOWNLOAD_TIMEOUT,
         });
         if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
         // Belt-and-braces against installing a truncated/corrupt file (which
