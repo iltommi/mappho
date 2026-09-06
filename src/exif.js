@@ -468,13 +468,23 @@ export async function showExif(fileid, name) {
         !isNaN(latitude) && !isNaN(longitude)) {
       const mapRow = document.createElement('div');
       mapRow.className = 'exif-row exif-map-row';
-      const mapLink = document.createElement('a');
-      mapLink.className = 'exif-map-link';
-      mapLink.href = `https://www.google.com/maps?q=${latitude},${longitude}`;
-      mapLink.target = '_blank';
-      mapLink.rel = 'noopener noreferrer';
-      mapLink.textContent = 'Open in Google Maps';
-      mapRow.appendChild(mapLink);
+
+      const gmapsLink = document.createElement('a');
+      gmapsLink.className = 'exif-map-link';
+      gmapsLink.href = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      gmapsLink.target = '_blank';
+      gmapsLink.rel = 'noopener noreferrer';
+      gmapsLink.textContent = 'Google Maps';
+      mapRow.appendChild(gmapsLink);
+
+      const osmLink = document.createElement('a');
+      osmLink.className = 'exif-map-link';
+      osmLink.href = `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=17/${latitude}/${longitude}`;
+      osmLink.target = '_blank';
+      osmLink.rel = 'noopener noreferrer';
+      osmLink.textContent = 'OpenStreetMap';
+      mapRow.appendChild(osmLink);
+
       frag.appendChild(mapRow);
     }
 
