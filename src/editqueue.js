@@ -260,7 +260,13 @@ export function createEditQueue(config) {
       if (failedItems.length > 0) {
         statusFn()?.(`${icon} ${pv} ${totalOk}/${initialList.length} — ${failedItems.length} failed${staleNote}${skipNote}`, 0);
         const retry = await askRetry(failedItems.length, 'photo');
-        if (retry) { list = failedItems; continue; }
+        // failedItems were already counted "done" above (see the comment on
+        // current.remaining.delete) so the queueCompleted/queueTotal display
+        // stays sane across the resume-from-crash path — but a live retry is
+        // about to run them through the worker again, which would count them
+        // a second time and push the numerator past queueTotal (e.g. 53/47).
+        // Un-count them here so the retry round re-earns their completion.
+        if (retry) { queueCompleted -= failedItems.length; list = failedItems; continue; }
         cb?.({ success: totalOk > 0, count: totalOk, failed: failedItems.length, stale: totalStale, skipped: 0, results });
         return;
       }
