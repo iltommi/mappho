@@ -1373,6 +1373,12 @@ body.filter-open #map { top: 48px; }
   gap: 10px;
   max-width: min(90vw, 480px);
   width: max-content;
+  /* Anchored 80px off the bottom with no top bound — on a short landscape
+     viewport the stacked hint/search/results/actions can otherwise run past
+     the top edge with nothing to scroll. Cap it to the space actually above
+     the anchor point and let it scroll internally instead. */
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
 }
 
 #pin-drop-hint {
@@ -1711,6 +1717,14 @@ body.filter-open #map { top: 48px; }
   justify-content: center;
   margin: 8px auto 0;
   max-width: 284px;
+}
+/* Landscape has the width to spare and the height to lose — the portrait
+   284px cap (tuned for a ~360px-wide phone) exists to force a second row on
+   narrow screens, but that same cap would force one here too, right below
+   an already-shorter image area. Drop it so every button fits on one row;
+   flex-wrap still catches a landscape width too narrow for that. */
+@media (orientation: landscape) {
+  #ss-footer-btns { max-width: none; }
 }
 
 #ss-footer-btns button {
