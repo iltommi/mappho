@@ -15,6 +15,7 @@ import { viewOpened, viewClosed } from './nav.js';
 import { log } from './log.js';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { SystemBars, SystemBarType } from '@capacitor/core';
 
 const VIDEO_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3">' +
@@ -317,6 +318,13 @@ function centerTrack(animate) {
 
 // ── Close ─────────────────────────────────────────────────────────────────────
 
+// Covers the Android status bar for the duration of the slideshow, giving
+// the photo the full screen — restored on close. No-ops harmlessly on web
+// (SystemBars' web implementation is a stub), so no platform check needed.
+function setStatusBarHidden(hidden) {
+  (hidden ? SystemBars.hide : SystemBars.show)({ bar: SystemBarType.StatusBar }).catch(() => {});
+}
+
 let closeHandler = null;
 
 // Called whenever the slideshow closes. `handoff` is true when closing to
@@ -327,6 +335,7 @@ let closeHandler = null;
 export function setCloseHandler(fn) { closeHandler = fn; }
 
 function close({ handoff = false } = {}) {
+  setStatusBarHidden(false);
   el.classList.remove('open');
   playBadge.style.display  = 'none';
   geotagBtn.style.display  = 'none';
@@ -1066,6 +1075,7 @@ export function openSlideshow(photoList, startIndex = 0) {
   fixTimeBtn.style.display = 'none';
   editBtn.style.display    = 'none';
   ignoreBtn.style.display  = 'none';
+  setStatusBarHidden(true);
   el.classList.add('open');
   viewOpened('slideshow', { close: () => close() });
   go(startIndex);
@@ -1107,6 +1117,7 @@ export async function openLazySlideshow(fetchPage, total, { startIndex = 0, seed
   geotagBtn.style.display  = geotagHandler ? '' : 'none';
   fixDateBtn.style.display = fixDateHandler ? '' : 'none';
   fixTimeBtn.style.display = fixTimeHandler ? '' : 'none';
+  setStatusBarHidden(true);
   el.classList.add('open');
   viewOpened('slideshow', { close: () => close() });
   go(startIndex);
