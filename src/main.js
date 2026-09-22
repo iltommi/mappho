@@ -146,6 +146,7 @@ const loginBtn = document.getElementById('login-btn');
 const loginError = document.getElementById('login-error');
 const totpInput = document.getElementById('totp');
 const folderBtn = document.getElementById('folder-btn');
+const rescanBtn = document.getElementById('rescan-btn');
 const stopScanBtn = document.getElementById('stop-scan-btn');
 const eraseCacheBtn = document.getElementById('erase-cache-btn');
 
@@ -490,6 +491,19 @@ folderBtn.addEventListener('click', () => { infoPopup.style.display = 'none'; op
 function populateFolderPicker() {
   updateFolderBtn();
 }
+
+// runScan() only ever auto-triggers from closeFolderPicker() when the
+// selection itself changes — dropping new photos into an already-selected
+// folder wouldn't otherwise get picked up short of toggling it off and back
+// on. This just re-runs the same scan on demand over the current selection.
+rescanBtn.addEventListener('click', () => {
+  closeInfoPopup();
+  if (!getSelectedFolders().length) {
+    showBriefStatus('No folders selected — pick one under 📁 Folders first.');
+    return;
+  }
+  runScan();
+});
 
 let eraseCacheConfirmPending = false;
 let eraseCacheConfirmTimer  = null;
