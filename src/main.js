@@ -193,14 +193,18 @@ const checkUpdateBtn = document.getElementById('check-update-btn');
 // The APK is tens of MB and finishes in a couple of seconds on any working
 // connection — deliberately much shorter than pcloud.js's LARGE_FILE_TIMEOUT
 // (meant for full media syncs). @capacitor/file-transfer's Android
-// implementation only detects end-of-download via a final read() call that
-// expects the connection to report EOF; on some connections that read can
-// stall indefinitely even though every byte already arrived (progress sits
-// at 100%), and with a 10-minute timeout that reads as the update check
-// hanging forever with the button still disabled and nothing else logged.
-// A short timeout here means a stalled download fails fast and visibly
-// (logged, then falls back to opening the release page) instead of that.
-const UPDATE_DOWNLOAD_TIMEOUT = 30000; // ms
+// implementation (io.ionic.libs:ionfiletransfer-android) reads the response
+// body in a loop and only knows it's done once a read() call returns EOF —
+// verified in its source that connectTimeout/readTimeout do reach the
+// underlying HttpURLConnection, so a stalled read is bounded by this value,
+// not unbounded. The still-observed hang (progress reaches 100%, then
+// nothing, resolving only on a fresh retry) points at Android's HTTP
+// keep-alive connection reuse across the github.com → CDN redirect this
+// URL involves — a well-documented flaky pattern for exactly this shape of
+// symptom. `Connection: close` on the request (below) is the standard
+// workaround: it tells the connection not to try to pool/reuse the socket
+// for later, which is what that stall is almost certainly stuck inside.
+const UPDATE_DOWNLOAD_TIMEOUT = 15000; // ms
 // Guards against a second tap starting a second concurrent download while
 // the first is still in flight — both would write to the same fixed cache
 // path (see below), and whichever installApk call fired first could end up
@@ -261,6 +265,10 @@ checkUpdateBtn.addEventListener('click', async () => {
         const result = await FileTransfer.downloadFile({
           url: apkUrl, path, progress: true,
           connectTimeout: UPDATE_DOWNLOAD_TIMEOUT, readTimeout: UPDATE_DOWNLOAD_TIMEOUT,
+          // See the comment on UPDATE_DOWNLOAD_TIMEOUT — discourages Android
+          // from pooling/reusing this connection, the likely site of the
+          // post-100%-progress hang.
+          headers: { Connection: 'close' },
         });
         if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
         // Belt-and-braces against installing a truncated/corrupt file (which
