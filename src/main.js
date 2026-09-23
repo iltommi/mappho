@@ -190,29 +190,37 @@ async function openNodatetimeGrid() {
 
 
 const checkUpdateBtn = document.getElementById('check-update-btn');
-// The APK is tens of MB and finishes in a couple of seconds on any working
-// connection — deliberately much shorter than pcloud.js's LARGE_FILE_TIMEOUT
-// (meant for full media syncs). @capacitor/file-transfer's Android
-// implementation (io.ionic.libs:ionfiletransfer-android) reads the response
-// body in a loop and only knows it's done once a read() call returns EOF —
-// verified in its source that connectTimeout/readTimeout do reach the
-// underlying HttpURLConnection, so a stalled read is bounded by this value,
-// not unbounded. The still-observed hang (progress reaches 100%, then
-// nothing, resolving only on a fresh retry) points at Android's HTTP
-// keep-alive connection reuse across the github.com → CDN redirect this
-// URL involves — a well-documented flaky pattern for exactly this shape of
-// symptom. `Connection: close` on the request (below) is the standard
-// workaround: it tells the connection not to try to pool/reuse the socket
-// for later, which is what that stall is almost certainly stuck inside.
+// connectTimeout/readTimeout do reach the underlying HttpURLConnection
+// (verified in @capacitor/file-transfer's Android source) but confirmed on
+// a real device that they don't bound this hang: progress sits at 100% with
+// zero change for 30s+, far past this value, so whatever it's actually
+// stuck on natively isn't reachable through the plugin's own timeout
+// options — most likely Android's HTTP keep-alive connection-pool reuse
+// across the github.com → CDN redirect this URL involves, in some coroutine
+// step `Connection: close` (below) doesn't manage to prevent either. Kept
+// anyway as a real, if unproven, mitigation — see UPDATE_DOWNLOAD_WATCHDOG_MS
+// below for the actual guarantee.
 const UPDATE_DOWNLOAD_TIMEOUT = 15000; // ms
+
+// The hard backstop: races the download against this local deadline so the
+// update check is guaranteed to fail visibly (logged, falls back to opening
+// the release page) rather than hang indefinitely, regardless of what the
+// native call above is actually stuck on. There's no cancellation hook on
+// FileTransfer's promise, so a native call abandoned here keeps running —
+// harmless since each attempt now downloads to its own uniquely-named file
+// (see apkName below) rather than a fixed path, so an abandoned attempt
+// finishing late can never collide with a fresh one's write.
+const UPDATE_DOWNLOAD_WATCHDOG_MS = 20000; // ms
+function withDeadline(promise, ms, message) {
+  let timer;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), ms); });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
 // Guards against a second tap starting a second concurrent download while
-// the first is still in flight — both would write to the same fixed cache
-// path (see below), and whichever installApk call fired first could end up
-// pointed at a file the other was still overwriting mid-write. That race
-// reads exactly like "downloads and does nothing" (PackageInstaller rejects
-// a corrupt APK with an easy-to-miss toast, not a visible error) followed
-// by a clean, non-concurrent retry that works. The APK is tens of MB, so
-// there's a real window for an impatient second tap during the download.
+// the first is still in flight — redundant network/battery use and a
+// duplicate install prompt, not a file collision (each attempt uses its own
+// uniquely-named file — see apkName below).
 let _checkingUpdate = false;
 checkUpdateBtn.addEventListener('click', async () => {
   if (_checkingUpdate) return;
@@ -252,30 +260,48 @@ checkUpdateBtn.addEventListener('click', async () => {
         return;
       }
       const apkUrl = 'https://github.com/iltommi/mappho/releases/download/latest/Mappho.apk';
+      // Unique per attempt (not a fixed "Mappho.apk") — see
+      // UPDATE_DOWNLOAD_WATCHDOG_MS above for why: an attempt abandoned to
+      // the watchdog can't then collide with a later one's write.
+      const apkName = `Mappho-update-${Date.now()}.apk`;
+      // Best-effort cleanup of any file(s) left behind by a past attempt
+      // the watchdog gave up on — not required for correctness (each name
+      // is unique) but nothing else ever cleans these out of the cache dir.
+      try {
+        const { files } = await Filesystem.readdir({ path: '', directory: Directory.Cache });
+        for (const f of files) {
+          if (/^Mappho-update-\d+\.apk$/.test(f.name)) {
+            await Filesystem.deleteFile({ path: f.name, directory: Directory.Cache }).catch(() => {});
+          }
+        }
+      } catch (e) { log('Update cleanup error', e.message); }
       showBriefStatus('Update available — downloading…', 60000);
       let listener = null;
       let lastContentLength = null;
       try {
-        const { uri: path } = await Filesystem.getUri({ path: 'Mappho.apk', directory: Directory.Cache });
+        const { uri: path } = await Filesystem.getUri({ path: apkName, directory: Directory.Cache });
         listener = await FileTransfer.addListener('progress', p => {
           if (p.url !== apkUrl || !p.contentLength) return;
           lastContentLength = p.contentLength;
           showBriefStatus(`Downloading update… ${Math.round((p.bytes / p.contentLength) * 100)}%`, 60000);
         });
-        const result = await FileTransfer.downloadFile({
-          url: apkUrl, path, progress: true,
-          connectTimeout: UPDATE_DOWNLOAD_TIMEOUT, readTimeout: UPDATE_DOWNLOAD_TIMEOUT,
-          // See the comment on UPDATE_DOWNLOAD_TIMEOUT — discourages Android
-          // from pooling/reusing this connection, the likely site of the
-          // post-100%-progress hang.
-          headers: { Connection: 'close' },
-        });
+        const result = await withDeadline(
+          FileTransfer.downloadFile({
+            url: apkUrl, path, progress: true,
+            connectTimeout: UPDATE_DOWNLOAD_TIMEOUT, readTimeout: UPDATE_DOWNLOAD_TIMEOUT,
+            // Real but unproven mitigation — see the comment on
+            // UPDATE_DOWNLOAD_TIMEOUT.
+            headers: { Connection: 'close' },
+          }),
+          UPDATE_DOWNLOAD_WATCHDOG_MS,
+          `Download stalled — no response ${UPDATE_DOWNLOAD_WATCHDOG_MS / 1000}s after starting`,
+        );
         if (!result.path) throw new Error('FileTransfer.downloadFile returned no path');
         // Belt-and-braces against installing a truncated/corrupt file (which
         // PackageInstaller would otherwise reject near-silently) — verify
         // the file actually landed at the size the server reported before
         // handing it to the installer.
-        const { size } = await Filesystem.stat({ path: 'Mappho.apk', directory: Directory.Cache });
+        const { size } = await Filesystem.stat({ path: apkName, directory: Directory.Cache });
         if (lastContentLength != null && size !== lastContentLength) {
           throw new Error(`Downloaded file size ${size} doesn't match expected ${lastContentLength}`);
         }
